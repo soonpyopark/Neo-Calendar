@@ -1,8 +1,14 @@
 import { type ReactElement, type ReactNode, useEffect } from 'react'
-import { resetIgnoreMouseCache, setIgnoreMouseEvents } from '../lib/mouseBridge'
+import {
+  resetIgnoreMouseCache,
+  setClickThroughEnabled,
+  setIgnoreMouseEvents
+} from '../lib/mouseBridge'
 
 export type WallpaperContainerProps = {
   children: ReactNode
+  /** When false (window mode), mouse is always captured. */
+  clickThrough?: boolean
 }
 
 /**
@@ -10,10 +16,17 @@ export type WallpaperContainerProps = {
  * Uses forwarded mousemove + elementFromPoint so interactive hotspots
  * (`.interaction-ui`) can reclaim mouse capture reliably.
  */
-export function WallpaperContainer({ children }: WallpaperContainerProps): ReactElement {
+export function WallpaperContainer({
+  children,
+  clickThrough = true
+}: WallpaperContainerProps): ReactElement {
   useEffect(() => {
+    setClickThroughEnabled(clickThrough)
     resetIgnoreMouseCache()
-    setIgnoreMouseEvents(true, { forwardToOverlay: true })
+
+    if (!clickThrough) {
+      return
+    }
 
     const syncMouseCapture = (clientX: number, clientY: number): void => {
       const el = document.elementFromPoint(clientX, clientY)
@@ -36,14 +49,18 @@ export function WallpaperContainer({ children }: WallpaperContainerProps): React
       window.removeEventListener('mousemove', onMouseMove)
       document.documentElement.removeEventListener('mouseleave', onWindowMouseLeave)
     }
-  }, [])
+  }, [clickThrough])
 
   return (
     <div
-      className="wallpaper-root fixed inset-0 h-screen w-screen overflow-hidden bg-transparent"
+      className={`wallpaper-root fixed inset-0 h-screen w-screen overflow-hidden bg-transparent${
+        clickThrough ? '' : ' is-window-mode'
+      }`}
       style={{ width: '100vw', height: '100vh' }}
       onMouseLeave={() => {
-        setIgnoreMouseEvents(true, { forwardToOverlay: true })
+        if (clickThrough) {
+          setIgnoreMouseEvents(true, { forwardToOverlay: true })
+        }
       }}
     >
       {children}

@@ -21,6 +21,8 @@ Lightweight Electron desktop wallpaper calendar with dynamic click-through.
 ```bash
 npm install
 npm run dev
+npm run dev:restart
+npm run stop
 ```
 
 ## Build

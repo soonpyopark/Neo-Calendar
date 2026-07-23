@@ -1,9 +1,9 @@
 {
   "name": "neo-calendar",
   "version": "1.0.0",
-  "description": "Lightweight desktop wallpaper calendar with dynamic click-through",
+  "description": "My Desktop Calendar on Neo click-through desktop core",
   "main": "./out/main/main.js",
-  "author": "Neo Calendar",
+  "author": "My Desktop Calendar",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -35,8 +35,8 @@
     "vite": "^7.0.5"
   },
   "build": {
-    "appId": "com.neocalendar.app",
-    "productName": "Neo Calendar",
+    "appId": "com.mydesktopcalendar.app",
+    "productName": "My Desktop Calendar",
     "directories": {
       "output": "release"
     },

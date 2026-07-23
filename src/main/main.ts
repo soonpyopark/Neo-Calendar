@@ -1,31 +1,54 @@
-import { app, BrowserWindow, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
+import { AuthService } from './auth'
+import { DesktopModeController } from './desktopMode'
+import { SettingsStore } from './settingsStore'
+import { createAppTray, type AppTray } from './tray'
 import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
+import { WindowModeHitZone } from './windowModeHitZone'
+import { DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import type { AppSettings, ClientHitRect, ModeStatus } from '../shared/ipc'
 
 let mainWindow: WallpaperBrowserWindow | null = null
+let settingsStore: SettingsStore
+let auth: AuthService
+let desktopMode: DesktopModeController
+let tray: AppTray | null = null
+let windowModeHitZone: WindowModeHitZone | null = null
+
+function broadcastMode(status: ModeStatus): void {
+  mainWindow?.webContents.send('mode-changed', status)
+  tray?.rebuildMenu?.()
+}
 
 function createWindow(): void {
-  const primaryDisplay = screen.getPrimaryDisplay()
-  const { width, height, x, y } = primaryDisplay.bounds
+  const saved = settingsStore.getSettings().widget.bounds ?? DEFAULT_WIDGET_BOUNDS
+
+  const area = screen.getPrimaryDisplay().workArea
+  const startWidth = Math.min(Math.max(640, saved.width), area.width)
+  const startHeight = Math.min(Math.max(480, saved.height), area.height)
+  const startX = area.x + Math.round((area.width - startWidth) / 2)
+  const startY = area.y + Math.round((area.height - startHeight) / 2)
 
   const win = withWallpaperApi(
     new BrowserWindow({
-      x,
-      y,
-      width,
-      height,
+      x: startX,
+      y: startY,
+      width: startWidth,
+      height: startHeight,
       frame: false,
       transparent: true,
-      skipTaskbar: true,
-      resizable: false,
-      movable: false,
-      maximizable: false,
-      minimizable: false,
+      skipTaskbar: false,
+      resizable: true,
+      movable: true,
+      maximizable: true,
+      minimizable: true,
       fullscreenable: false,
-      hasShadow: false,
+      hasShadow: true,
       focusable: true,
       show: false,
       backgroundColor: '#00000000',
+      title: 'My Desktop Calendar',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -37,17 +60,24 @@ function createWindow(): void {
 
   mainWindow = win
 
-  // Default: pass clicks through to the OS desktop
-  win.setIgnoreMouseEvents(true, { forward: true })
-
-  win.once('ready-to-show', () => {
-    win.show()
-    // Keep under normal apps, but as a top-level HWND so mouse forward works
-    win.setAsWallpaper()
-    win.setIgnoreMouseEvents(true, { forward: true })
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    if (/^https?:\/\//i.test(url)) {
+      void shell.openExternal(url)
+    }
+    return { action: 'deny' }
   })
 
+  win.once('ready-to-show', () => {
+    desktopMode.restoreFromSettings()
+  })
 
+  const persistBounds = (): void => {
+    if (desktopMode.getLaunchMode() === 'window') {
+      desktopMode.persistWindowBounds()
+    }
+  }
+  win.on('moved', persistBounds)
+  win.on('resized', persistBounds)
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -55,45 +85,86 @@ function createWindow(): void {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
-  // Keep covering the primary display when resolution / work area changes
-  const relayout = (): void => {
-    if (!mainWindow) return
-    const bounds = screen.getPrimaryDisplay().bounds
-    mainWindow.setBounds(bounds)
-    if (process.platform === 'win32') {
-      mainWindow.setAsWallpaper()
-    }
-  }
-
-  screen.on('display-metrics-changed', relayout)
   win.on('closed', () => {
-    screen.removeListener('display-metrics-changed', relayout)
     mainWindow = null
   })
 }
 
-/**
- * IPC: toggle click-through.
- * Electron's public option is `forward` (mouse-move forwarding while ignoring).
- * `forwardToOverlay` is accepted as an alias for the same behavior.
- */
-ipcMain.on(
-  'set-ignore-mouse',
-  (_event, ignore: boolean, options?: { forward?: boolean; forwardToOverlay?: boolean }) => {
-    if (!mainWindow) return
-
-    const shouldForward = options?.forwardToOverlay ?? options?.forward ?? true
-
-    if (ignore) {
-      mainWindow.setIgnoreMouseEvents(true, { forward: shouldForward })
-    } else {
-      mainWindow.setIgnoreMouseEvents(false)
+function registerIpc(): void {
+  ipcMain.on(
+    'set-ignore-mouse',
+    (_event, ignore: boolean, options?: { forward?: boolean; forwardToOverlay?: boolean }) => {
+      if (!mainWindow) return
+      // Mode-switch swallow: do not let renderer clear ignore-mouse early.
+      if (desktopMode.isInputLocked()) {
+        mainWindow.setIgnoreMouseEvents(true)
+        return
+      }
+      if (desktopMode.getLaunchMode() === 'window') {
+        mainWindow.setIgnoreMouseEvents(false)
+        return
+      }
+      const shouldForward = options?.forwardToOverlay ?? options?.forward ?? true
+      if (ignore) {
+        mainWindow.setIgnoreMouseEvents(true, { forward: shouldForward })
+      } else {
+        mainWindow.setIgnoreMouseEvents(false)
+      }
     }
-  }
-)
+  )
+
+  ipcMain.on('set-window-mode-hit-zone', (_event, rect: ClientHitRect | null) => {
+    windowModeHitZone?.setClientRect(rect ?? null)
+  })
+
+  ipcMain.handle('get-mode-status', () => desktopMode.getStatus())
+  ipcMain.handle('enter-desktop', () => desktopMode.enterDesktop({ intentional: true }))
+  ipcMain.handle('enter-window', () => desktopMode.enterWindow())
+  ipcMain.handle('get-window-bounds', () => desktopMode.getWindowBounds())
+  ipcMain.handle('set-window-bounds', (_event, bounds) => desktopMode.setWindowBounds(bounds))
+
+  ipcMain.handle('get-auth', () => auth.getUser())
+  ipcMain.handle(
+    'login',
+    (_event, loginId: string, password: string, remember?: boolean) =>
+      auth.login(loginId, password, Boolean(remember))
+  )
+  ipcMain.handle('logout', () => {
+    auth.logout()
+  })
+
+  ipcMain.handle('get-settings', () => settingsStore.getSettings())
+  ipcMain.handle('patch-settings', (_event, patch: Partial<AppSettings>) =>
+    settingsStore.patchSettings(patch ?? {})
+  )
+}
 
 app.whenReady().then(() => {
+  settingsStore = new SettingsStore()
+  auth = new AuthService(settingsStore)
+  desktopMode = new DesktopModeController({
+    getWindow: () => mainWindow,
+    store: settingsStore,
+    onModeChanged: broadcastMode
+  })
+
+  registerIpc()
   createWindow()
+  tray = createAppTray({
+    getWindow: () => mainWindow,
+    desktopMode
+  })
+
+  // WorkerW swallows HWND input — bridge only the window-mode button so users can undock.
+  windowModeHitZone = new WindowModeHitZone(
+    () => mainWindow,
+    () => desktopMode.getLockedBounds(),
+    () => desktopMode.isWorkerEmbedded(),
+    () => {
+      desktopMode.enterWindow({ force: true })
+    }
+  )
+  windowModeHitZone.start()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
