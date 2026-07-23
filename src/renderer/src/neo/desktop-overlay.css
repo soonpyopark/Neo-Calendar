@@ -1,0 +1,53 @@
+/* Neo click-through desktop overlay adaptations */
+
+html.desktop-embedded,
+html.desktop-embedded body,
+html.desktop-embedded #root {
+  background: transparent !important;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html.desktop-embedded .wallpaper-root {
+  pointer-events: none;
+}
+
+html.desktop-embedded .wallpaper-root button,
+html.desktop-embedded .wallpaper-root a,
+html.desktop-embedded .wallpaper-root input,
+html.desktop-embedded .wallpaper-root textarea,
+html.desktop-embedded .wallpaper-root select,
+html.desktop-embedded .wallpaper-root label,
+html.desktop-embedded .wallpaper-root [role='dialog'],
+html.desktop-embedded .wallpaper-root [role='menu'],
+html.desktop-embedded .wallpaper-root [data-interactive='true'],
+html.desktop-embedded .wallpaper-root .interaction-ui,
+html.desktop-embedded .wallpaper-root .event-bar,
+html.desktop-embedded .wallpaper-root .title-bar,
+html.desktop-embedded .wallpaper-root header,
+html.desktop-embedded .wallpaper-root .app-header {
+  pointer-events: auto;
+}
+
+/* Soften opaque page fills so wallpaper shows through around the calendar chrome */
+html.desktop-embedded .bg-gcal-page,
+html.desktop-embedded .bg-gcal-page-alt,
+html.desktop-embedded [class*='bg-gcal-page'] {
+  background-color: transparent !important;
+}
+
+html.desktop-embedded .text-gcal-heading,
+html.desktop-embedded .text-gcal-body,
+html.desktop-embedded .text-gcal-muted,
+html.desktop-embedded header,
+html.desktop-embedded .event-bar {
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.55),
+    0 0 10px rgba(0, 0, 0, 0.25);
+}
+
+html.desktop-embedded input,
+html.desktop-embedded textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}

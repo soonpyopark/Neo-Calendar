@@ -1,26 +1,30 @@
-# Neo Calendar
+# My Desktop Calendar (Electron)
 
-Lightweight Electron desktop wallpaper calendar with dynamic click-through.
+My Desktop Calendar UI running on the Neo Calendar Electron core.
 
-## Stack
+## Desktop mode (click-through)
 
-- Electron (main)
-- React + TypeScript (renderer)
-- Tailwind CSS v4
-- IPC click-through bridge (`set-ignore-mouse`)
+When **바탕화면 모드** is enabled:
 
-## Features
+- Transparent frameless overlay pinned to `HWND_BOTTOM`
+- Empty space clicks pass through to the Windows desktop
+- Interactive controls (header, events, dialogs, inputs) capture the mouse via `setIgnoreMouseEvents` + hit-testing
 
-- Frameless, transparent, taskbar-hidden window
-- Windows wallpaper-layer attachment via `win.setAsWallpaper()`
-- Empty space clicks pass through to the OS desktop
-- Interactive controls (nav, events, add) capture mouse on hover
+## Window mode
+
+Normal movable/resizable frameless window with custom title bar.
 
 ## Develop
 
 ```bash
 npm install
+npm run fix-electron   # if electron.exe is missing
 npm run dev
+```
+
+```bash
+npm run stop
+npm run dev:restart
 ```
 
 ## Build
@@ -30,10 +34,13 @@ npm run build
 npm run dist
 ```
 
-## Click-through model
+## Data
 
-1. Main process starts with `setIgnoreMouseEvents(true, { forward: true })`
-2. Renderer `WallpaperContainer` keeps ignore enabled for empty space
-3. `InteractionUI` calls `setIgnoreMouseEvents(false)` on `mouseenter`
-4. Leaving interactive UI / the window re-enables click-through
-# Neo-Calendar
+Local store under Electron `userData/data`:
+
+- `settings.json`
+- `calendars/*.json`
+- `members.json`
+- `attachments/`
+
+Default login: `admin` / `admin1234`
