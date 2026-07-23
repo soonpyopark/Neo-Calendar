@@ -1,38 +1,51 @@
 import type { CSSProperties, ReactElement } from 'react'
-import { getMarkerShapeGlyph, normalizeMarkerShape } from '../lib/eventMarkerShapes'
+import { getMarkerShapeGlyph } from '../lib/eventMarkerShapes'
+import { cn } from '../lib/cn'
 
 export type EventAccentGlyphProps = {
   shapeId?: string | null
-  color: string
+  color?: string
+  variant?: 'bar' | 'dot'
   className?: string
 }
 
-/** Compact leading accent for quick-edit rows (MDC EventAccentGlyph variant=dot). */
+/**
+ * Leading indicator: bar (month event) or dot (day list). Custom markerShape glyphs supported.
+ */
 export function EventAccentGlyph({
   shapeId,
   color,
+  variant = 'bar',
   className
 }: EventAccentGlyphProps): ReactElement {
-  const shape = normalizeMarkerShape(shapeId)
-  const glyph = getMarkerShapeGlyph(shape)
-  const style = { color, '--accent': color } as CSSProperties
+  const glyph = getMarkerShapeGlyph(shapeId)
 
-  if (glyph) {
+  if (!glyph) {
+    if (variant === 'dot') {
+      return (
+        <span className={cn('event-dot', className)} style={{ background: color }} aria-hidden="true" />
+      )
+    }
     return (
-      <span className={`event-accent-glyph${className ? ` ${className}` : ''}`} style={style} aria-hidden>
-        {glyph}
-      </span>
+      <span
+        className={cn(
+          'event-bar-accent',
+          shapeId === 'bar-round' && 'event-bar-accent--round',
+          className
+        )}
+        aria-hidden="true"
+      />
     )
   }
 
   return (
     <span
-      className={`event-accent-glyph event-accent-glyph--bar${
-        shape === 'bar-round' ? ' event-accent-glyph--round' : ''
-      }${className ? ` ${className}` : ''}`}
-      style={{ backgroundColor: color }}
-      aria-hidden
-    />
+      className={cn(variant === 'dot' ? 'event-dot-glyph' : 'event-bar-glyph', className)}
+      style={{ color } as CSSProperties}
+      aria-hidden="true"
+    >
+      {glyph}
+    </span>
   )
 }
 

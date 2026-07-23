@@ -20,10 +20,11 @@ import { QuickEditCalendarButton } from './QuickEditCalendarButton'
 import { QuickEditTagButton } from './QuickEditTagButton'
 import { getEventLinks } from '../lib/eventLinks'
 import { insertTextAtCursor } from '../lib/insertAtCursor'
+import { formatDayHeaderTitle } from '../lib/dayHeaderFormat'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
 
-const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'] as const
 const QUICK_EDIT_CHROME_HEIGHT = 88
 const QUICK_EDIT_BODY_EXTRA = 96
 const COLOR_PANEL_PAD = 8
@@ -58,12 +59,6 @@ export type DayQuickEditPopoverProps = {
   onEditEvent?: (event: CalendarEvent) => void
 }
 
-function formatDayHeaderTitle(date: Date): string {
-  const m = date.getMonth() + 1
-  const d = date.getDate()
-  const weekday = WEEKDAY_SHORT[date.getDay()]
-  return `${m}. ${d}.(${weekday})`
-}
 
 function clampRectToViewport(rect: {
   top: number
@@ -216,18 +211,19 @@ export function DayQuickEditPopover({
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target
       if (!(target instanceof Element)) return
+      // Keep open while interacting with the panel or its portaled flyouts.
       if (target.closest('.day-quick-edit')) return
       if (target.closest('.day-quick-edit-palette-flyout')) return
       if (target.closest('.quick-edit-calendar-flyout')) return
+      if (target.closest('.quick-edit-tag-root')) return
       if (target.closest('.marker-shape-flyout-panel')) return
       if (target.closest('.event-link-flyout')) return
       if (target.closest('.emoji-picker-panel')) return
       if (target.closest('.custom-color-panel')) return
-      if (target.closest('.day-cell[data-date-key]')) return
       onClose()
     }
-    document.addEventListener('pointerdown', onPointerDown, false)
-    return () => document.removeEventListener('pointerdown', onPointerDown, false)
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [onClose])
 
   useEffect(() => {
@@ -309,13 +305,20 @@ export function DayQuickEditPopover({
 
   return (
     <>
-      <div className="day-quick-edit-backdrop" aria-hidden />
+      <div
+        className="day-quick-edit-backdrop interaction-ui"
+        role="presentation"
+        onClick={onClose}
+        onMouseEnter={() => setIgnoreMouseEvents(false)}
+        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+      />
       <InteractionUI
         className="day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg"
         style={style}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="day-quick-edit-header">
           <h2 className="day-quick-edit-title">{formatDayHeaderTitle(date)}</h2>
@@ -414,7 +417,12 @@ export function DayQuickEditPopover({
                           onToggleCompleted(item.id, e.target.checked)
                         }}
                       />
-                      <EventAccentGlyph shapeId={item.markerShape} color={accent} className="shrink-0" />
+                      <EventAccentGlyph
+                        shapeId={item.markerShape}
+                        color={accent}
+                        variant="dot"
+                        className="shrink-0"
+                      />
                       <EventTagIcons event={item} tags={tags} />
                       <span
                         className="day-quick-edit-item-title"

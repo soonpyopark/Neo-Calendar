@@ -1,67 +1,174 @@
-import type { CSSProperties, ReactElement } from 'react'
-import { InteractionUI } from './InteractionUI'
+import {
+  useEffect,
+  type CSSProperties,
+  type ReactElement,
+  type RefObject
+} from 'react'
 import { EventDetailContent } from './EventDetailContent'
+import {
+  getAnchoredPopoverPosition,
+  getCenteredPanelStyle,
+  resolvePopoverAnchor,
+  useAnchoredPopoverStyle
+} from '../lib/popoverPosition'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 import type { AnchorRect } from './DayQuickEditPopover'
+
+const toolbarBtnClass =
+  'inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading'
+
+export type EventPopoverAnchor = AnchorRect | { x: number; y: number } | null
 
 export type EventPopoverProps = {
   event: CalendarEvent
   calendar?: CalendarRecord | null
-  tags: TagRecord[]
-  anchorRect: AnchorRect | null
+  tags?: TagRecord[]
+  dayKey?: string
+  anchorRect: EventPopoverAnchor
   canEdit?: boolean
   onClose: () => void
-  onEdit: () => void
-  onDelete: () => void
-  onToggleCompleted: (completed: boolean) => void
+  onEdit: (event: CalendarEvent) => void
+  onDelete: (event: CalendarEvent) => void
+  onToggleCompleted?: (event: CalendarEvent, completed: boolean) => void
 }
 
 export function EventPopover({
   event,
   calendar,
-  tags,
+  tags = [],
+  dayKey,
   anchorRect,
   canEdit = false,
   onClose,
   onEdit,
   onDelete,
   onToggleCompleted
-}: EventPopoverProps): ReactElement {
-  const style = anchorRect
-    ? {
-        top: Math.min(anchorRect.top + anchorRect.height + 6, window.innerHeight - 320),
-        left: Math.min(Math.max(8, anchorRect.left), window.innerWidth - 360)
-      }
-    : { top: '20%', left: '50%', transform: 'translateX(-50%)' }
+}: EventPopoverProps): ReactElement | null {
+  const popoverOptions = { width: 418, estimatedHeight: 360, padding: 12 }
+  const resolvedAnchor = resolvePopoverAnchor(anchorRect)
+  const { ref, style: anchoredStyle } = useAnchoredPopoverStyle(anchorRect, popoverOptions)
+
+  useEffect(() => {
+    if (!event) return undefined
+    const handlePointerDown = (e: MouseEvent): void => {
+      const target = e.target
+      if (!(target instanceof Node)) return
+      const panel = ref.current as HTMLElement | null
+      if (panel?.contains(target)) return
+      if (target instanceof Element && target.closest('.day-events-popover')) return
+      onClose()
+    }
+    document.addEventListener('mousedown', handlePointerDown, true)
+    return () => document.removeEventListener('mousedown', handlePointerDown, true)
+  }, [event, onClose, ref])
+
+  if (!event) return null
+
+  const completed = Boolean(event.completed)
+
+  const handleDeleteClick = (): void => {
+    if (!window.confirm('이 일정을 정말 삭제하시겠습니까?')) return
+    onDelete(event)
+  }
+
+  const panelStyle = resolvedAnchor
+    ? (anchoredStyle ??
+      getAnchoredPopoverPosition(resolvedAnchor.rect, {
+        ...popoverOptions,
+        anchorMode: resolvedAnchor.mode
+      }))
+    : getCenteredPanelStyle({ padding: 16, maxWidth: 418 })
 
   return (
-    <>
-      <div className="event-popover-backdrop" onClick={onClose} role="presentation" />
-      <InteractionUI className="event-popover" style={style as CSSProperties} role="dialog">
-        <header className="event-popover-header">
-          <button type="button" className="event-popover-close" onClick={onClose} aria-label="닫기">
-            ×
-          </button>
-        </header>
-        <EventDetailContent
-          event={event}
-          calendar={calendar}
-          tags={tags}
-          canEdit={canEdit}
-          onToggleCompleted={onToggleCompleted}
-        />
-        {canEdit ? (
-          <footer className="event-popover-actions">
-            <button type="button" onClick={onEdit}>
-              편집
+    <div
+      className={
+        anchorRect
+          ? 'pointer-events-none fixed inset-0 z-[50]'
+          : 'pointer-events-none fixed inset-0 z-[50] flex items-center justify-center overflow-y-auto p-4'
+      }
+      role="presentation"
+    >
+      <div
+        ref={ref as RefObject<HTMLDivElement | null>}
+        className={`interaction-ui ${resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex w-[418px] max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg`}
+        style={panelStyle as CSSProperties}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={() => setIgnoreMouseEvents(false)}
+        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+        role="dialog"
+        aria-label="일정 상세"
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 pl-5 pr-3 pt-2">
+          <label
+            className="inline-flex h-[34px] cursor-pointer items-center"
+            title={completed ? '완료 해제' : '완료로 표시'}
+          >
+            <input
+              type="checkbox"
+              className="event-popover-check"
+              checked={completed}
+              disabled={!canEdit}
+              aria-label={completed ? '완료 해제' : '완료로 표시'}
+              onChange={(e) => {
+                if (!canEdit) return
+                void onToggleCompleted?.(event, e.target.checked)
+              }}
+            />
+          </label>
+          <div className="flex items-center gap-0.5">
+            {canEdit ? (
+              <>
+                <button
+                  type="button"
+                  className={toolbarBtnClass}
+                  onClick={() => onEdit(event)}
+                  aria-label="수정"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className={toolbarBtnClass}
+                  onClick={handleDeleteClick}
+                  aria-label="삭제"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                    />
+                  </svg>
+                </button>
+              </>
+            ) : null}
+            <button type="button" className={toolbarBtnClass} onClick={onClose} aria-label="닫기">
+              <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                />
+              </svg>
             </button>
-            <button type="button" className="is-danger" onClick={onDelete}>
-              삭제
-            </button>
-          </footer>
-        ) : null}
-      </InteractionUI>
-    </>
+          </div>
+        </div>
+
+        <div className="settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">
+          <EventDetailContent
+            event={event}
+            calendar={calendar}
+            dayKey={dayKey}
+            tags={tags}
+            onTitleDoubleClick={canEdit ? () => onEdit(event) : undefined}
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 

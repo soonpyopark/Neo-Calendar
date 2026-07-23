@@ -12,3 +12,17 @@ export function toDateKey(date: Date | string | number | null | undefined): stri
   const dd = String(d.getDate()).padStart(2, '0')
   return `${d.getFullYear()}-${mm}-${dd}`
 }
+
+export function parseDateKey(key: string): Date {
+  const [y, m, d] = String(key).split('-').map(Number)
+  return new Date(y, (m || 1) - 1, d || 1)
+}
+
+export function eventOnDay(
+  event: { startDate?: string; endDate?: string } | null | undefined,
+  dayKey: string
+): boolean {
+  if (!event?.startDate || !dayKey) return false
+  const end = event.endDate || event.startDate
+  return dayKey >= event.startDate && dayKey <= end
+}

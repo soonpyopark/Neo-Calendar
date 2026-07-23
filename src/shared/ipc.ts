@@ -84,6 +84,11 @@ export type NeoCalendarApi = {
   setHeaderHitZone: (rect: ClientHitRect | null) => void
   /** Client-space zones that temporarily undock under-icons mode on hover. */
   setWakeHitZones: (zones: ClientHitRect[]) => void
+  /**
+   * Period/toolbar buttons that receive injected clicks while WorkerW-embedded
+   * (연/주/월/nav/오늘/internet/eye/check) — no undock.
+   */
+  setClickForwardHitZones: (zones: ClientHitRect[]) => void
   /** Day cells for WorkerW double-click → quick edit (no hover wake). */
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
   /**

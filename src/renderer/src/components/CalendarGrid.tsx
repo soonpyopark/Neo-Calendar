@@ -15,10 +15,15 @@ import { DayNumber } from './DayNumber'
 import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
 import { getEventBarStyle } from '../lib/colors'
 import { getDayParts, getLunarMonthLabel } from '../lib/lunar'
-import { DayEventsPopover } from './DayEventsPopover'
+import { buildDayDisplayEvents, DayEventsPopover } from './DayEventsPopover'
 import { EventEditor } from './EventEditor'
 import { EventMoreButton } from './EventMoreButton'
-import { EventPopover } from './EventPopover'
+import { EventPopover, type EventPopoverAnchor } from './EventPopover'
+import { parseDateKey as parseDateKeyLocal } from '../lib/calendarUtils'
+import {
+  getEventSortOrderForDay,
+  mergeSortOrderByDay
+} from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
@@ -33,6 +38,7 @@ import {
   buildFollowingSeriesEvent,
   buildSingleExceptionEvent,
   getOccurrenceDate,
+  getSeriesId,
   isRecurringEvent,
   truncateSeriesBefore
 } from '../../../shared/mdcExport/eventOccurrences.js'
@@ -63,8 +69,10 @@ import {
 } from '../lib/headerButtonClasses'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import type { CalendarEvent } from '../../../shared/calendarTypes'
-import type { AppSettings, AuthUser, LaunchMode } from '../../../shared/ipc'
+import type { AppSettings, AuthUser, ClientHitRect, LaunchMode } from '../../../shared/ipc'
+import { SiteLink } from './SiteLink'
 import { SITE_URL } from '../../../shared/constants'
+import { openExternalUrl } from '../lib/openExternal'
 
 export type { CalendarEvent }
 export type ViewMode = 'year' | 'week' | 'month'
@@ -267,7 +275,8 @@ export function CalendarGrid({
   } | null>(null)
   const [eventPopover, setEventPopover] = useState<{
     event: CalendarEvent
-    anchorRect: AnchorRect | null
+    anchorRect: EventPopoverAnchor
+    dayKey?: string
   } | null>(null)
   const [dayList, setDayList] = useState<{
     dateKey: string
@@ -303,33 +312,58 @@ export function CalendarGrid({
   const weekStartsOn: 0 | 1 =
     settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
 
+  const rectToZone = (rect: DOMRect, pad = 2): ClientHitRect => ({
+    x: rect.left - pad,
+    y: rect.top - pad,
+    width: rect.width + pad * 2,
+    height: rect.height + pad * 2
+  })
+
+  /** Search/settings/login/export — hover undock for IME/modals. */
   const publishWakeZones = (): void => {
     const api = window.neoCalendar
     if (!api?.setWakeHitZones) return
     if (mode !== 'desktop') {
       api.setWakeHitZones([])
+      api.setClickForwardHitZones?.([])
       return
     }
 
-    const roots = [chromeRef.current, periodHeaderRef.current].filter(
-      (el): el is HTMLElement => Boolean(el)
-    )
     const pad = 2
-    const zones = roots
-      .flatMap((root) => Array.from(root.querySelectorAll<HTMLElement>('button')))
+    const chromeRoot = chromeRef.current
+    // Skip 창모드 (own hit-zone) and 바탕화면모드 (already in desktop).
+    const wakeButtons = chromeRoot
+      ? Array.from(chromeRoot.querySelectorAll<HTMLElement>('button')).filter((btn) => {
+          const host = btn.closest('.window-mode-hit-host')
+          if (host) return false
+          const label = `${btn.getAttribute('aria-label') ?? ''} ${btn.title ?? ''}`
+          if (label.includes('바탕화면')) return false
+          return true
+        })
+      : []
+    const wakeZones = wakeButtons
       .map((el) => el.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => ({
-        x: rect.left - pad,
-        y: rect.top - pad,
-        width: rect.width + pad * 2,
-        height: rect.height + pad * 2
-      }))
+      .map((rect) => rectToZone(rect, pad))
 
-    api.setWakeHitZones(zones)
-    if (roots.length > 0) {
+    api.setWakeHitZones(wakeZones)
+
+    // Period toolbar: stay-embedded click inject (연/주/월/nav/오늘/internet/eye/check).
+    const periodRoot = periodHeaderRef.current
+    const clickZones = periodRoot
+      ? Array.from(periodRoot.querySelectorAll<HTMLElement>('button, [data-embed-click="1"]'))
+          .map((el) => el.getBoundingClientRect())
+          .filter((rect) => rect.width > 0 && rect.height > 0)
+          .map((rect) => rectToZone(rect, pad))
+      : []
+    api.setClickForwardHitZones?.(clickZones)
+
+    const stripRoots: HTMLElement[] = []
+    if (chromeRoot) stripRoots.push(chromeRoot)
+    if (periodRoot) stripRoots.push(periodRoot)
+    if (stripRoots.length > 0) {
       const stripBottom = Math.max(
-        ...roots.map((el) => {
+        ...stripRoots.map((el) => {
           const r = el.getBoundingClientRect()
           return r.top + r.height
         })
@@ -387,6 +421,7 @@ export function CalendarGrid({
       window.removeEventListener('resize', onResize)
       window.clearInterval(id)
       window.neoCalendar?.setWakeHitZones?.([])
+      window.neoCalendar?.setClickForwardHitZones?.([])
       window.neoCalendar?.setDayCellHitZones?.([])
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/refs
@@ -663,7 +698,7 @@ export function CalendarGrid({
   }
 
   const openSite = (): void => {
-    window.open(SITE_URL, '_blank', 'noopener,noreferrer')
+    void openExternalUrl(SITE_URL)
   }
 
   const enterDesktop = async (): Promise<void> => {
@@ -723,11 +758,42 @@ export function CalendarGrid({
     setViewMode('month')
   }
 
-  const openEventDetail = (event: CalendarEvent, anchorRect: AnchorRect | null): void => {
+  const openEventDetail = (
+    event: CalendarEvent,
+    anchorRect: EventPopoverAnchor,
+    opts?: { dayKey?: string; keepDayList?: boolean }
+  ): void => {
     setQuickEdit(null)
-    setDayList(null)
-    setEventPopover({ event, anchorRect })
+    if (!opts?.keepDayList) setDayList(null)
+    setEventPopover({
+      event,
+      anchorRect,
+      dayKey: opts?.dayKey ?? event.occurrenceDate ?? event.startDate
+    })
   }
+
+  const handleReorderEvents = useCallback(
+    async (
+      ordered: Array<{ event: CalendarEvent; sortOrder: number }>,
+      dayKey: string
+    ): Promise<void> => {
+      if (!canEdit || !dayKey) return
+      try {
+        for (const { event, sortOrder } of ordered ?? []) {
+          const master =
+            store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ?? null
+          if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) continue
+          if (getEventSortOrderForDay(master, dayKey) === sortOrder) continue
+          await editEvent(master.id, {
+            sortOrderByDay: mergeSortOrderByDay(master, dayKey, sortOrder)
+          })
+        }
+      } catch (error) {
+        window.alert(error instanceof Error ? error.message : '일정 순서를 저장하지 못했습니다.')
+      }
+    },
+    [canEdit, editEvent, store.events]
+  )
 
   const openEventEditor = (
     event: CalendarEvent | null,
@@ -1030,7 +1096,13 @@ export function CalendarGrid({
     </div>
   )
 
-  const dayListEvents = dayList ? (eventsByDate.get(dayList.dateKey) ?? []) : []
+  const dayListEvents = useMemo(() => {
+    if (!dayList) return []
+    const raw = eventsByDate.get(dayList.dateKey) ?? []
+    return buildDayDisplayEvents(raw, dayList.dateKey, store.tags)
+  }, [dayList, eventsByDate, store.tags])
+
+  const dayListDate = dayList ? parseDateKeyLocal(dayList.dateKey) : null
 
   return (
     <div
@@ -1276,16 +1348,17 @@ export function CalendarGrid({
         </div>
       )}
 
-      <footer className={cn(footerShellClass, 'interaction-ui')} data-shell-chrome="footer">
-        <InteractionUI
-          as="button"
-          className="border-0 bg-transparent p-0 text-xs text-gcal-muted transition-colors hover:text-gcal-blue hover:underline"
-          onClick={openSite}
-          title={SITE_URL}
-          aria-label={SITE_URL}
-        >
-          {SITE_URL}
-        </InteractionUI>
+      <footer
+        className={cn(footerShellClass, 'interaction-ui')}
+        data-shell-chrome="footer"
+        onMouseDown={(event) => event.stopPropagation()}
+        onClick={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
+      >
+        <SiteLink />
       </footer>
 
       <SearchPanel
@@ -1375,15 +1448,16 @@ export function CalendarGrid({
           event={eventPopover.event}
           calendar={calendarsById.get(eventPopover.event.calendarId)}
           tags={store.tags}
+          dayKey={eventPopover.dayKey}
           anchorRect={eventPopover.anchorRect}
           canEdit={canEdit}
           onClose={() => setEventPopover(null)}
-          onEdit={() => openEventEditor(eventPopover.event)}
-          onDelete={() => {
-            void removeEvent(eventPopover.event.id).then(() => setEventPopover(null))
+          onEdit={(event) => openEventEditor(event)}
+          onDelete={(event) => {
+            void removeEvent(event.id).then(() => setEventPopover(null))
           }}
-          onToggleCompleted={(completed) => {
-            void toggleCompleted(eventPopover.event.id, completed).then(() =>
+          onToggleCompleted={(event, completed) => {
+            void toggleCompleted(event.id, completed).then(() =>
               setEventPopover((prev) =>
                 prev ? { ...prev, event: { ...prev.event, completed } } : null
               )
@@ -1392,23 +1466,27 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {dayList ? (
+      {dayList && dayListDate ? (
         <DayEventsPopover
-          dateKey={dayList.dateKey}
+          date={dayListDate}
+          dayKey={dayList.dateKey}
           events={dayListEvents}
-          calendarsById={calendarsById}
+          calendars={store.calendars}
           tags={store.tags}
           anchorRect={dayList.anchorRect}
           canEdit={canEdit}
-          onClose={() => setDayList(null)}
-          onSelect={(event, rect) => {
+          onClose={() => {
             setDayList(null)
-            openEventDetail(event, rect)
+            setEventPopover(null)
           }}
-          onEdit={(event) => {
+          onEventDetail={(event, _x, _y, dayKey, pointerAnchor) => {
+            openEventDetail(event, pointerAnchor, { dayKey, keepDayList: true })
+          }}
+          onEventEdit={(event, dayKey) => {
             setDayList(null)
-            openEventEditor(event)
+            openEventEditor(event, { defaultDate: dayKey })
           }}
+          onReorderEvents={handleReorderEvents}
         />
       ) : null}
 

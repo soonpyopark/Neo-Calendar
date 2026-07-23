@@ -38,6 +38,9 @@ const api: NeoCalendarApi = {
   setWakeHitZones: (zones: ClientHitRect[]) => {
     ipcRenderer.send('set-wake-hit-zones', zones)
   },
+  setClickForwardHitZones: (zones: ClientHitRect[]) => {
+    ipcRenderer.send('set-click-forward-hit-zones', zones)
+  },
   setDayCellHitZones: (zones: DayCellHitZone[]) => {
     ipcRenderer.send('set-day-cell-hit-zones', zones)
   },

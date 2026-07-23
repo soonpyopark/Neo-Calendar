@@ -13,6 +13,7 @@ import { DayCellDblClickBridge, type DayCellClientZone } from './dayCellDblClick
 import { DesktopInputBridge } from './desktopInputBridge'
 import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
 import { WindowModeHitZone } from './windowModeHitZone'
+import { HeaderClickBridge } from './headerClickBridge'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
 import type {
@@ -35,10 +36,19 @@ let auth: AuthService
 let desktopMode: DesktopModeController
 let tray: AppTray | null = null
 let windowModeHitZone: WindowModeHitZone | null = null
+let headerClickBridge: HeaderClickBridge | null = null
 let desktopInputBridge: DesktopInputBridge | null = null
 let dayCellDblClickBridge: DayCellDblClickBridge | null = null
 let dayCellClientZones: DayCellClientZone[] = []
 let interactionBusy = false
+/** True only for tray "종료" / OS shutdown — otherwise close hides to tray (MDC). */
+let forceQuit = false
+
+function requestQuit(): void {
+  forceQuit = true
+  desktopMode?.persistSession()
+  app.quit()
+}
 
 function broadcastMode(status: ModeStatus): void {
   mainWindow?.webContents.send('mode-changed', status)
@@ -121,8 +131,12 @@ function createWindow(): void {
   }
   win.on('moved', persistBounds)
   win.on('resized', persistBounds)
-  win.on('close', () => {
+  win.on('close', (event) => {
     desktopMode.persistSession()
+    if (forceQuit) return
+    // MDC: Alt+F4 / system close → tray, not quit.
+    event.preventDefault()
+    tray?.hideToTray?.()
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -171,6 +185,10 @@ function registerIpc(): void {
 
   ipcMain.on('set-wake-hit-zones', (_event, zones: ClientHitRect[] | null) => {
     desktopMode.setWakeClientZones(Array.isArray(zones) ? zones : [])
+  })
+
+  ipcMain.on('set-click-forward-hit-zones', (_event, zones: ClientHitRect[] | null) => {
+    headerClickBridge?.setClientZones(Array.isArray(zones) ? zones : [])
   })
 
   ipcMain.on('set-day-cell-hit-zones', (_event, zones: DayCellHitZone[] | null) => {
@@ -321,7 +339,9 @@ app.whenReady().then(() => {
   createWindow()
   tray = createAppTray({
     getWindow: () => mainWindow,
-    desktopMode
+    desktopMode,
+    getDataRoot: () => calendarStore.dataRoot,
+    requestQuit
   })
 
   // Fully embedded: window-mode button still works via hit-zone.
@@ -335,7 +355,15 @@ app.whenReady().then(() => {
   )
   windowModeHitZone.start()
 
-  // Hover header/period buttons → temporary undock;
+  // Period toolbar (연/주/월/nav/오늘/internet/eye/check): click while staying embedded.
+  headerClickBridge = new HeaderClickBridge(
+    () => mainWindow,
+    () => desktopMode.getLockedBounds(),
+    () => desktopMode.isWorkerEmbedded()
+  )
+  headerClickBridge.start()
+
+  // Hover IME/modal chrome (search/settings/login…) → temporary undock;
   // outside click → re-embed immediately; else 10s idle → under icons.
   // After button/tray desktop enter, wake is held until the cursor leaves those buttons.
   desktopInputBridge = new DesktopInputBridge({
@@ -406,10 +434,13 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', () => {
+  forceQuit = true
   desktopMode?.persistSession()
 })
 
 app.on('window-all-closed', () => {
+  // Keep running in the tray while the BrowserWindow is only hidden.
+  if (!forceQuit) return
   if (process.platform !== 'darwin') {
     app.quit()
   }

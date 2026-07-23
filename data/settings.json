@@ -15,7 +15,7 @@
       "weekStartsOnSunday": true,
       "roundedCorners": true,
       "colorScheme": "light",
-      "accentColor": "#795548",
+      "accentColor": "#1976d2",
       "runAtStartup": true,
       "eventsHidden": false,
       "completedHidden": false
@@ -37,14 +37,14 @@
       "source": "seed"
     },
     "widget": {
-      "launchMode": "window",
+      "launchMode": "desktop",
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 600,
-        "y": 20,
+        "x": 610,
+        "y": 10,
         "width": 1310,
-        "height": 990
+        "height": 1020
       },
       "chromeBottomInset": 0,
       "chromeLeftInset": 0,
@@ -72,8 +72,8 @@
         "description": "내 공유기 IP 주소"
       }
     ],
-    "headerOpacity": 0.9,
-    "shellOpacity": 0.9
+    "headerOpacity": 0.95,
+    "shellOpacity": 0.95
   },
   "tags": [
     {
@@ -107,5 +107,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-23T17:07:09.896Z"
+  "updatedAt": "2026-07-23T17:29:36.030Z"
 }
