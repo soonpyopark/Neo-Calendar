@@ -2,9 +2,11 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppSettings,
   ClientHitRect,
+  DayCellHitZone,
   LoginResult,
   ModeStatus,
   NeoCalendarApi,
+  OpenDayQuickEditPayload,
   SetIgnoreMouseOptions
 } from '../shared/ipc'
 
@@ -20,6 +22,18 @@ const api: NeoCalendarApi = {
   setWindowModeHitZone: (rect: ClientHitRect | null) => {
     ipcRenderer.send('set-window-mode-hit-zone', rect)
   },
+  setHeaderHitZone: (rect: ClientHitRect | null) => {
+    ipcRenderer.send('set-header-hit-zone', rect)
+  },
+  setWakeHitZones: (zones: ClientHitRect[]) => {
+    ipcRenderer.send('set-wake-hit-zones', zones)
+  },
+  setDayCellHitZones: (zones: DayCellHitZone[]) => {
+    ipcRenderer.send('set-day-cell-hit-zones', zones)
+  },
+  setInteractionBusy: (busy: boolean) => {
+    ipcRenderer.send('set-interaction-busy', Boolean(busy))
+  },
   onModeChanged: (listener: (status: ModeStatus) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: ModeStatus): void => {
       listener(status)
@@ -27,6 +41,18 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('mode-changed', handler)
     return () => {
       ipcRenderer.removeListener('mode-changed', handler)
+    }
+  },
+  onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: OpenDayQuickEditPayload
+    ): void => {
+      listener(payload)
+    }
+    ipcRenderer.on('open-day-quick-edit', handler)
+    return () => {
+      ipcRenderer.removeListener('open-day-quick-edit', handler)
     }
   },
   getAuth: () => ipcRenderer.invoke('get-auth'),

@@ -86,6 +86,7 @@ export function WindowResizeHandles(): ReactElement {
 
   return (
     <div className="window-resize-layer interaction-ui" aria-hidden>
+      {/* Border is painted on the handles themselves (resize cursor hit zones). */}
       {EDGES.map((edge) => (
         <div
           key={edge}

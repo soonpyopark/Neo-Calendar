@@ -116,7 +116,7 @@ function buildQuickEditStyle(anchorRect: AnchorRect | null): CSSProperties | und
 }
 
 /**
- * MDC-style day quick editor (date-cell double-click / +추가).
+ * MDC-style day quick editor (date-cell double-click).
  */
 export function DayQuickEditPopover({
   dateKey,
@@ -161,6 +161,22 @@ export function DayQuickEditPopover({
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
+  // Don't use a capturing full-screen click layer — it steals the first click of a
+  // day-cell double-click. Close only when pressing outside the popover and not on a day cell.
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (target.closest('.day-quick-edit')) return
+      // Let day-cell double-click retarget the editor to another date.
+      if (target.closest('.day-cell[data-date-key]')) return
+      onClose()
+    }
+    // Bubble phase so day-cell handlers see the event first.
+    document.addEventListener('pointerdown', onPointerDown, false)
+    return () => document.removeEventListener('pointerdown', onPointerDown, false)
+  }, [onClose])
+
   const submitTitle = (event: FormEvent): void => {
     event.preventDefault()
     const next = title.trim()
@@ -172,7 +188,7 @@ export function DayQuickEditPopover({
 
   return (
     <>
-      <div className="day-quick-edit-backdrop interaction-ui" onClick={onClose} role="presentation" />
+      <div className="day-quick-edit-backdrop" aria-hidden />
       <InteractionUI
         className="day-quick-edit"
         style={style}

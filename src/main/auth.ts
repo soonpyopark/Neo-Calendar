@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto'
-import { DEFAULT_ADMIN_ID, DEFAULT_ADMIN_PW } from '../shared/constants'
 import type { AuthUser, LoginResult } from '../shared/ipc'
+import { resolveAdminCredentials } from './dotEnv'
 import type { SettingsStore } from './settingsStore'
 
 export class AuthService {
@@ -26,7 +26,8 @@ export class AuthService {
       return { ok: false, error: '아이디와 비밀번호를 입력하세요.' }
     }
 
-    if (id !== DEFAULT_ADMIN_ID || pw !== DEFAULT_ADMIN_PW) {
+    const admin = resolveAdminCredentials()
+    if (id !== admin.id || pw !== admin.password) {
       return { ok: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' }
     }
 

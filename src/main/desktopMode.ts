@@ -1,7 +1,8 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow } from 'electron'
 import { DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
 import type { LaunchMode, ModeStatus, WidgetBounds } from '../shared/ipc'
 import type { SettingsStore } from './settingsStore'
+import { centerOnCursorDisplay, normalizeBoundsToDisplay } from './displayGeometry'
 import { clearWallpaperPin, isWorkerEmbedded, setAsWallpaper } from './wallpaper'
 
 type DesktopModeOptions = {
@@ -10,49 +11,8 @@ type DesktopModeOptions = {
   onModeChanged?: (status: ModeStatus) => void
 }
 
-function snapDownTo5(value: number): number {
-  return Math.floor(value / 5) * 5
-}
-
 function normalizeBounds(bounds: WidgetBounds): WidgetBounds {
-  const area = screen.getPrimaryDisplay().bounds
-  const width = Math.min(Math.max(320, snapDownTo5(bounds.width)), area.width)
-  const height = Math.min(Math.max(240, snapDownTo5(bounds.height)), area.height)
-  const maxX = area.x + Math.max(0, area.width - width)
-  const maxY = area.y + Math.max(0, area.height - height)
-  return {
-    x: Math.min(Math.max(snapDownTo5(bounds.x), area.x), maxX),
-    y: Math.min(Math.max(snapDownTo5(bounds.y), area.y), maxY),
-    width,
-    height
-  }
-}
-
-function centerOnPrimary(width: number, height: number): WidgetBounds {
-  const area = screen.getPrimaryDisplay().workArea
-  const w = Math.min(Math.max(640, snapDownTo5(width)), area.width)
-  const h = Math.min(Math.max(480, snapDownTo5(height)), area.height)
-  return {
-    x: area.x + Math.round((area.width - w) / 2),
-    y: area.y + Math.round((area.height - h) / 2),
-    width: w,
-    height: h
-  }
-}
-
-function placeAwayFromCursor(bounds: WidgetBounds): WidgetBounds {
-  const pt = screen.getCursorScreenPoint()
-  const chrome = { x: bounds.x, y: bounds.y, width: bounds.width, height: 72 }
-  const overChrome =
-    pt.x >= chrome.x &&
-    pt.x < chrome.x + chrome.width &&
-    pt.y >= chrome.y &&
-    pt.y < chrome.y + chrome.height
-  if (!overChrome) return bounds
-
-  const area = screen.getPrimaryDisplay().workArea
-  const nextY = Math.min(bounds.y + 96, area.y + area.height - bounds.height)
-  return normalizeBounds({ ...bounds, y: Math.max(area.y, nextY) })
+  return normalizeBoundsToDisplay(bounds)
 }
 
 /**
@@ -68,6 +28,20 @@ export class DesktopModeController {
   private switchGatePoll: ReturnType<typeof setInterval> | null = null
   private inputLockedUntil = 0
   private inputUnlockTimer: ReturnType<typeof setTimeout> | null = null
+  /**
+   * Temporary undock from WorkerW so header / UI can receive mouse.
+   * Idle desktop mode always returns to under-icons (principle #1).
+   */
+  private interactionSuspended = false
+  /**
+   * After intentional desktop enter (button/tray), stay embedded even if the
+   * cursor is still over a wake button — clear once the cursor leaves wake zones.
+   */
+  private wakeHoldUntilLeave = false
+  /** Client-space wake zones (header/period buttons) from renderer. */
+  private wakeClientZones: WidgetBounds[] = []
+  /** Fallback strip height until renderer publishes wake zones. */
+  private headerHitHeight = 120
   private readonly getWindow: () => BrowserWindow | null
   private readonly store: SettingsStore
   private readonly onModeChanged?: (status: ModeStatus) => void
@@ -153,7 +127,23 @@ export class DesktopModeController {
   }
 
   isWorkerEmbedded(): boolean {
-    return this.mode === 'desktop' && isWorkerEmbedded()
+    return this.mode === 'desktop' && isWorkerEmbedded() && !this.interactionSuspended
+  }
+
+  isInteractionSuspended(): boolean {
+    return this.interactionSuspended
+  }
+
+  /** True right after button/tray desktop enter while cursor still on a wake control. */
+  shouldHoldWake(): boolean {
+    return this.wakeHoldUntilLeave
+  }
+
+  /** Clear post-enter wake hold once the cursor is outside wake buttons. */
+  noteWakeCursor(overWakeZone: boolean): void {
+    if (this.wakeHoldUntilLeave && !overWakeZone) {
+      this.wakeHoldUntilLeave = false
+    }
   }
 
   getStatus(): ModeStatus {
@@ -165,13 +155,161 @@ export class DesktopModeController {
     }
   }
 
+  setHeaderHitHeight(height: number): void {
+    if (!Number.isFinite(height) || height <= 0) return
+    this.headerHitHeight = Math.min(220, Math.max(48, Math.round(height)))
+  }
+
+  setWakeClientZones(zones: WidgetBounds[]): void {
+    this.wakeClientZones = zones
+      .filter((z) => z.width > 0 && z.height > 0)
+      .map((z) => ({
+        x: Math.round(z.x),
+        y: Math.round(z.y),
+        width: Math.round(z.width),
+        height: Math.round(z.height)
+      }))
+  }
+
+  /** Screen-space zones that temporarily undock for real mouse input. */
+  getWakeScreenZones(): WidgetBounds[] {
+    const origin = this.lockedBounds
+    if (!origin) return []
+
+    if (this.wakeClientZones.length > 0) {
+      return this.wakeClientZones.map((z) => ({
+        x: origin.x + z.x,
+        y: origin.y + z.y,
+        width: z.width,
+        height: z.height
+      }))
+    }
+
+    // Fallback: top chrome + period row strip.
+    return [
+      {
+        x: origin.x,
+        y: origin.y,
+        width: origin.width,
+        height: Math.min(this.headerHitHeight, origin.height)
+      }
+    ]
+  }
+
+  /**
+   * Principle #1 stays default: under icons.
+   * Hovering a header/period button temporarily undocks for real clicks.
+   * Click outside the widget, or 10s idle after work finishes, re-attaches to WorkerW.
+   */
+  suspendForInteraction(): void {
+    if (this.mode !== 'desktop' || this.interactionSuspended) return
+    const win = this.getWindow()
+    if (!win || win.isDestroyed() || !this.lockedBounds) return
+
+    const footprint = { ...this.lockedBounds }
+    this.interactionSuspended = true
+    // Detach + force the same screen footprint (prevents WorkerW coord jump).
+    clearWallpaperPin(win, footprint)
+    win.setSkipTaskbar(true)
+    win.setResizable(false)
+    win.setMovable(false)
+    win.setAlwaysOnTop(false)
+    win.setHasShadow(false)
+    win.setBounds(footprint)
+    // Full mouse capture while temporarily undocked (day dblclick / header buttons).
+    win.setIgnoreMouseEvents(false)
+    win.showInactive()
+    win.setBounds(footprint)
+    console.log('[desktop] Suspended under-icons for header/UI input', footprint)
+    this.onModeChanged?.(this.getStatus())
+  }
+
+  resumeUnderIcons(): void {
+    if (this.mode !== 'desktop' || !this.interactionSuspended) return
+    const win = this.getWindow()
+    if (!win || win.isDestroyed() || !this.lockedBounds) {
+      this.interactionSuspended = false
+      return
+    }
+
+    const footprint = { ...this.lockedBounds }
+    this.interactionSuspended = false
+    win.setBounds(footprint)
+    setAsWallpaper(win, footprint)
+    win.setIgnoreMouseEvents(true, { forward: true })
+    win.showInactive()
+    console.log('[desktop] Resumed under-icons (principle #1)', footprint)
+    this.onModeChanged?.(this.getStatus())
+  }
+
+  /**
+   * Next launch: restore last quit mode + footprint.
+   * First run uses DEFAULT_SETTINGS (window + DEFAULT_WIDGET_BOUNDS).
+   */
   restoreFromSettings(): void {
     const settings = this.store.getSettings()
-    this.lockedBounds = centerOnPrimary(
-      Math.min(settings.widget.bounds?.width ?? DEFAULT_WIDGET_BOUNDS.width, 1100),
-      Math.min(settings.widget.bounds?.height ?? DEFAULT_WIDGET_BOUNDS.height, 780)
-    )
-    this.enterWindow({ persist: true, fromRestore: true })
+    const saved = settings.widget.bounds
+    this.lockedBounds = saved
+      ? normalizeBounds(saved)
+      : centerOnCursorDisplay(DEFAULT_WIDGET_BOUNDS.width, DEFAULT_WIDGET_BOUNDS.height)
+
+    const mode = settings.widget.launchMode === 'desktop' ? 'desktop' : 'window'
+    console.log('[desktop] Restoring session', { mode, bounds: this.lockedBounds })
+
+    if (mode === 'desktop') {
+      this.enterDesktop({
+        intentional: true,
+        force: true,
+        persist: true,
+        bounds: this.lockedBounds
+      })
+      return
+    }
+
+    this.enterWindow({ persist: true, fromRestore: true, force: true })
+  }
+
+  /** Save mode + size/position for the next cold start (call on quit). */
+  persistSession(): void {
+    const win = this.getWindow()
+    let bounds: WidgetBounds
+    if (this.mode === 'desktop') {
+      bounds = normalizeBounds(
+        this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
+      )
+    } else if (win && !win.isDestroyed()) {
+      bounds = normalizeBounds(win.getBounds())
+    } else {
+      bounds = normalizeBounds(
+        this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
+      )
+    }
+    this.lockedBounds = bounds
+    this.store.setWidget({ launchMode: this.mode, bounds })
+    console.log('[desktop] Persisted session on quit', { mode: this.mode, bounds })
+  }
+
+  /** Re-clamp / re-pin after monitor plug/unplug or DPI change. */
+  onDisplayTopologyChanged(): void {
+    if (!this.lockedBounds) return
+    const next = normalizeBounds(this.lockedBounds)
+    this.lockedBounds = next
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) return
+
+    if (this.mode === 'desktop') {
+      win.setBounds(next)
+      if (!this.interactionSuspended) {
+        setAsWallpaper(win, next)
+      }
+      this.store.setWidget({ launchMode: 'desktop', bounds: next })
+      console.log('[desktop] Re-applied desktop footprint after display change', next)
+    } else {
+      win.setBounds(next)
+      this.store.setWidget({ launchMode: 'window', bounds: next })
+      console.log('[desktop] Re-clamped window footprint after display change', next)
+    }
+    this.onModeChanged?.(this.getStatus())
   }
 
   enterDesktop(
@@ -208,6 +346,10 @@ export class DesktopModeController {
 
     this.lockedBounds = normalizeBounds(sourceBounds)
     this.mode = 'desktop'
+    this.interactionSuspended = false
+    // Embed under icons immediately; don't undock again just because the
+    // cursor is still on the desktop-mode / tray-triggered wake button.
+    this.wakeHoldUntilLeave = true
     this.armModeSwitchGate(250)
     this.lockInput(200)
 
@@ -219,8 +361,8 @@ export class DesktopModeController {
     win.setAlwaysOnTop(false)
     win.setHasShadow(false)
     win.setBounds(this.lockedBounds)
-    setAsWallpaper(win)
-    win.setBounds(this.lockedBounds)
+    setAsWallpaper(win, this.lockedBounds)
+    win.setIgnoreMouseEvents(true, { forward: true })
     if (!win.isVisible()) win.showInactive()
     else win.showInactive()
     this.blurRendererChrome()
@@ -228,7 +370,7 @@ export class DesktopModeController {
     if (options.persist !== false) {
       this.store.setWidget({ launchMode: 'desktop', bounds: this.lockedBounds })
     }
-    console.log('[desktop] Desktop mode (under-icons first)', {
+    console.log('[desktop] Desktop mode (under-icons immediately)', {
       bounds: this.lockedBounds,
       workerEmbedded: isWorkerEmbedded()
     })
@@ -256,18 +398,18 @@ export class DesktopModeController {
     }
 
     this.mode = 'window'
+    this.interactionSuspended = false
+    this.wakeHoldUntilLeave = false
     this.armModeSwitchGate(options.fromRestore ? 300 : 250)
     this.lockInput(options.fromRestore ? 250 : 200)
 
-    let bounds = normalizeBounds(
+    // Restore exact saved footprint (do not nudge away from cursor).
+    const bounds = normalizeBounds(
       this.lockedBounds ?? this.store.getWidgetBounds() ?? win.getBounds() ?? DEFAULT_WIDGET_BOUNDS
     )
-    if (options.fromRestore) {
-      bounds = placeAwayFromCursor(bounds)
-    }
     this.lockedBounds = bounds
 
-    clearWallpaperPin(win)
+    clearWallpaperPin(win, bounds)
     win.setSkipTaskbar(false)
     win.setMinimumSize(400, 300)
     win.setResizable(true)

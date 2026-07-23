@@ -38,6 +38,12 @@
   --day-event-gap: 4px;
   --neo-header-opacity: 0.62;
   --neo-shell-opacity: 0.35;
+  /* Window-mode resize grips / frame (themeable) */
+  --neo-window-frame-color: var(--gcal-blue);
+  --neo-window-frame-opacity: 0.85;
+  --neo-window-frame-width: 1.5px;
+  --neo-window-resize-thickness: 8px;
+  --neo-window-resize-corner: 14px;
 }
 
 html,
@@ -193,8 +199,8 @@ textarea {
   flex-shrink: 0;
 }
 
-.hdr-btn-auth {
-  min-width: 112px;
+.hdr-btn.hdr-btn-auth {
+  min-width: 96px;
   width: auto;
   padding: 0 16px;
   font-size: 13px;
@@ -206,7 +212,7 @@ textarea {
   color: var(--gcal-heading) !important;
 }
 
-.hdr-btn-auth:hover {
+.hdr-btn.hdr-btn-auth:hover {
   background: #d2e3fc !important;
 }
 
@@ -852,14 +858,12 @@ textarea {
   font-size: 13px;
 }
 
-.login-form,
 .settings-body {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.login-form label,
 .settings-field {
   display: flex;
   flex-direction: column;
@@ -868,8 +872,6 @@ textarea {
   color: var(--gcal-body);
 }
 
-.login-form input[type='text'],
-.login-form input[type='password'],
 .settings-field select {
   height: 38px;
   padding: 0 10px;
@@ -879,16 +881,208 @@ textarea {
   color: var(--gcal-heading);
 }
 
-.login-remember {
-  flex-direction: row !important;
+/* —— MDC login dialog —— */
+.mdc-login-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
   align-items: center;
-  gap: 8px !important;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(32, 33, 36, 0.32);
 }
 
-.login-error {
+.mdc-login-card {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  border-radius: 12px;
+  border: 1px solid var(--gcal-border);
+  background: var(--gcal-page-solid);
+  box-shadow: 0 12px 40px rgba(32, 33, 36, 0.22);
+  padding: 24px;
+}
+
+.mdc-login-form {
   margin: 0;
-  color: #c5221f;
+}
+
+.mdc-login-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gcal-muted);
+  transition: background 0.15s, color 0.15s;
+}
+
+.mdc-login-close:hover:not(:disabled) {
+  background: var(--gcal-surface-2);
+  color: var(--gcal-heading);
+}
+
+.mdc-login-close:disabled {
+  opacity: 0.6;
+}
+
+.mdc-login-title {
+  margin: 0;
+  padding-right: 32px;
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--gcal-heading);
+}
+
+.mdc-login-subtitle {
+  margin: 4px 0 0;
   font-size: 13px;
+  color: var(--gcal-muted);
+}
+
+.mdc-login-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.mdc-login-label {
+  display: block;
+  font-size: 13px;
+  color: var(--gcal-muted);
+}
+
+.mdc-login-input {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--gcal-border);
+  border-radius: 4px;
+  background: var(--gcal-page);
+  color: var(--gcal-heading);
+  outline: none;
+}
+
+.mdc-login-input:focus {
+  border-color: var(--gcal-blue);
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.15);
+}
+
+.mdc-login-input:disabled {
+  opacity: 0.7;
+}
+
+.mdc-login-input--password {
+  padding-right: 40px;
+}
+
+.mdc-login-password-wrap {
+  position: relative;
+  margin-top: 4px;
+}
+
+.mdc-login-password-wrap .mdc-login-input {
+  margin-top: 0;
+}
+
+.mdc-login-eye {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gcal-muted);
+  transform: translateY(-50%);
+  transition: background 0.15s, color 0.15s;
+}
+
+.mdc-login-eye:hover:not(:disabled) {
+  background: var(--gcal-surface-2);
+  color: var(--gcal-heading);
+}
+
+.mdc-login-eye:disabled {
+  opacity: 0.6;
+}
+
+.mdc-login-error {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: #c5221f;
+}
+
+.mdc-login-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.mdc-login-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--gcal-body);
+  cursor: pointer;
+  user-select: none;
+}
+
+.mdc-login-remember input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--gcal-blue);
+}
+
+.mdc-login-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mdc-login-btn {
+  padding: 8px 20px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--gcal-body);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.mdc-login-btn:hover:not(:disabled) {
+  background: var(--gcal-surface-2);
+}
+
+.mdc-login-btn--primary {
+  background: var(--gcal-blue);
+  color: #fff;
+}
+
+.mdc-login-btn--primary:hover:not(:disabled) {
+  background: #1765cc;
+}
+
+.mdc-login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .settings-field input[type='range'] {
@@ -913,70 +1107,92 @@ textarea {
 .window-resize-handle {
   position: absolute;
   pointer-events: auto;
+  box-sizing: border-box;
   background: transparent;
+  opacity: var(--neo-window-frame-opacity);
+  /* Dashed edge = the same strip that shows the resize cursor. */
+  border-color: var(--neo-window-frame-color);
+  border-style: dashed;
+  border-width: 0;
 }
 
 .window-resize-handle--n {
   top: 0;
-  left: 8px;
-  right: 8px;
-  height: 6px;
+  left: var(--neo-window-resize-corner);
+  right: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-thickness);
+  border-top-width: var(--neo-window-frame-width);
   cursor: ns-resize;
 }
 
 .window-resize-handle--s {
   bottom: 0;
-  left: 8px;
-  right: 8px;
-  height: 6px;
+  left: var(--neo-window-resize-corner);
+  right: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-thickness);
+  border-bottom-width: var(--neo-window-frame-width);
   cursor: ns-resize;
 }
 
 .window-resize-handle--e {
-  top: 8px;
+  top: var(--neo-window-resize-corner);
   right: 0;
-  bottom: 8px;
-  width: 6px;
+  bottom: var(--neo-window-resize-corner);
+  width: var(--neo-window-resize-thickness);
+  border-right-width: var(--neo-window-frame-width);
   cursor: ew-resize;
 }
 
 .window-resize-handle--w {
-  top: 8px;
+  top: var(--neo-window-resize-corner);
   left: 0;
-  bottom: 8px;
-  width: 6px;
+  bottom: var(--neo-window-resize-corner);
+  width: var(--neo-window-resize-thickness);
+  border-left-width: var(--neo-window-frame-width);
   cursor: ew-resize;
 }
 
 .window-resize-handle--ne {
   top: 0;
   right: 0;
-  width: 10px;
-  height: 10px;
+  z-index: 1;
+  width: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-corner);
+  border-top-width: var(--neo-window-frame-width);
+  border-right-width: var(--neo-window-frame-width);
   cursor: nesw-resize;
 }
 
 .window-resize-handle--nw {
   top: 0;
   left: 0;
-  width: 10px;
-  height: 10px;
+  z-index: 1;
+  width: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-corner);
+  border-top-width: var(--neo-window-frame-width);
+  border-left-width: var(--neo-window-frame-width);
   cursor: nwse-resize;
 }
 
 .window-resize-handle--se {
   bottom: 0;
   right: 0;
-  width: 12px;
-  height: 12px;
+  z-index: 1;
+  width: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-corner);
+  border-bottom-width: var(--neo-window-frame-width);
+  border-right-width: var(--neo-window-frame-width);
   cursor: nwse-resize;
 }
 
 .window-resize-handle--sw {
   bottom: 0;
   left: 0;
-  width: 10px;
-  height: 10px;
+  z-index: 1;
+  width: var(--neo-window-resize-corner);
+  height: var(--neo-window-resize-corner);
+  border-bottom-width: var(--neo-window-frame-width);
+  border-left-width: var(--neo-window-frame-width);
   cursor: nesw-resize;
 }
 
@@ -995,6 +1211,8 @@ body.is-resizing-window {
   inset: 0;
   z-index: 40;
   background: transparent;
+  /* Pass through so other day cells can receive double-clicks while editor is open. */
+  pointer-events: none;
 }
 
 .day-quick-edit {

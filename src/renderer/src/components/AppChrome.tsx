@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactElement } from 'react'
+import { useEffect, useLayoutEffect, useRef, type ReactElement, type Ref } from 'react'
 import { InteractionUI } from './InteractionUI'
 import { DesktopModeIcon, SearchIcon, SettingsIcon, WindowModeIcon } from './CalendarHeaderIcons'
 import { APP_NAME, APP_VERSION } from '../../../shared/constants'
@@ -12,6 +12,8 @@ export type AppChromeProps = {
   modeBusy?: boolean
   /** From main: false while cursor must leave the header after a mode switch. */
   switchReady?: boolean
+  /** Expose chrome root so wake zones can be derived from its buttons. */
+  chromeRef?: Ref<HTMLDivElement | null>
   onOpenSearch: () => void
   onOpenSettings: () => void
   onEnterDesktop: () => void
@@ -26,6 +28,7 @@ export function AppChrome({
   settingsOpen,
   modeBusy = false,
   switchReady = true,
+  chromeRef,
   onOpenSearch,
   onOpenSettings,
   onEnterDesktop,
@@ -35,27 +38,37 @@ export function AppChrome({
   const isDesktop = mode === 'desktop'
   const isWindow = mode === 'window'
   const loggedIn = Boolean(user)
+  const localChromeRef = useRef<HTMLDivElement | null>(null)
   const windowModeBtnRef = useRef<HTMLSpanElement | null>(null)
   const modeClusterRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
 
+  const setChromeRef = (node: HTMLDivElement | null): void => {
+    localChromeRef.current = node
+    if (typeof chromeRef === 'function') chromeRef(node)
+    else if (chromeRef) (chromeRef as { current: HTMLDivElement | null }).current = node
+  }
+
   const publishWindowModeZone = (): void => {
-    if (!window.neoCalendar?.setWindowModeHitZone) return
+    const api = window.neoCalendar
+    if (!api?.setWindowModeHitZone) return
+
     if (mode !== 'desktop') {
-      window.neoCalendar.setWindowModeHitZone(null)
+      api.setWindowModeHitZone(null)
       return
     }
+
     const el = windowModeBtnRef.current
     if (!el) {
-      window.neoCalendar.setWindowModeHitZone(null)
+      api.setWindowModeHitZone(null)
       return
     }
     const rect = el.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) {
-      window.neoCalendar.setWindowModeHitZone(null)
+      api.setWindowModeHitZone(null)
       return
     }
-    window.neoCalendar.setWindowModeHitZone({
+    api.setWindowModeHitZone({
       x: rect.left,
       y: rect.top,
       width: rect.width,
@@ -70,17 +83,18 @@ export function AppChrome({
   useEffect(() => {
     const onResize = (): void => publishWindowModeZone()
     window.addEventListener('resize', onResize)
-    const id = window.setInterval(publishWindowModeZone, 500)
+    const id = window.setInterval(publishWindowModeZone, 400)
     return () => {
       window.removeEventListener('resize', onResize)
       window.clearInterval(id)
-      window.neoCalendar?.setWindowModeHitZone(null)
+      window.neoCalendar?.setWindowModeHitZone?.(null)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/ref
   }, [mode])
 
   return (
     <div
+      ref={setChromeRef}
       className={`app-chrome interaction-ui${isWindow ? ' is-window-mode' : ''}`}
       data-shell-chrome="header-actions"
     >
@@ -135,7 +149,7 @@ export function AppChrome({
             aria-pressed={isDesktop}
             title={
               isDesktop
-                ? '바탕화면 모드 — 아이콘 아래 고정 (제1원칙)'
+                ? '바탕화면 모드 — 아이콘 아래 (버튼 호버·날짜 더블클릭 시 일시 분리)'
                 : !switchReady
                   ? '잠시만 기다려 주세요'
                   : '바탕화면에 고정 (아이콘 아래로 들어감)'

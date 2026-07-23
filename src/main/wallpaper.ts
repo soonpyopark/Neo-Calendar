@@ -1,12 +1,14 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, screen } from 'electron'
 import koffi from 'koffi'
+import { dipBoundsToPhysical } from './displayGeometry'
+import type { WidgetBounds } from '../shared/ipc'
 
 /**
  * Desktop wallpaper attachment.
  *
- * Principle #1 (desktop mode): sit UNDER desktop icons via WorkerW SetParent.
- * This takes priority over click-through / overlay interactivity.
- * If WorkerW cannot be found, fall back to shell-bottom overlay.
+ * Principle #1: WorkerW SetParent (under icons).
+ * Multi-monitor: WorkerW usually spans the virtual desktop; child position
+ * is parent-relative via ScreenToClient / physical rect subtraction.
  */
 
 const SMTO_NORMAL = 0x0000
@@ -16,8 +18,8 @@ const SWP_NOSIZE = 0x0001
 const SWP_NOMOVE = 0x0002
 const SWP_NOACTIVATE = 0x0010
 const SWP_SHOWWINDOW = 0x0040
+const SWP_NOZORDER = 0x0004
 const GW_HWNDPREV = 3
-/** Undocumented Progman message that spawns the WorkerW wallpaper host. */
 const WM_SPAWN_WORKERW = 0x052c
 
 type User32Api = {
@@ -28,8 +30,14 @@ type User32Api = {
   SetParent: (...args: unknown[]) => unknown
   SetWindowPos: (...args: unknown[]) => unknown
   GetWindow: (...args: unknown[]) => unknown
+  GetWindowRect: (...args: unknown[]) => unknown
+  ScreenToClient: (...args: unknown[]) => unknown
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   EnumWindowsProc: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  RECT: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  POINT: any
 }
 
 let user32Api: User32Api | null = null
@@ -57,6 +65,16 @@ function getUser32(): User32Api {
 
   const user32 = koffi.load('user32.dll')
   const EnumWindowsProc = koffi.proto('bool __stdcall EnumWindowsProc(void *hwnd, intptr lParam)')
+  const RECT = koffi.struct('NEO_RECT', {
+    left: 'long',
+    top: 'long',
+    right: 'long',
+    bottom: 'long'
+  })
+  const POINT = koffi.struct('NEO_POINT', {
+    x: 'long',
+    y: 'long'
+  })
 
   user32Api = {
     FindWindowW: user32.func('FindWindowW', 'void *', ['str16', 'str16']),
@@ -82,26 +100,38 @@ function getUser32(): User32Api {
       'uint32'
     ]),
     GetWindow: user32.func('GetWindow', 'void *', ['void *', 'uint32']),
-    EnumWindowsProc
+    GetWindowRect: user32.func('GetWindowRect', 'bool', ['void *', koffi.out(koffi.pointer(RECT))]),
+    ScreenToClient: user32.func('ScreenToClient', 'bool', [
+      'void *',
+      koffi.inout(koffi.pointer(POINT))
+    ]),
+    EnumWindowsProc,
+    RECT,
+    POINT
   }
 
   return user32Api
 }
 
-/** Find WorkerW that sits behind SHELLDLL_DefView (under icons). */
+/**
+ * Find the WorkerW that sits behind SHELLDLL_DefView.
+ * On multi-monitor setups this host typically spans the virtual desktop.
+ */
 function findWorkerW(): bigint {
   const api = getUser32()
   const progman = asHwnd(api.FindWindowW('Progman', null))
   if (progman === 0n) return 0n
 
-  // Spawn / refresh the wallpaper WorkerW host.
+  // Some Win10/11 builds need both (0,0) and (0xD,0x1) spawn variants.
   api.SendMessageTimeoutW(progman, WM_SPAWN_WORKERW, 0n, 0n, SMTO_NORMAL, 1000, null)
+  api.SendMessageTimeoutW(progman, WM_SPAWN_WORKERW, 0xdn, 0x1n, SMTO_NORMAL, 1000, null)
 
   let workerw = 0n
   const callback = koffi.register((topHwnd: unknown) => {
     const top = asHwnd(topHwnd)
     const defView = asHwnd(api.FindWindowExW(top, 0n, 'SHELLDLL_DefView', null))
     if (defView !== 0n) {
+      // WorkerW immediately after the DefView host in Z-order.
       workerw = asHwnd(api.FindWindowExW(0n, top, 'WorkerW', null))
       return false
     }
@@ -115,8 +145,6 @@ function findWorkerW(): bigint {
   }
 
   if (workerw !== 0n) return workerw
-
-  // Fallback: WorkerW child of Progman on some Windows builds.
   return asHwnd(api.FindWindowExW(progman, 0n, 'WorkerW', null))
 }
 
@@ -145,50 +173,97 @@ function findDesktopShellWindow(): bigint {
   return shell
 }
 
-/** True while the calendar HWND is parented under WorkerW (under icons). */
+function readScreenBounds(win: BrowserWindow): WidgetBounds {
+  const b = win.getBounds()
+  return { x: b.x, y: b.y, width: b.width, height: b.height }
+}
+
+function getWindowScreenRectPhysical(
+  hwnd: bigint
+): { left: number; top: number; right: number; bottom: number } | null {
+  const api = getUser32()
+  const rect = { left: 0, top: 0, right: 0, bottom: 0 }
+  if (!api.GetWindowRect(hwnd, rect)) return null
+  return rect
+}
+
+/** Place child so its screen footprint matches DIP `bounds` on any monitor. */
+function placeChildOnVirtualDesktop(hwnd: bigint, parent: bigint, dipBounds: WidgetBounds): void {
+  const api = getUser32()
+  const physical = dipBoundsToPhysical(dipBounds)
+
+  // Prefer ScreenToClient — correct across negative / multi-monitor origins.
+  const pt = { x: physical.x, y: physical.y }
+  const ok = api.ScreenToClient(parent, pt)
+  let relX = pt.x
+  let relY = pt.y
+
+  if (!ok) {
+    const parentRect = getWindowScreenRectPhysical(parent)
+    if (parentRect) {
+      relX = physical.x - parentRect.left
+      relY = physical.y - parentRect.top
+    }
+  }
+
+  api.SetWindowPos(
+    hwnd,
+    HWND_TOP,
+    relX,
+    relY,
+    physical.width,
+    physical.height,
+    SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOZORDER
+  )
+}
+
 export function isWorkerEmbedded(): boolean {
   return embeddedHwnd !== null
 }
 
-/**
- * Principle #1: parent under WorkerW so the calendar sits beneath desktop icons.
- * Fallback: park above the desktop shell if WorkerW is unavailable.
- */
-export function setAsWallpaper(win: BrowserWindow): void {
+export function setAsWallpaper(win: BrowserWindow, bounds?: WidgetBounds): void {
   if (process.platform !== 'win32') {
     win.setAlwaysOnTop(false)
     return
   }
 
+  const footprint = bounds ?? readScreenBounds(win)
+  const display = screen.getDisplayMatching({
+    x: footprint.x,
+    y: footprint.y,
+    width: footprint.width,
+    height: footprint.height
+  })
+
   try {
     const api = getUser32()
     const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
     win.setAlwaysOnTop(false)
+    win.setBounds(footprint)
 
     const workerw = findWorkerW()
     if (workerw !== 0n) {
       api.SetParent(hwnd, workerw)
-      api.SetWindowPos(
-        hwnd,
-        HWND_BOTTOM,
-        0,
-        0,
-        0,
-        0,
-        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
-      )
+      placeChildOnVirtualDesktop(hwnd, workerw, footprint)
+      placeChildOnVirtualDesktop(hwnd, workerw, footprint)
       embeddedHwnd = hwnd
-      console.log('[wallpaper] Attached to WorkerW (under desktop icons) — principle #1')
+      console.log('[wallpaper] Attached to WorkerW (multi-monitor) — principle #1', {
+        footprint,
+        displayId: display.id,
+        scaleFactor: display.scaleFactor
+      })
       return
     }
 
     console.warn('[wallpaper] WorkerW not found — falling back to shell-bottom overlay')
     sendToDesktopBottom(win)
+    win.setBounds(footprint)
     embeddedHwnd = null
   } catch (error) {
     console.error('[wallpaper] Failed to attach under icons:', error)
     try {
       sendToDesktopBottom(win)
+      win.setBounds(footprint)
     } catch {
       /* ignore */
     }
@@ -196,15 +271,15 @@ export function setAsWallpaper(win: BrowserWindow): void {
   }
 }
 
-/** Detach from WorkerW and raise to a normal top-level window. */
-export function clearWallpaperPin(win?: BrowserWindow | null): void {
+export function clearWallpaperPin(win?: BrowserWindow | null, bounds?: WidgetBounds): void {
   if (process.platform !== 'win32' || !win || win.isDestroyed()) return
+
+  const footprint = bounds ?? readScreenBounds(win)
 
   try {
     const api = getUser32()
     const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
 
-    // SetParent(NULL) restores a top-level HWND after WorkerW embed.
     api.SetParent(hwnd, 0n)
     api.SetWindowPos(
       hwnd,
@@ -215,15 +290,20 @@ export function clearWallpaperPin(win?: BrowserWindow | null): void {
       0,
       SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW
     )
+    win.setBounds(footprint)
     embeddedHwnd = null
-    console.log('[wallpaper] Detached from WorkerW — raised to top-level')
+    console.log('[wallpaper] Detached from WorkerW — footprint restored', footprint)
   } catch (error) {
     embeddedHwnd = null
     console.error('[wallpaper] Failed to detach wallpaper pin:', error)
+    try {
+      win.setBounds(footprint)
+    } catch {
+      /* ignore */
+    }
   }
 }
 
-/** Fallback only: immediately above Progman/DefView host (NOT under icons). */
 export function sendToDesktopBottom(win: BrowserWindow): void {
   if (process.platform !== 'win32') return
 

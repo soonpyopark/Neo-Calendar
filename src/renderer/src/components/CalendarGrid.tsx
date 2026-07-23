@@ -1,4 +1,13 @@
-import { useMemo, useState, type CSSProperties, type MouseEvent, type ReactElement } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement
+} from 'react'
 import { InteractionUI } from './InteractionUI'
 import { AppChrome } from './AppChrome'
 import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
@@ -183,6 +192,98 @@ export function CalendarGrid({
     date: Date
     anchorRect: AnchorRect | null
   } | null>(null)
+  const chromeRef = useRef<HTMLDivElement | null>(null)
+  const periodHeaderRef = useRef<HTMLElement | null>(null)
+
+  const publishWakeZones = (): void => {
+    const api = window.neoCalendar
+    if (!api?.setWakeHitZones) return
+    if (mode !== 'desktop') {
+      api.setWakeHitZones([])
+      return
+    }
+
+    // Hover-undock only over header/period buttons (not date cells).
+    const roots = [chromeRef.current, periodHeaderRef.current].filter(
+      (el): el is HTMLElement => Boolean(el)
+    )
+    const pad = 2
+    const zones = roots
+      .flatMap((root) => Array.from(root.querySelectorAll<HTMLElement>('button')))
+      .map((el) => el.getBoundingClientRect())
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .map((rect) => ({
+        x: rect.left - pad,
+        y: rect.top - pad,
+        width: rect.width + pad * 2,
+        height: rect.height + pad * 2
+      }))
+
+    api.setWakeHitZones(zones)
+    if (roots.length > 0) {
+      const stripBottom = Math.max(
+        ...roots.map((el) => {
+          const r = el.getBoundingClientRect()
+          return r.top + r.height
+        })
+      )
+      api.setHeaderHitZone?.({
+        x: 0,
+        y: 0,
+        width: window.innerWidth,
+        height: Math.max(0, stripBottom)
+      })
+    }
+  }
+
+  const publishDayCellZones = (): void => {
+    const api = window.neoCalendar
+    if (!api?.setDayCellHitZones) return
+    if (mode !== 'desktop') {
+      api.setDayCellHitZones([])
+      return
+    }
+
+    const zones = Array.from(
+      document.querySelectorAll<HTMLElement>('.neo-cal-shell .day-cell[data-date-key]')
+    )
+      .map((el) => {
+        const rect = el.getBoundingClientRect()
+        const dateKey = el.dataset.dateKey ?? ''
+        return {
+          x: rect.left,
+          y: rect.top,
+          width: rect.width,
+          height: rect.height,
+          dateKey
+        }
+      })
+      .filter((z) => z.dateKey && z.width > 0 && z.height > 0)
+
+    api.setDayCellHitZones(zones)
+  }
+
+  const publishDesktopHitZones = (): void => {
+    publishWakeZones()
+    publishDayCellZones()
+  }
+
+  useLayoutEffect(() => {
+    publishDesktopHitZones()
+  })
+
+  useEffect(() => {
+    const onResize = (): void => publishDesktopHitZones()
+    window.addEventListener('resize', onResize)
+    const id = window.setInterval(publishDesktopHitZones, 400)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.clearInterval(id)
+      window.neoCalendar?.setWakeHitZones?.([])
+      window.neoCalendar?.setDayCellHitZones?.([])
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/refs
+  }, [mode, viewMode])
   const [dayColors, setDayColors] = useState<Record<string, string>>({})
   const [events, setEvents] = useState<CalendarEvent[]>(() => {
     const y = now.getFullYear()
@@ -299,6 +400,57 @@ export function CalendarGrid({
     })
   }
 
+  const openQuickEditByDateKey = (dateKey: string): void => {
+    const [y, m, d] = dateKey.split('-').map(Number)
+    if (!y || !m || !d) return
+    const date = new Date(y, m - 1, d)
+    const el = document.querySelector<HTMLElement>(
+      `.neo-cal-shell .day-cell[data-date-key="${dateKey}"]`
+    )
+    const rect = el?.getBoundingClientRect()
+    setSelectedKey(dateKey)
+    // Always replace — switching from an open editor to another day must retarget.
+    setQuickEdit({
+      dateKey,
+      date,
+      anchorRect: rect
+        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+        : null
+    })
+  }
+
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onOpenDayQuickEdit) return
+    return api.onOpenDayQuickEdit(({ dateKey }) => {
+      openQuickEditByDateKey(dateKey)
+    })
+  }, [])
+
+  useEffect(() => {
+    const busy = Boolean(quickEdit || searchOpen || settingsOpen || loginOpen)
+    window.neoCalendar?.setInteractionBusy?.(busy)
+    return () => {
+      window.neoCalendar?.setInteractionBusy?.(false)
+    }
+  }, [quickEdit, searchOpen, settingsOpen, loginOpen])
+
+  // Outside-click re-embed (and idle resume): drop open overlays so they don't linger under icons.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onModeChanged) return
+    return api.onModeChanged((status) => {
+      onModeChange(status.mode)
+      if (status.mode === 'desktop' && status.embedded) {
+        setQuickEdit(null)
+        setSearchOpen(false)
+        setSettingsOpen(false)
+        setLoginOpen(false)
+        setLoginError(null)
+      }
+    })
+  }, [onModeChange])
+
   const createEvent = (dateKey: string, title: string): void => {
     const color = EVENT_PALETTE[events.length % EVENT_PALETTE.length]
     setEvents((prev) => [...prev, { id: createId(), dateKey, title, color }])
@@ -389,9 +541,11 @@ export function CalendarGrid({
     return (
       <div
         key={cell.dateKey}
+        data-date-key={cell.dateKey}
         className={cn(
           'day-cell',
-          cell.inMonth && 'interaction-ui',
+          // Mouse capture only (wake zones stay header buttons).
+          'interaction-ui',
           weekdayClass,
           !cell.inMonth && 'other-month',
           cell.isToday && 'today',
@@ -401,10 +555,10 @@ export function CalendarGrid({
         )}
         style={cellStyle}
         onDoubleClick={(event) => {
-          if (!cell.inMonth) return
           // Event bars handle their own double-click (complete toggle).
           if ((event.target as Element | null)?.closest?.('.event-bar')) return
           event.preventDefault()
+          event.stopPropagation()
           openQuickEdit(cell, event)
         }}
       >
@@ -456,7 +610,6 @@ export function CalendarGrid({
             </InteractionUI>
           ))}
         </div>
-
       </div>
     )
   }
@@ -513,6 +666,7 @@ export function CalendarGrid({
         settingsOpen={settingsOpen}
         modeBusy={modeBusy}
         switchReady={switchReady}
+        chromeRef={chromeRef}
         onOpenSearch={() => {
           setSettingsOpen(false)
           setSearchOpen(true)
@@ -526,7 +680,11 @@ export function CalendarGrid({
         onAuthToggle={handleAuthToggle}
       />
 
-      <header className="neo-cal-header header-period-row">
+      <header
+        ref={periodHeaderRef}
+        className="neo-cal-header header-period-row interaction-ui"
+        data-shell-chrome="period-header"
+      >
         <div className="header-view-modes" role="group" aria-label="보기 모드">
           {VIEW_MODE_OPTIONS.map(({ value, label, Icon }) => (
             <InteractionUI

@@ -48,6 +48,16 @@ export type ClientHitRect = {
   height: number
 }
 
+export type DayCellHitZone = ClientHitRect & {
+  dateKey: string
+}
+
+export type OpenDayQuickEditPayload = {
+  dateKey: string
+  clientX?: number
+  clientY?: number
+}
+
 export type NeoCalendarApi = {
   setIgnoreMouse: (ignore: boolean, options?: SetIgnoreMouseOptions) => void
   getModeStatus: () => Promise<ModeStatus>
@@ -57,7 +67,19 @@ export type NeoCalendarApi = {
   setWindowBounds: (bounds: WidgetBounds) => Promise<WidgetBounds>
   /** Client-space rect of the window-mode button (for WorkerW click bridging). */
   setWindowModeHitZone: (rect: ClientHitRect | null) => void
+  /** Client-space rect of the app chrome header (legacy; prefer setWakeHitZones). */
+  setHeaderHitZone: (rect: ClientHitRect | null) => void
+  /** Client-space zones that temporarily undock under-icons mode on hover. */
+  setWakeHitZones: (zones: ClientHitRect[]) => void
+  /** In-month day cells for WorkerW double-click → quick edit (no hover wake). */
+  setDayCellHitZones: (zones: DayCellHitZone[]) => void
+  /**
+   * True while a desktop-mode UI task is open (quick edit / search / settings / login).
+   * Keeps the temporary undock from re-embedding until work finishes + idle timeout.
+   */
+  setInteractionBusy: (busy: boolean) => void
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
+  onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
   getAuth: () => Promise<AuthUser | null>
   login: (loginId: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => Promise<void>

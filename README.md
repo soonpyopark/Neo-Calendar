@@ -20,10 +20,13 @@ Lightweight Electron desktop wallpaper calendar with dynamic click-through.
 
 ```bash
 npm install
+cp .env.example .env   # Windows: copy .env.example .env
 npm run dev
 npm run dev:restart
 npm run stop
 ```
+
+Admin login credentials come from `.env` (`MYCALENDAR_ADMIN_ID` / `MYCALENDAR_ADMIN_PW`), with `NEOCALENDAR_*` / `ADMIN_*` aliases and built-in defaults as fallback.
 
 ## Build
 
