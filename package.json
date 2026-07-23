@@ -1,9 +1,9 @@
 {
   "name": "neo-calendar",
   "version": "1.0.0",
-  "description": "My Desktop Calendar on Neo click-through desktop core",
+  "description": "Neo Calendar — desktop wallpaper calendar with click-through",
   "main": "./out/main/main.js",
-  "author": "My Desktop Calendar",
+  "author": "Neo Calendar",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -17,11 +17,16 @@
     "dist": "npm run build && electron-builder --win"
   },
   "dependencies": {
-    "koffi": "^2.11.0"
+    "exceljs": "^4.4.0",
+    "koffi": "^2.11.0",
+    "kor-lunar": "^1.7.0",
+    "pdfkit": "^0.19.1",
+    "solarlunar": "^3.1.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.11",
     "@types/node": "^22.16.5",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.7.0",
@@ -35,8 +40,8 @@
     "vite": "^7.0.5"
   },
   "build": {
-    "appId": "com.mydesktopcalendar.app",
-    "productName": "My Desktop Calendar",
+    "appId": "com.neocalendar.app",
+    "productName": "Neo Calendar",
     "directories": {
       "output": "release"
     },

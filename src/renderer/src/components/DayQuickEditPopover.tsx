@@ -7,34 +7,26 @@ import {
   type FormEvent,
   type ReactElement
 } from 'react'
+import { createPortal } from 'react-dom'
 import { InteractionUI } from './InteractionUI'
-import type { CalendarEvent } from './CalendarGrid'
+import { DayColorPalette } from './DayColorPalette'
+import { EmojiPickerButton } from './EmojiPickerButton'
+import { EventAccentGlyph } from './EventAccentGlyph'
+import { EventAttachButton } from './EventAttachButton'
+import { EventLinkButton } from './EventLinkButton'
+import { EventMarkerShapeButton } from './EventMarkerShapeButton'
+import { EventTagIcons } from './EventTagIcons'
+import { QuickEditCalendarButton } from './QuickEditCalendarButton'
+import { QuickEditTagButton } from './QuickEditTagButton'
+import { getEventLinks } from '../lib/eventLinks'
+import { insertTextAtCursor } from '../lib/insertAtCursor'
+import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
 
 const WEEKDAY_SHORT = ['일', '월', '화', '수', '목', '금', '토'] as const
-
-const DAY_COLOR_PALETTE = [
-  '#ffeb3b',
-  '#ffb74d',
-  '#ff9800',
-  '#aed581',
-  '#8bc34a',
-  '#4fc3f7',
-  '#1976d2',
-  '#80cbc4',
-  '#00bcd4',
-  '#f48fb1',
-  '#e91e63',
-  '#ff5722',
-  '#388e3c',
-  '#e53935',
-  '#ba68c8',
-  '#9c27b0',
-  '#d81b60',
-  '#bdbdbd'
-] as const
-
 const QUICK_EDIT_CHROME_HEIGHT = 88
 const QUICK_EDIT_BODY_EXTRA = 96
+const COLOR_PANEL_PAD = 8
 
 export type AnchorRect = {
   top: number
@@ -47,14 +39,23 @@ export type DayQuickEditPopoverProps = {
   dateKey: string
   date: Date
   events: CalendarEvent[]
+  calendars: CalendarRecord[]
+  tags: TagRecord[]
   dayColor?: string | null
   anchorRect: AnchorRect | null
   canEdit?: boolean
   onClose: () => void
-  onCreate: (title: string) => void
+  onCreate: (title: string, calendarId: string, tagIds?: string[], links?: EventLink[]) => void
   onToggleCompleted: (id: string, completed: boolean) => void
-  onRemove: (id: string) => void
+  onRemove?: (id: string) => void
   onDayColorChange: (color: string | null) => void
+  onEventCalendarChange?: (event: CalendarEvent, calendarId: string) => void
+  onEventTagChange?: (event: CalendarEvent, tagIds: string[]) => void
+  onEventMarkerShapeChange?: (event: CalendarEvent, shapeId: string) => void
+  onEventLinkChange?: (event: CalendarEvent, links: EventLink[]) => void
+  onOpenMore: (event?: CalendarEvent | null) => void
+  onOpenEvent?: (event: CalendarEvent) => void
+  onEditEvent?: (event: CalendarEvent) => void
 }
 
 function formatDayHeaderTitle(date: Date): string {
@@ -115,82 +116,202 @@ function buildQuickEditStyle(anchorRect: AnchorRect | null): CSSProperties | und
   } as CSSProperties
 }
 
-/**
- * MDC-style day quick editor (date-cell double-click).
- */
+function defaultCalendarId(calendars: CalendarRecord[]): string {
+  const editable = calendars.filter(
+    (c) => c.id !== HOLIDAYS_KR_CALENDAR_ID && c.visible !== false
+  )
+  return editable[0]?.id || PRIMARY_CALENDAR_ID
+}
+
 export function DayQuickEditPopover({
   dateKey,
   date,
   events,
+  calendars,
+  tags,
   dayColor = null,
   anchorRect,
   canEdit = true,
   onClose,
   onCreate,
   onToggleCompleted,
-  onRemove,
-  onDayColorChange
+  onDayColorChange,
+  onEventCalendarChange,
+  onEventTagChange,
+  onEventMarkerShapeChange,
+  onEventLinkChange,
+  onOpenMore,
+  onEditEvent
 }: DayQuickEditPopoverProps): ReactElement {
   const [title, setTitle] = useState('')
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [draftCalendarId, setDraftCalendarId] = useState(() => defaultCalendarId(calendars))
+  const [draftTagIds, setDraftTagIds] = useState<string[]>([])
+  const [draftLinks, setDraftLinks] = useState<EventLink[]>([])
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
-  const [optimisticColor, setOptimisticColor] = useState<string | null>(dayColor)
+  const [paletteStyle, setPaletteStyle] = useState<CSSProperties | undefined>()
+  const [optimisticDayColor, setOptimisticDayColor] = useState<string | null>(dayColor)
+  const [saving, setSaving] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  const dayEvents = useMemo(
-    () => events.filter((item) => item.dateKey === dateKey),
-    [events, dateKey]
-  )
+  const colorTriggerRef = useRef<HTMLButtonElement>(null)
 
   const style = useMemo(() => buildQuickEditStyle(anchorRect), [anchorRect])
+  const dayEvents = events
+  const displayDayColor = optimisticDayColor
+
+  const activeCalendarId = selectedEvent?.calendarId ?? draftCalendarId
+  const activeTagIds = selectedEvent?.tagIds ?? draftTagIds
+  const linkList = selectedEvent ? getEventLinks(selectedEvent) : draftLinks
 
   useEffect(() => {
     setTitle('')
-    setSelectedId(null)
+    setDraftLinks([])
+    setDraftCalendarId(defaultCalendarId(calendars))
+    setDraftTagIds([])
     setPaletteOpen(false)
-    setOptimisticColor(dayColor)
+    setSelectedEvent(null)
+    setOptimisticDayColor(dayColor)
+    setSaving(false)
     const id = window.setTimeout(() => inputRef.current?.focus(), 30)
     return () => window.clearTimeout(id)
-  }, [dateKey, dayColor])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only when day changes
+  }, [dateKey])
+
+  useEffect(() => {
+    setOptimisticDayColor(dayColor)
+  }, [dayColor])
+
+  useEffect(() => {
+    if (!selectedEvent) return
+    const live = dayEvents.find((event) => event.id === selectedEvent.id)
+    if (!live) {
+      setSelectedEvent(null)
+      return
+    }
+    if (
+      live.completed !== selectedEvent.completed
+      || live.calendarId !== selectedEvent.calendarId
+      || (live.tagIds ?? []).join('\0') !== (selectedEvent.tagIds ?? []).join('\0')
+      || live.markerShape !== selectedEvent.markerShape
+      || JSON.stringify(live.links ?? []) !== JSON.stringify(selectedEvent.links ?? [])
+    ) {
+      setSelectedEvent(live)
+    }
+  }, [dayEvents, selectedEvent])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') onClose()
+      if (event.key !== 'Escape') return
+      if (paletteOpen) {
+        setPaletteOpen(false)
+        return
+      }
+      onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose])
+  }, [onClose, paletteOpen])
 
-  // Don't use a capturing full-screen click layer — it steals the first click of a
-  // day-cell double-click. Close only when pressing outside the popover and not on a day cell.
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
       const target = event.target
       if (!(target instanceof Element)) return
       if (target.closest('.day-quick-edit')) return
-      // Let day-cell double-click retarget the editor to another date.
+      if (target.closest('.day-quick-edit-palette-flyout')) return
+      if (target.closest('.quick-edit-calendar-flyout')) return
+      if (target.closest('.marker-shape-flyout-panel')) return
+      if (target.closest('.event-link-flyout')) return
+      if (target.closest('.emoji-picker-panel')) return
+      if (target.closest('.custom-color-panel')) return
       if (target.closest('.day-cell[data-date-key]')) return
       onClose()
     }
-    // Bubble phase so day-cell handlers see the event first.
     document.addEventListener('pointerdown', onPointerDown, false)
     return () => document.removeEventListener('pointerdown', onPointerDown, false)
   }, [onClose])
 
-  const submitTitle = (event: FormEvent): void => {
+  useEffect(() => {
+    if (!paletteOpen) {
+      setPaletteStyle(undefined)
+      return
+    }
+    const place = (): void => {
+      const trigger = colorTriggerRef.current
+      if (!trigger) return
+      const ar = trigger.getBoundingClientRect()
+      const width = 120
+      const height = 240
+      let left = ar.left
+      let top = ar.top - height - COLOR_PANEL_PAD
+      if (top < COLOR_PANEL_PAD) top = ar.bottom + COLOR_PANEL_PAD
+      left = Math.min(Math.max(left, COLOR_PANEL_PAD), window.innerWidth - width - COLOR_PANEL_PAD)
+      setPaletteStyle({
+        position: 'fixed',
+        left: Math.round(left),
+        top: Math.round(top),
+        zIndex: 80
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [paletteOpen])
+
+  const submitTitle = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
     const next = title.trim()
-    if (!canEdit || !next) return
-    onCreate(next)
-    setTitle('')
-    setSelectedId(null)
+    if (!canEdit || !next || saving) return
+    setSaving(true)
+    try {
+      onCreate(next, draftCalendarId, draftTagIds, draftLinks)
+      setTitle('')
+      setDraftTagIds([])
+      setDraftLinks([])
+      setSelectedEvent(null)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleCalendarChange = (calendarId: string): void => {
+    if (selectedEvent) {
+      onEventCalendarChange?.(selectedEvent, calendarId)
+      return
+    }
+    setDraftCalendarId(calendarId)
+  }
+
+  const handleTagChange = (tagIds: string[]): void => {
+    if (selectedEvent) {
+      onEventTagChange?.(selectedEvent, tagIds)
+      return
+    }
+    setDraftTagIds(tagIds)
+  }
+
+  const handleLinksChange = (links: EventLink[]): void => {
+    if (selectedEvent) {
+      onEventLinkChange?.(selectedEvent, links)
+      return
+    }
+    setDraftLinks(links)
+  }
+
+  const insertEmoji = (emoji: string): void => {
+    const el = inputRef.current
+    const { nextValue, nextPos } = insertTextAtCursor(el, title, emoji)
+    setTitle(nextValue)
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(nextPos, nextPos)
+    })
   }
 
   return (
     <>
       <div className="day-quick-edit-backdrop" aria-hidden />
       <InteractionUI
-        className="day-quick-edit"
+        className="day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg"
         style={style}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
@@ -199,7 +320,7 @@ export function DayQuickEditPopover({
         <header className="day-quick-edit-header">
           <h2 className="day-quick-edit-title">{formatDayHeaderTitle(date)}</h2>
           <button type="button" className="day-quick-edit-close" onClick={onClose} aria-label="닫기">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
               <path
                 fill="currentColor"
                 d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
@@ -209,65 +330,117 @@ export function DayQuickEditPopover({
         </header>
 
         <div className="day-quick-edit-body">
-          <form className="day-quick-edit-create" onSubmit={submitTitle}>
+          <form
+            className="day-quick-edit-create flex items-center gap-1.5"
+            onSubmit={(e) => void submitTitle(e)}
+            onMouseDown={(e) => {
+              if (!canEdit || saving) return
+              const target = e.target as Element
+              // Emoji/calendar/shape triggers & panels manage their own focus — don't steal it mid-click.
+              if (target.closest?.('.emoji-picker-root')) return
+              if (target.closest?.('.quick-edit-calendar-root')) return
+              if (target.closest?.('.quick-edit-tag-root')) return
+              if (target.closest?.('.marker-shape-picker-root')) return
+              if (e.target === inputRef.current) return
+              e.preventDefault()
+              inputRef.current?.focus({ preventScroll: true })
+            }}
+          >
+            <EmojiPickerButton
+              title="이모지 추가"
+              disabled={!canEdit || saving}
+              flyoutAnchor="quick-edit-input-row"
+              onSelect={insertEmoji}
+            />
+            <QuickEditCalendarButton
+              calendars={calendars}
+              value={activeCalendarId}
+              disabled={
+                !canEdit
+                || saving
+                || Boolean(selectedEvent && selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID)
+              }
+              onChange={handleCalendarChange}
+            />
+            <QuickEditTagButton
+              tags={tags}
+              value={activeTagIds}
+              disabled={
+                !canEdit
+                || saving
+                || Boolean(selectedEvent && selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID)
+              }
+              onChange={handleTagChange}
+            />
             <input
               ref={inputRef}
               type="text"
-              className="day-quick-edit-input"
+              className="day-quick-edit-input flex-1"
               placeholder={canEdit ? '일정 추가 (종일)' : '로그인 후 추가할 수 있습니다'}
               value={title}
-              disabled={!canEdit}
+              disabled={!canEdit || saving}
               onChange={(e) => setTitle(e.target.value)}
-              onFocus={() => setSelectedId(null)}
+              onFocus={() => setSelectedEvent(null)}
             />
           </form>
 
-          <ul className="day-quick-edit-list">
+          <ul className="day-quick-edit-list settings-scroll">
             {dayEvents.length === 0 ? (
               <li className="day-quick-edit-empty">등록된 일정이 없습니다</li>
             ) : (
               dayEvents.map((item) => {
+                const isHoliday = item.calendarId === HOLIDAYS_KR_CALENDAR_ID
                 const completed = Boolean(item.completed)
-                const accent = completed ? '#9aa0a6' : (item.color ?? '#f6bf26')
-                const selected = selectedId === item.id
+                const cal = calendars.find((c) => c.id === item.calendarId)
+                const accent = completed ? '#9aa0a6' : (item.color ?? cal?.color ?? '#f6bf26')
+                const isSelected = selectedEvent?.id === item.id
                 return (
                   <li key={item.id} className="day-quick-edit-item">
                     <div
                       className={`day-quick-edit-row${completed ? ' is-completed' : ''}${
-                        selected ? ' is-selected' : ''
+                        isSelected ? ' is-selected' : ''
                       }`}
-                      onClick={() => setSelectedId(item.id)}
+                      onClick={() => setSelectedEvent(item)}
                     >
                       <input
                         type="checkbox"
                         className="day-quick-edit-check"
                         checked={completed}
-                        disabled={!canEdit}
+                        disabled={!canEdit || isHoliday}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => {
-                          setSelectedId(item.id)
+                          if (isHoliday) return
+                          setSelectedEvent(item)
                           onToggleCompleted(item.id, e.target.checked)
                         }}
                       />
+                      <EventAccentGlyph shapeId={item.markerShape} color={accent} className="shrink-0" />
+                      <EventTagIcons event={item} tags={tags} />
                       <span
-                        className="day-quick-edit-dot"
-                        style={{ backgroundColor: accent }}
-                        aria-hidden
-                      />
-                      <span className="day-quick-edit-item-title">{item.title}</span>
-                      {canEdit ? (
-                        <button
-                          type="button"
-                          className="day-quick-edit-remove"
-                          aria-label={`${item.title} 삭제`}
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            onRemove(item.id)
-                          }}
-                        >
-                          ×
-                        </button>
-                      ) : null}
+                        className="day-quick-edit-item-title"
+                        role={isHoliday ? undefined : 'button'}
+                        tabIndex={isHoliday ? undefined : 0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedEvent(item)
+                        }}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setSelectedEvent(item)
+                          if (isHoliday) return
+                          onEditEvent?.(item)
+                          onOpenMore(item)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== 'Enter' && e.key !== ' ') return
+                          e.preventDefault()
+                          setSelectedEvent(item)
+                          if (e.key === 'Enter' && !isHoliday) onOpenMore(item)
+                        }}
+                      >
+                        {item.title}
+                      </span>
                     </div>
                   </li>
                 )
@@ -279,9 +452,10 @@ export function DayQuickEditPopover({
         <footer className="day-quick-edit-footer">
           <div className="day-quick-edit-footer-left">
             <button
+              ref={colorTriggerRef}
               type="button"
-              className={`day-quick-edit-color-trigger${optimisticColor ? ' has-color' : ''}`}
-              style={optimisticColor ? { backgroundColor: optimisticColor } : undefined}
+              className={`day-quick-edit-color-trigger${displayDayColor ? ' has-color' : ''}`}
+              style={displayDayColor ? { backgroundColor: displayDayColor } : undefined}
               title="날짜 배경 색상"
               aria-label="날짜 배경 색상"
               aria-expanded={paletteOpen}
@@ -292,8 +466,14 @@ export function DayQuickEditPopover({
                 setPaletteOpen((open) => !open)
               }}
             >
-              {!optimisticColor ? (
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              {!displayDayColor ? (
+                <svg
+                  className="day-quick-edit-color-palette-icon"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden
+                >
                   <path
                     fill="currentColor"
                     d="M12 22C6.49 22 2 17.51 2 12S6.49 2 12 2s10 4.04 10 9c0 3.31-2.69 6-6 6h-1.77c-.28 0-.5.22-.5.5 0 .12.05.23.13.33.41.47.64 1.06.64 1.67A2.5 2.5 0 0 1 12 22zm0-16c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3zm-5 3.5c-.83 0-1.5-.67-1.5-1.5S6.17 6.5 7 6.5s1.5.67 1.5 1.5S7.83 9.5 7 9.5zm10 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM7 15.5c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm3-8c-.83 0-1.5-.67-1.5-1.5S9.17 4.5 10 4.5s1.5.67 1.5 1.5S10.83 7.5 10 7.5z"
@@ -301,45 +481,82 @@ export function DayQuickEditPopover({
                 </svg>
               ) : null}
             </button>
+            <EventMarkerShapeButton
+              value={selectedEvent?.markerShape}
+              color={
+                selectedEvent
+                  ? (calendars.find((c) => c.id === selectedEvent.calendarId)?.color ??
+                    selectedEvent.color ??
+                    '#1a73e8')
+                  : '#1a73e8'
+              }
+              disabled={
+                !canEdit
+                || !selectedEvent
+                || selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID
+              }
+              onChange={(shapeId) => {
+                if (selectedEvent) onEventMarkerShapeChange?.(selectedEvent, shapeId)
+              }}
+            />
+            <EventLinkButton
+              links={linkList}
+              onChange={handleLinksChange}
+              disabled={
+                !canEdit
+                || Boolean(selectedEvent && selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID)
+              }
+            />
+            <EventAttachButton
+              count={Array.isArray(selectedEvent?.attachments) ? selectedEvent.attachments.length : 0}
+              disabled={
+                !canEdit
+                || !selectedEvent
+                || selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID
+              }
+              onClick={() => {
+                if (selectedEvent) onOpenMore(selectedEvent)
+              }}
+            />
+            <button
+              type="button"
+              className="day-quick-edit-edit"
+              title="상세 일정 편집"
+              aria-label="상세 일정 편집"
+              onClick={() => onOpenMore(selectedEvent)}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+                <path
+                  fill="currentColor"
+                  d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"
+                />
+              </svg>
+            </button>
           </div>
-          {paletteOpen && canEdit ? (
+        </footer>
+      </InteractionUI>
+
+      {paletteOpen && canEdit
+        ? createPortal(
             <div
-              className="day-quick-edit-palette"
+              className="day-quick-edit-palette-flyout"
+              style={paletteStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <button
-                type="button"
-                className={`day-color-swatch is-clear${!optimisticColor ? ' is-active' : ''}`}
-                title="색상 없음"
-                aria-label="색상 없음"
-                onClick={() => {
-                  setOptimisticColor(null)
-                  onDayColorChange(null)
-                  setPaletteOpen(false)
+              <DayColorPalette
+                compact
+                value={displayDayColor}
+                onChange={(color) => {
+                  setOptimisticDayColor(color)
+                  onDayColorChange(color)
                 }}
-              >
-                /
-              </button>
-              {DAY_COLOR_PALETTE.map((color) => (
-                <button
-                  key={color}
-                  type="button"
-                  className={`day-color-swatch${optimisticColor === color ? ' is-active' : ''}`}
-                  style={{ backgroundColor: color }}
-                  title={color}
-                  aria-label={`날짜 색상 ${color}`}
-                  onClick={() => {
-                    setOptimisticColor(color)
-                    onDayColorChange(color)
-                    setPaletteOpen(false)
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
-        </footer>
-      </InteractionUI>
+                onRequestClose={() => setPaletteOpen(false)}
+              />
+            </div>,
+            document.body
+          )
+        : null}
     </>
   )
 }

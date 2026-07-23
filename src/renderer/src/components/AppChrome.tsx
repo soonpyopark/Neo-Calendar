@@ -1,14 +1,32 @@
 import { useEffect, useLayoutEffect, useRef, type ReactElement, type Ref } from 'react'
 import { InteractionUI } from './InteractionUI'
-import { DesktopModeIcon, SearchIcon, SettingsIcon, WindowModeIcon } from './CalendarHeaderIcons'
+import {
+  DesktopModeIcon,
+  ExcelIcon,
+  PdfIcon,
+  SearchIcon,
+  SettingsIcon,
+  WindowModeIcon
+} from './CalendarHeaderIcons'
 import { APP_NAME, APP_VERSION } from '../../../shared/constants'
+import {
+  actionBtnBase,
+  iconBtnClass,
+  iconBtnDisabledClass,
+  softBlueIconBtnMutedClass
+} from '../lib/headerButtonClasses'
 import type { AuthUser, LaunchMode } from '../../../shared/ipc'
+
+function cn(...parts: Array<string | false | null | undefined>): string {
+  return parts.filter(Boolean).join(' ')
+}
 
 export type AppChromeProps = {
   mode: LaunchMode
   user: AuthUser | null
   searchOpen: boolean
   settingsOpen: boolean
+  exporting?: boolean
   modeBusy?: boolean
   /** From main: false while cursor must leave the header after a mode switch. */
   switchReady?: boolean
@@ -16,6 +34,8 @@ export type AppChromeProps = {
   chromeRef?: Ref<HTMLDivElement | null>
   onOpenSearch: () => void
   onOpenSettings: () => void
+  onExportExcel: () => void
+  onExportPdf: () => void
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
@@ -26,11 +46,14 @@ export function AppChrome({
   user,
   searchOpen,
   settingsOpen,
+  exporting = false,
   modeBusy = false,
   switchReady = true,
   chromeRef,
   onOpenSearch,
   onOpenSettings,
+  onExportExcel,
+  onExportPdf,
   onEnterDesktop,
   onEnterWindow,
   onAuthToggle
@@ -40,7 +63,6 @@ export function AppChrome({
   const loggedIn = Boolean(user)
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const windowModeBtnRef = useRef<HTMLSpanElement | null>(null)
-  const modeClusterRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
 
   const setChromeRef = (node: HTMLDivElement | null): void => {
@@ -95,27 +117,31 @@ export function AppChrome({
   return (
     <div
       ref={setChromeRef}
-      className={`app-chrome interaction-ui${isWindow ? ' is-window-mode' : ''}`}
+      className={cn(
+        'flex min-w-0 items-center justify-between gap-2',
+        isWindow && 'is-window-mode'
+      )}
       data-shell-chrome="header-actions"
     >
-      <div className="app-chrome-brand app-chrome-drag">
-        <InteractionUI
-          as="button"
-          className="app-chrome-brand-btn app-chrome-no-drag"
-          title="새로고침"
-          aria-label="새로고침"
-          onClick={() => window.location.reload()}
-        >
-          <img src="/icon.png" alt="" width={28} height={28} className="app-chrome-logo" draggable={false} />
-          <span className="app-chrome-name">{APP_NAME}</span>
-        </InteractionUI>
-        <span className="app-chrome-version">v{APP_VERSION}</span>
+      <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap app-chrome-drag">
+        <div className="flex items-baseline gap-2">
+          <InteractionUI
+            as="button"
+            className="app-chrome-no-drag whitespace-nowrap border-0 bg-transparent p-0 text-[22px] tracking-tight text-gcal-muted transition-colors hover:text-gcal-blue"
+            title="새로고침"
+            aria-label="새로고침"
+            onClick={() => window.location.reload()}
+          >
+            {APP_NAME}
+          </InteractionUI>
+          <span className="shrink-0 text-xs font-medium text-gcal-muted/80">v{APP_VERSION}</span>
+        </div>
       </div>
 
-      <div className="app-chrome-actions app-chrome-no-drag">
+      <div className="app-chrome-no-drag flex min-w-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
         <InteractionUI
           as="button"
-          className="hdr-btn hdr-btn-tool"
+          className={cn(iconBtnClass, iconBtnDisabledClass)}
           aria-label="검색"
           title={settingsOpen ? '설정을 닫은 후 검색할 수 있습니다' : '검색'}
           disabled={settingsOpen}
@@ -126,7 +152,7 @@ export function AppChrome({
 
         <InteractionUI
           as="button"
-          className="hdr-btn hdr-btn-tool"
+          className={cn(iconBtnClass, iconBtnDisabledClass)}
           aria-label="설정"
           title={
             !loggedIn
@@ -141,10 +167,36 @@ export function AppChrome({
           <SettingsIcon />
         </InteractionUI>
 
-        <div ref={modeClusterRef} className="app-chrome-mode-cluster">
+        <InteractionUI
+          as="button"
+          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          aria-label="Excel로 내보내기"
+          title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'Excel로 내보내기'}
+          disabled={!loggedIn || exporting || settingsOpen || searchOpen}
+          onClick={onExportExcel}
+        >
+          <ExcelIcon />
+        </InteractionUI>
+
+        <InteractionUI
+          as="button"
+          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          aria-label="PDF로 내보내기"
+          title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'PDF로 내보내기'}
+          disabled={!loggedIn || exporting || settingsOpen || searchOpen}
+          onClick={onExportPdf}
+        >
+          <PdfIcon />
+        </InteractionUI>
+
+        <div className="inline-flex items-center gap-1.5">
           <InteractionUI
             as="button"
-            className={`hdr-btn hdr-btn-tool${isDesktop ? ' is-muted' : ''}`}
+            className={cn(
+              iconBtnClass,
+              iconBtnDisabledClass,
+              isDesktop && softBlueIconBtnMutedClass
+            )}
             aria-label="바탕화면모드"
             aria-pressed={isDesktop}
             title={
@@ -166,7 +218,11 @@ export function AppChrome({
           <span ref={windowModeBtnRef} className="window-mode-hit-host">
             <InteractionUI
               as="button"
-              className={`hdr-btn hdr-btn-tool${isWindow ? ' is-muted' : ''}`}
+              className={cn(
+                iconBtnClass,
+                iconBtnDisabledClass,
+                isWindow && softBlueIconBtnMutedClass
+              )}
               aria-label="창모드"
               aria-pressed={isWindow}
               title={
@@ -185,7 +241,7 @@ export function AppChrome({
 
         <InteractionUI
           as="button"
-          className="hdr-btn hdr-btn-auth"
+          className={cn(actionBtnBase, 'bg-gcal-blue-soft hover:bg-[#d2e3fc] dark:hover:bg-gcal-surface-2')}
           title={loggedIn && user ? `${user.loginId} 로그아웃` : '로그인'}
           onClick={onAuthToggle}
         >

@@ -1,8 +1,12 @@
 import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { AuthService } from './auth'
+import { CalendarStore } from './calendarStore/CalendarStore'
+import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
-import { loadDotEnv } from './dotEnv'
+import { getEnvValue, loadDotEnv } from './dotEnv'
+import { applyHolidayKeyFromEnv, syncKoreanHolidays } from './calendarStore/holidaySync'
+import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
 import { DayCellDblClickBridge, type DayCellClientZone } from './dayCellDblClickBridge'
@@ -10,10 +14,22 @@ import { DesktopInputBridge } from './desktopInputBridge'
 import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
 import { WindowModeHitZone } from './windowModeHitZone'
 import { snapToTen } from './displayGeometry'
-import { DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import type {
+  CalendarEvent,
+  CalendarRecord,
+  CalendarStoreSnapshot,
+  EventInput,
+  MemberSaveInput,
+  StoreSettings,
+  SyncHolidaysInput,
+  TagRecord
+} from '../shared/calendarTypes'
 import type { AppSettings, ClientHitRect, DayCellHitZone, ModeStatus } from '../shared/ipc'
 
 let mainWindow: WallpaperBrowserWindow | null = null
+let calendarStore: CalendarStore
+let membersStore: MembersStore
 let settingsStore: SettingsStore
 let auth: AuthService
 let desktopMode: DesktopModeController
@@ -74,7 +90,7 @@ function createWindow(): void {
       focusable: true,
       show: false,
       backgroundColor: '#00000000',
-      title: 'My Desktop Calendar',
+      title: APP_NAME,
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
         contextIsolation: true,
@@ -182,9 +198,23 @@ function registerIpc(): void {
     interactionBusy = Boolean(busy)
   })
 
+  ipcMain.on('focus-for-text-input', () => {
+    desktopMode.focusForTextInput()
+  })
+
+  ipcMain.handle('open-external', async (_event, url: string) => {
+    const target = String(url ?? '').trim()
+    if (!/^https?:\/\//i.test(target)) {
+      throw new Error('지원하지 않는 URL입니다.')
+    }
+    await shell.openExternal(target)
+  })
+
   ipcMain.handle('get-mode-status', () => desktopMode.getStatus())
+  // No force: respects post-restore switch gate so a stray click on the
+  // desktop-mode button right after launch cannot yank the window under icons.
   ipcMain.handle('enter-desktop', () =>
-    desktopMode.enterDesktop({ intentional: true, force: true })
+    desktopMode.enterDesktop({ intentional: true, force: false })
   )
   ipcMain.handle('enter-window', () => desktopMode.enterWindow())
   ipcMain.handle('get-window-bounds', () => desktopMode.getWindowBounds())
@@ -204,12 +234,83 @@ function registerIpc(): void {
   ipcMain.handle('patch-settings', (_event, patch: Partial<AppSettings>) =>
     settingsStore.patchSettings(patch ?? {})
   )
+
+  ipcMain.handle('calendar:get-store', () => calendarStore.getSnapshot())
+  ipcMain.handle('calendar:get-data-root', () => calendarStore.dataRoot)
+  ipcMain.handle('calendar:patch-settings', (_event, patch: Partial<StoreSettings>) => {
+    const next = calendarStore.patchStoreSettings(patch ?? {})
+    if (patch?.viewOptions && typeof patch.viewOptions.runAtStartup === 'boolean') {
+      try {
+        app.setLoginItemSettings({ openAtLogin: patch.viewOptions.runAtStartup })
+      } catch (err) {
+        console.warn('[settings] setLoginItemSettings failed', err)
+      }
+    }
+    return next
+  })
+  ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) =>
+    calendarStore.replaceStore(store)
+  )
+  ipcMain.handle('calendar:add-event', (_event, input: EventInput) => calendarStore.addEvent(input))
+  ipcMain.handle('calendar:edit-event', (_event, id: string, patch: Partial<CalendarEvent>) =>
+    calendarStore.editEvent(id, patch ?? {})
+  )
+  ipcMain.handle('calendar:remove-event', (_event, id: string) => {
+    calendarStore.removeEvent(id)
+  })
+  ipcMain.handle(
+    'calendar:create-calendar',
+    (_event, input: Partial<CalendarRecord> & { name: string; color: string }) =>
+      calendarStore.createCalendar(input)
+  )
+  ipcMain.handle(
+    'calendar:patch-calendar',
+    (_event, id: string, patch: Partial<CalendarRecord>) =>
+      calendarStore.patchCalendar(id, patch ?? {})
+  )
+  ipcMain.handle('calendar:delete-calendar', (_event, id: string) => {
+    calendarStore.deleteCalendar(id)
+  })
+  ipcMain.handle('calendar:set-tags', (_event, tags: TagRecord[]) =>
+    calendarStore.setTags(Array.isArray(tags) ? tags : [])
+  )
+  ipcMain.handle('calendar:list-members', () => membersStore.listPublic())
+  ipcMain.handle('calendar:save-members', (_event, members: MemberSaveInput[]) =>
+    membersStore.saveMembers(Array.isArray(members) ? members : [])
+  )
+  ipcMain.handle('calendar:sync-holidays', (_event, body: SyncHolidaysInput) =>
+    syncKoreanHolidays(calendarStore, body ?? {})
+  )
+  ipcMain.handle(
+    'calendar:export',
+    async (
+      _event,
+      input: { format: 'excel' | 'pdf'; year: number; month: number; asAdmin?: boolean }
+    ) => {
+      const store = calendarStore.getSnapshot()
+      return exportCalendarMonth(
+        {
+          store,
+          year: Number(input?.year),
+          month: Number(input?.month),
+          format: input?.format === 'pdf' ? 'pdf' : 'excel',
+          asAdmin: input?.asAdmin !== false
+        },
+        mainWindow
+      )
+    }
+  )
 }
 
 app.whenReady().then(() => {
   loadDotEnv()
-  settingsStore = new SettingsStore()
-  auth = new AuthService(settingsStore)
+  calendarStore = new CalendarStore()
+  const holidayKey = getEnvValue('DATA_GO_KR_SERVICE_KEY', 'HOLIDAY_API_KEY')
+  if (holidayKey) applyHolidayKeyFromEnv(calendarStore, holidayKey)
+  membersStore = new MembersStore(calendarStore.dataRoot)
+  settingsStore = new SettingsStore(calendarStore)
+  auth = new AuthService(settingsStore, membersStore)
+  console.log('[calendar-store] Data root:', calendarStore.dataRoot)
   desktopMode = new DesktopModeController({
     getWindow: () => mainWindow,
     store: settingsStore,

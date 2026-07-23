@@ -1,13 +1,16 @@
 import { randomBytes } from 'node:crypto'
 import type { AuthUser, LoginResult } from '../shared/ipc'
-import { resolveAdminCredentials } from './dotEnv'
+import type { MembersStore } from './calendarStore/membersStore'
 import type { SettingsStore } from './settingsStore'
 
 export class AuthService {
   private sessionToken: string | null = null
   private sessionUser: AuthUser | null = null
 
-  constructor(private readonly store: SettingsStore) {
+  constructor(
+    private readonly store: SettingsStore,
+    private readonly members: MembersStore
+  ) {
     const saved = store.getAuthSession()
     if (saved) {
       this.sessionToken = saved.token
@@ -26,12 +29,12 @@ export class AuthService {
       return { ok: false, error: '아이디와 비밀번호를 입력하세요.' }
     }
 
-    const admin = resolveAdminCredentials()
-    if (id !== admin.id || pw !== admin.password) {
+    const member = this.members.verifyLogin(id, pw)
+    if (!member) {
       return { ok: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' }
     }
 
-    const user: AuthUser = { loginId: id, role: 'admin' }
+    const user: AuthUser = { loginId: member.loginId, role: 'admin' }
     this.sessionUser = user
     this.sessionToken = randomBytes(24).toString('hex')
 

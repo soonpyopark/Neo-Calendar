@@ -41,4 +41,3 @@ npm run dist
 2. Renderer `WallpaperContainer` keeps ignore enabled for empty space
 3. `InteractionUI` calls `setIgnoreMouseEvents(false)` on `mouseenter`
 4. Leaving interactive UI / the window re-enables click-through
-# Neo-Calendar

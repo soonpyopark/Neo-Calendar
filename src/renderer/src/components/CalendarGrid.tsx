@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -10,10 +11,31 @@ import {
 } from 'react'
 import { InteractionUI } from './InteractionUI'
 import { AppChrome } from './AppChrome'
+import { DayNumber } from './DayNumber'
 import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
+import { getEventBarStyle } from '../lib/colors'
+import { getDayParts, getLunarMonthLabel } from '../lib/lunar'
+import { DayEventsPopover } from './DayEventsPopover'
+import { EventEditor } from './EventEditor'
+import { EventMoreButton } from './EventMoreButton'
+import { EventPopover } from './EventPopover'
 import { LoginDialog } from './LoginDialog'
+import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
+import {
+  resolveDayVisibleEventLimit,
+  useEventLayoutCssVars,
+  useMaxVisibleEvents
+} from '../hooks/useMaxVisibleEvents'
+import {
+  addExdate,
+  buildFollowingSeriesEvent,
+  buildSingleExceptionEvent,
+  getOccurrenceDate,
+  isRecurringEvent,
+  truncateSeriesBefore
+} from '../../../shared/mdcExport/eventOccurrences.js'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -26,17 +48,25 @@ import {
   WeekViewIcon,
   YearViewIcon
 } from './CalendarHeaderIcons'
+import { useCalendarStore } from '../hooks/useCalendarStore'
+import {
+  desktopModeIconBtnClass,
+  footerShellClass,
+  headerShellClass,
+  navBtnClass,
+  softBlueIconBtnActiveClass,
+  softBlueIconBtnClass,
+  todayBtnClass,
+  viewModeIconBtnActiveClass,
+  viewModeIconBtnClass,
+  yearNavBtnClass
+} from '../lib/headerButtonClasses'
+import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import type { CalendarEvent } from '../../../shared/calendarTypes'
 import type { AppSettings, AuthUser, LaunchMode } from '../../../shared/ipc'
 import { SITE_URL } from '../../../shared/constants'
 
-export type CalendarEvent = {
-  id: string
-  dateKey: string
-  title: string
-  color?: string
-  completed?: boolean
-}
-
+export type { CalendarEvent }
 export type ViewMode = 'year' | 'week' | 'month'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
@@ -54,8 +84,25 @@ function toDateKey(year: number, month: number, day: number): string {
   return `${year}-${mm}-${dd}`
 }
 
-function createId(): string {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+function parseDateKey(dateKey: string): Date | null {
+  const [y, m, d] = dateKey.split('-').map(Number)
+  if (!y || !m || !d) return null
+  return new Date(y, m - 1, d)
+}
+
+function eachDateKey(start: string, end: string): string[] {
+  const from = parseDateKey(start)
+  const to = parseDateKey(end || start)
+  if (!from || !to) return start ? [start] : []
+  const keys: string[] = []
+  const cur = new Date(from)
+  const last = to < from ? from : to
+  while (cur <= last) {
+    keys.push(toDateKey(cur.getFullYear(), cur.getMonth(), cur.getDate()))
+    cur.setDate(cur.getDate() + 1)
+    if (keys.length > 366) break
+  }
+  return keys
 }
 
 function startOfWeek(date: Date, weekStartsOn: 0 | 1 = 0): Date {
@@ -80,6 +127,15 @@ function formatWeekTitle(anchor: Date, weekStartsOn: 0 | 1 = 0): string {
     return `${start.getFullYear()}년 ${start.getMonth() + 1}월 ${start.getDate()}–${end.getDate()}일`
   }
   return `${start.getFullYear()}년 ${start.getMonth() + 1}/${start.getDate()} – ${end.getMonth() + 1}/${end.getDate()}`
+}
+
+/** ISO week number (Mon-based), matching MDC. */
+function getWeekNumber(date: Date): number {
+  const target = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = target.getUTCDay() || 7
+  target.setUTCDate(target.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(target.getUTCFullYear(), 0, 1))
+  return Math.ceil(((target.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
 }
 
 type DayCell = {
@@ -141,12 +197,8 @@ function buildWeekDays(anchor: Date, weekStartsOn: 0 | 1 = 0): DayCell[] {
   return days
 }
 
-function eventStyle(color: string): CSSProperties {
-  return {
-    '--event-accent': color,
-    '--event-bg': `${color}22`,
-    '--event-text': '#3c4043'
-  } as CSSProperties
+function eventStyle(color: string, completed = false, lane = 0): CSSProperties {
+  return getEventBarStyle(color, { completed, lane }) as CSSProperties
 }
 
 function cn(...parts: Array<string | false | null | undefined>): string {
@@ -176,24 +228,80 @@ export function CalendarGrid({
   onSettingsSaved
 }: CalendarGridProps): ReactElement {
   const now = new Date()
+  const canEdit = Boolean(user)
+  const {
+    store,
+    visibleEvents,
+    calendarsById,
+    addEvent,
+    editEvent,
+    removeEvent,
+    patchStoreSettings,
+    createCalendar,
+    patchCalendar,
+    deleteCalendar,
+    setTags,
+    replaceStore,
+    listMembers,
+    saveMembers,
+    syncHolidays,
+    refresh
+  } = useCalendarStore()
+
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [viewDate, setViewDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()))
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
-  const [eventsHidden, setEventsHidden] = useState(false)
-  const [completedHidden, setCompletedHidden] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
   const [loginError, setLoginError] = useState<string | null>(null)
   const [modeBusy, setModeBusy] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  /** Bumps when light/dark flips so MDC event-bar themes recompute. */
+  const [themeEpoch, setThemeEpoch] = useState(0)
   const [quickEdit, setQuickEdit] = useState<{
     dateKey: string
     date: Date
     anchorRect: AnchorRect | null
   } | null>(null)
+  const [eventPopover, setEventPopover] = useState<{
+    event: CalendarEvent
+    anchorRect: AnchorRect | null
+  } | null>(null)
+  const [dayList, setDayList] = useState<{
+    dateKey: string
+    anchorRect: AnchorRect | null
+  } | null>(null)
+  const [editor, setEditor] = useState<{
+    event: CalendarEvent | null
+    defaultDate?: string
+    occurrenceDate?: string | null
+    returnQuickEdit?: { dateKey: string; date: Date; anchorRect: AnchorRect | null } | null
+  } | null>(null)
+  const [scopeDialog, setScopeDialog] = useState<{ mode: 'edit' | 'delete' } | null>(null)
+  const [pendingEdit, setPendingEdit] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+    needsScope: boolean
+    payload?: Record<string, unknown>
+  } | null>(null)
+  const [pendingDelete, setPendingDelete] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+  } | null>(null)
+
   const chromeRef = useRef<HTMLDivElement | null>(null)
-  const periodHeaderRef = useRef<HTMLElement | null>(null)
+  const periodHeaderRef = useRef<HTMLDivElement | null>(null)
+  const monthBodyRef = useRef<HTMLDivElement | null>(null)
+
+  const eventsHidden = store.settings.viewOptions.eventsHidden
+  const completedHidden = store.settings.viewOptions.completedHidden
+  const showWeekNumbers = store.settings.viewOptions.showWeekNumbers !== false
+  const roundedCorners = Boolean(store.settings.viewOptions.roundedCorners)
+  const dayColors = store.settings.dayColors ?? {}
+  const weekStartsOn: 0 | 1 =
+    settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
 
   const publishWakeZones = (): void => {
     const api = window.neoCalendar
@@ -203,7 +311,6 @@ export function CalendarGrid({
       return
     }
 
-    // Hover-undock only over header/period buttons (not date cells).
     const roots = [chromeRef.current, periodHeaderRef.current].filter(
       (el): el is HTMLElement => Boolean(el)
     )
@@ -284,35 +391,9 @@ export function CalendarGrid({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/refs
   }, [mode, viewMode])
-  const [dayColors, setDayColors] = useState<Record<string, string>>({})
-  const [events, setEvents] = useState<CalendarEvent[]>(() => {
-    const y = now.getFullYear()
-    const m = now.getMonth()
-    return [
-      {
-        id: createId(),
-        dateKey: toDateKey(y, m, Math.min(now.getDate() + 1, 28)),
-        title: '팀 미팅',
-        color: EVENT_PALETTE[0]
-      },
-      {
-        id: createId(),
-        dateKey: toDateKey(y, m, Math.min(now.getDate() + 2, 28)),
-        title: '완료된 일정',
-        color: EVENT_PALETTE[3],
-        completed: true
-      },
-      {
-        id: createId(),
-        dateKey: toDateKey(y, m, Math.min(now.getDate() + 3, 28)),
-        title: 'Neo Calendar',
-        color: EVENT_PALETTE[1]
-      }
-    ]
-  })
+
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
-  const weekStartsOn = settings?.weekStartsOn ?? 0
   const weekdayLabels = useMemo(() => {
     if (weekStartsOn === 1) {
       return [...WEEKDAYS_KO.slice(1), WEEKDAYS_KO[0]]
@@ -326,16 +407,35 @@ export function CalendarGrid({
   )
   const weekDays = useMemo(() => buildWeekDays(viewDate, weekStartsOn), [viewDate, weekStartsOn])
 
+  /** MDC: row height ÷ weeks → how many bars fit before "더보기". */
+  const weeksInViewport = viewMode === 'week' ? 1 : viewMode === 'month' ? monthWeeks.length : 0
+  const eventCapacity = useMaxVisibleEvents(monthBodyRef, weeksInViewport)
+  const eventLayoutCssVars = useEventLayoutCssVars()
+
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
-    for (const event of events) {
-      if (completedHidden && event.completed) continue
-      const list = map.get(event.dateKey) ?? []
-      list.push(event)
-      map.set(event.dateKey, list)
+    for (const event of visibleEvents) {
+      const keys = eachDateKey(event.startDate, event.endDate || event.startDate)
+      for (const key of keys) {
+        const list = map.get(key) ?? []
+        list.push(event)
+        map.set(key, list)
+      }
     }
     return map
-  }, [events, completedHidden])
+  }, [visibleEvents])
+
+  /** Dates with 대한민국의 휴일 events — day numeral uses Sunday red. */
+  const holidayKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const event of visibleEvents) {
+      if (event.calendarId !== HOLIDAYS_KR_CALENDAR_ID) continue
+      for (const key of eachDateKey(event.startDate, event.endDate || event.startDate)) {
+        keys.add(key)
+      }
+    }
+    return keys
+  }, [visibleEvents])
 
   const periodTitle =
     viewMode === 'year'
@@ -343,6 +443,90 @@ export function CalendarGrid({
       : viewMode === 'week'
         ? formatWeekTitle(viewDate, weekStartsOn)
         : `${year}년 ${month + 1}월`
+
+  const closeOverlays = useCallback((): void => {
+    setQuickEdit(null)
+    setEventPopover(null)
+    setDayList(null)
+    setEditor(null)
+    setScopeDialog(null)
+    setPendingEdit(null)
+    setPendingDelete(null)
+    setSearchOpen(false)
+    setSettingsOpen(false)
+    setLoginOpen(false)
+    setLoginError(null)
+  }, [])
+
+  const dismissEditorAfterSave = useCallback((): void => {
+    const back = editor?.returnQuickEdit ?? null
+    setEditor(null)
+    setPendingEdit(null)
+    if (back) setQuickEdit(back)
+  }, [editor?.returnQuickEdit])
+
+  const applyRecurringEdit = useCallback(
+    async (
+      master: CalendarEvent,
+      payload: Record<string, unknown>,
+      occurrenceDate: string,
+      scope: 'single' | 'following' | 'all'
+    ): Promise<void> => {
+      if (scope === 'all') {
+        const startDate = String(payload.startDate ?? master.startDate)
+        const endDate = String(payload.endDate ?? payload.startDate ?? master.endDate)
+        const durationDays = Math.max(
+          1,
+          Math.round(
+            (new Date(`${endDate}T00:00:00`).getTime() -
+              new Date(`${startDate}T00:00:00`).getTime()) /
+              86400000
+          ) + 1
+        )
+        const keepSeriesStart = occurrenceDate !== master.startDate
+        const nextStart = keepSeriesStart ? master.startDate : startDate
+        const seriesEnd = new Date(`${nextStart}T00:00:00`)
+        seriesEnd.setDate(seriesEnd.getDate() + durationDays - 1)
+        const seriesEndDate = toDateKey(
+          seriesEnd.getFullYear(),
+          seriesEnd.getMonth(),
+          seriesEnd.getDate()
+        )
+        await editEvent(master.id, {
+          ...payload,
+          startDate: nextStart,
+          endDate: seriesEndDate,
+          exdates: Array.isArray(master.exdates) ? master.exdates : []
+        } as Partial<CalendarEvent>)
+        return
+      }
+
+      if (scope === 'single') {
+        const exception = buildSingleExceptionEvent(master, payload, occurrenceDate)
+        const withExdate = addExdate(master, occurrenceDate)
+        await editEvent(master.id, { exdates: withExdate.exdates })
+        await addEvent(exception as Parameters<typeof addEvent>[0])
+        return
+      }
+
+      const truncated = truncateSeriesBefore(master, occurrenceDate)
+      if ((truncated.repeat ?? 'none') === 'none') {
+        await removeEvent(master.id)
+      } else {
+        await editEvent(master.id, {
+          repeatUntil: truncated.repeatUntil,
+          repeatCount: null,
+          repeat: truncated.repeat
+        })
+      }
+      await addEvent(
+        buildFollowingSeriesEvent(master, payload, occurrenceDate) as Parameters<
+          typeof addEvent
+        >[0]
+      )
+    },
+    [addEvent, editEvent, removeEvent]
+  )
 
   const shiftMonth = (delta: number): void => {
     setViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
@@ -379,8 +563,7 @@ export function CalendarGrid({
   }
 
   const rectFromTarget = (target: EventTarget | null): AnchorRect | null => {
-    const el =
-      target instanceof Element ? target.closest('.day-cell') : null
+    const el = target instanceof Element ? target.closest('.day-cell') : null
     if (!el) return null
     const rect = el.getBoundingClientRect()
     return {
@@ -392,6 +575,8 @@ export function CalendarGrid({
   }
 
   const openQuickEdit = (cell: DayCell, event?: MouseEvent): void => {
+    setEventPopover(null)
+    setDayList(null)
     setSelectedKey(cell.dateKey)
     setQuickEdit({
       dateKey: cell.dateKey,
@@ -401,15 +586,15 @@ export function CalendarGrid({
   }
 
   const openQuickEditByDateKey = (dateKey: string): void => {
-    const [y, m, d] = dateKey.split('-').map(Number)
-    if (!y || !m || !d) return
-    const date = new Date(y, m - 1, d)
+    const date = parseDateKey(dateKey)
+    if (!date) return
     const el = document.querySelector<HTMLElement>(
       `.neo-cal-shell .day-cell[data-date-key="${dateKey}"]`
     )
     const rect = el?.getBoundingClientRect()
+    setEventPopover(null)
+    setDayList(null)
     setSelectedKey(dateKey)
-    // Always replace — switching from an open editor to another day must retarget.
     setQuickEdit({
       dateKey,
       date,
@@ -428,46 +613,53 @@ export function CalendarGrid({
   }, [])
 
   useEffect(() => {
-    const busy = Boolean(quickEdit || searchOpen || settingsOpen || loginOpen)
-    window.neoCalendar?.setInteractionBusy?.(busy)
+    const onTheme = (): void => setThemeEpoch((n) => n + 1)
+    window.addEventListener('neocalendar:colorSchemeEffective', onTheme)
+    return () => window.removeEventListener('neocalendar:colorSchemeEffective', onTheme)
+  }, [])
+
+  const interactionBusy = Boolean(
+    quickEdit ||
+      searchOpen ||
+      settingsOpen ||
+      loginOpen ||
+      eventPopover ||
+      dayList ||
+      editor ||
+      scopeDialog
+  )
+  const interactionBusyRef = useRef(interactionBusy)
+  interactionBusyRef.current = interactionBusy
+
+  useEffect(() => {
+    window.neoCalendar?.setInteractionBusy?.(interactionBusy)
     return () => {
       window.neoCalendar?.setInteractionBusy?.(false)
     }
-  }, [quickEdit, searchOpen, settingsOpen, loginOpen])
+  }, [interactionBusy])
 
-  // Outside-click re-embed (and idle resume): drop open overlays so they don't linger under icons.
   useEffect(() => {
     const api = window.neoCalendar
     if (!api?.onModeChanged) return
     return api.onModeChanged((status) => {
       onModeChange(status.mode)
-      if (status.mode === 'desktop' && status.embedded) {
-        setQuickEdit(null)
-        setSearchOpen(false)
-        setSettingsOpen(false)
-        setLoginOpen(false)
-        setLoginError(null)
+      // Don't kill open text UIs (settings/login/editor) while the user is typing.
+      if (status.mode === 'desktop' && status.embedded && !interactionBusyRef.current) {
+        closeOverlays()
       }
     })
-  }, [onModeChange])
+  }, [onModeChange, closeOverlays])
 
-  const createEvent = (dateKey: string, title: string): void => {
-    const color = EVENT_PALETTE[events.length % EVENT_PALETTE.length]
-    setEvents((prev) => [...prev, { id: createId(), dateKey, title, color }])
-  }
+  const eventColor = (item: CalendarEvent): string =>
+    item.color || calendarsById.get(item.calendarId)?.color || EVENT_PALETTE[0]
 
-  const removeEvent = (id: string): void => {
-    setEvents((prev) => prev.filter((item) => item.id !== id))
-  }
-
-  const toggleCompleted = (id: string, completed?: boolean): void => {
-    setEvents((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? { ...item, completed: typeof completed === 'boolean' ? completed : !item.completed }
-          : item
-      )
-    )
+  const toggleCompleted = async (id: string, completed?: boolean): Promise<void> => {
+    if (!canEdit) return
+    const current = store.events.find((e) => e.id === id)
+    if (!current) return
+    await editEvent(id, {
+      completed: typeof completed === 'boolean' ? completed : !current.completed
+    })
   }
 
   const openSite = (): void => {
@@ -523,20 +715,166 @@ export function CalendarGrid({
   }
 
   const jumpToEvent = (event: CalendarEvent): void => {
-    const [y, m, d] = event.dateKey.split('-').map(Number)
-    if (!y || !m || !d) return
-    setViewDate(new Date(y, m - 1, d))
-    setSelectedKey(event.dateKey)
+    const day = event.occurrenceDate || event.startDate
+    const date = parseDateKey(day)
+    if (!date) return
+    setViewDate(date)
+    setSelectedKey(day)
     setViewMode('month')
   }
 
+  const openEventDetail = (event: CalendarEvent, anchorRect: AnchorRect | null): void => {
+    setQuickEdit(null)
+    setDayList(null)
+    setEventPopover({ event, anchorRect })
+  }
+
+  const openEventEditor = (
+    event: CalendarEvent | null,
+    opts?: {
+      defaultDate?: string
+      returnQuickEdit?: { dateKey: string; date: Date; anchorRect: AnchorRect | null } | null
+    }
+  ): void => {
+    if (!canEdit && event === null) return
+    setEventPopover(null)
+    setDayList(null)
+    setScopeDialog(null)
+    setPendingDelete(null)
+    if (!opts?.returnQuickEdit) setQuickEdit(null)
+    else setQuickEdit(null)
+
+    if (event) {
+      const master = store.events.find((item) => item.id === event.id) ?? event
+      const occurrenceDate =
+        getOccurrenceDate(event, opts?.defaultDate ?? selectedKey ?? event.occurrenceDate) ??
+        master.startDate
+      setPendingEdit({
+        master,
+        occurrenceDate,
+        needsScope: isRecurringEvent(master)
+      })
+      setEditor({
+        event: master,
+        defaultDate: opts?.defaultDate,
+        occurrenceDate,
+        returnQuickEdit: opts?.returnQuickEdit ?? null
+      })
+      return
+    }
+
+    setPendingEdit(null)
+    setEditor({
+      event: null,
+      defaultDate: opts?.defaultDate,
+      occurrenceDate: opts?.defaultDate ?? null,
+      returnQuickEdit: opts?.returnQuickEdit ?? null
+    })
+  }
+
+  const handleScopeSelect = async (scope: 'single' | 'following' | 'all'): Promise<void> => {
+    const dialogMode = scopeDialog?.mode
+    setScopeDialog(null)
+    try {
+      if (dialogMode === 'edit' && pendingEdit?.payload && pendingEdit.master) {
+        const { master, payload, occurrenceDate } = pendingEdit
+        dismissEditorAfterSave()
+        await applyRecurringEdit(master, payload, occurrenceDate, scope)
+        return
+      }
+      if (dialogMode === 'delete' && pendingDelete?.master) {
+        const { master, occurrenceDate } = pendingDelete
+        setPendingDelete(null)
+        if (scope === 'all') {
+          await removeEvent(master.id)
+        } else if (scope === 'single') {
+          const withExdate = addExdate(master, occurrenceDate)
+          await editEvent(master.id, { exdates: withExdate.exdates })
+        } else {
+          const truncated = truncateSeriesBefore(master, occurrenceDate)
+          if ((truncated.repeat ?? 'none') === 'none') {
+            await removeEvent(master.id)
+          } else {
+            await editEvent(master.id, {
+              repeatUntil: truncated.repeatUntil,
+              repeatCount: null,
+              repeat: truncated.repeat
+            })
+          }
+        }
+        setEditor(null)
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
+    }
+  }
+
+  const setViewFlag = (patch: { eventsHidden?: boolean; completedHidden?: boolean }): void => {
+    void patchStoreSettings({
+      viewOptions: {
+        ...store.settings.viewOptions,
+        ...patch
+      }
+    })
+  }
+
+  const handleExport = async (format: 'excel' | 'pdf'): Promise<void> => {
+    if (!canEdit || exporting) return
+    const exportYear = viewDate.getFullYear()
+    const exportMonth = viewDate.getMonth() + 1
+    const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
+    if (
+      !window.confirm(
+        `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
+      )
+    ) {
+      return
+    }
+    setExporting(true)
+    try {
+      const result = await window.neoCalendar.exportCalendar({
+        format,
+        year: exportYear,
+        month: exportMonth,
+        asAdmin: true
+      })
+      if (result.canceled) return
+      if (!result.ok) {
+        window.alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
+        return
+      }
+      window.alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const lunarMonthLabel = useMemo(
+    () => (viewMode === 'month' ? getLunarMonthLabel(year, month + 1) : null),
+    [viewMode, year, month]
+  )
+
   const renderDayCell = (cell: DayCell, options?: { tall?: boolean }): ReactElement => {
     const dayEvents = eventsHidden ? [] : (eventsByDate.get(cell.dateKey) ?? [])
+    const daySegments = dayEvents.map((event, lane) => ({ event, lane }))
+    const { visibleCount, hiddenEventCount } = resolveDayVisibleEventLimit(
+      daySegments,
+      eventCapacity
+    )
+    const visible = dayEvents.slice(0, visibleCount)
     const weekdayClass = cell.weekday === 0 ? 'sunday' : cell.weekday === 6 ? 'saturday' : ''
+    const isKrHoliday = holidayKeys.has(cell.dateKey)
     const dayColor = dayColors[cell.dateKey]
     const cellStyle = dayColor
-      ? ({ '--day-tint': dayColor } as CSSProperties)
+      ? ({ '--day-cell-bg': dayColor } as CSSProperties)
       : undefined
+    const { solar, lunar, lunarDay, solarTerm } = getDayParts(
+      cell.date.getFullYear(),
+      cell.date.getMonth() + 1,
+      cell.day
+    )
 
     return (
       <div
@@ -544,9 +882,9 @@ export function CalendarGrid({
         data-date-key={cell.dateKey}
         className={cn(
           'day-cell',
-          // Mouse capture only (wake zones stay header buttons).
           'interaction-ui',
           weekdayClass,
+          isKrHoliday && 'holiday',
           !cell.inMonth && 'other-month',
           cell.isToday && 'today',
           selectedKey === cell.dateKey && 'selected',
@@ -555,67 +893,101 @@ export function CalendarGrid({
         )}
         style={cellStyle}
         onDoubleClick={(event) => {
-          // Event bars handle their own double-click (complete toggle).
-          if ((event.target as Element | null)?.closest?.('.event-bar')) return
+          if ((event.target as Element | null)?.closest?.('.event-bar, .event-more')) return
           event.preventDefault()
           event.stopPropagation()
           openQuickEdit(cell, event)
         }}
       >
-        <div className="day-number">
-          <span className="solar">{cell.day}</span>
-        </div>
+        <DayNumber
+          solar={solar}
+          lunarLabel={lunar}
+          lunarDay={lunarDay}
+          solarTerm={solarTerm}
+        />
 
         <div className={cn('day-events', eventsHidden && 'is-hidden')}>
-          {dayEvents.slice(0, options?.tall ? 8 : 3).map((item, lane) => (
+          {visible.map((item, lane) => (
             <InteractionUI
-              key={item.id}
+              key={`${item.id}-${themeEpoch}`}
               as="button"
               className={cn('event-bar event-bar--single', item.completed && 'is-completed')}
-              style={
-                {
-                  ...eventStyle(item.color ?? EVENT_PALETTE[0]),
-                  '--event-lane': lane
-                } as CSSProperties
-              }
-              onClick={() => setSelectedKey(cell.dateKey)}
+              style={eventStyle(eventColor(item), Boolean(item.completed), lane)}
+              onClick={(e) => {
+                e.stopPropagation()
+                setSelectedKey(cell.dateKey)
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                openEventDetail(item, {
+                  top: rect.top,
+                  left: rect.left,
+                  width: rect.width,
+                  height: rect.height
+                })
+              }}
               onDoubleClick={(event) => {
                 event.stopPropagation()
-                toggleCompleted(item.id)
+                if (!canEdit) return
+                openEventEditor(item)
               }}
               aria-label={item.title}
-              title="더블클릭: 완료 토글"
+              title={canEdit ? '클릭: 상세 · 더블클릭: 편집' : '클릭: 상세'}
             >
               <span className="event-bar-accent" aria-hidden />
               <span className={cn('event-title', item.completed && 'is-completed')}>{item.title}</span>
-              <span
-                role="button"
-                tabIndex={0}
-                className="event-bar-remove"
-                aria-label={`${item.title} 삭제`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  removeEvent(item.id)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault()
+              {canEdit ? (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="event-bar-remove"
+                  aria-label={`${item.title} 삭제`}
+                  onClick={(e) => {
                     e.stopPropagation()
-                    removeEvent(item.id)
-                  }
-                }}
-              >
-                ×
-              </span>
+                    void removeEvent(item.id)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      void removeEvent(item.id)
+                    }
+                  }}
+                >
+                  ×
+                </span>
+              ) : null}
             </InteractionUI>
           ))}
+          {hiddenEventCount > 0 ? (
+            <EventMoreButton
+              count={hiddenEventCount}
+              lane={visible.length}
+              onClick={(e) => {
+                e.stopPropagation()
+                const rect = (e.currentTarget as HTMLElement)
+                  .closest('.day-cell')
+                  ?.getBoundingClientRect()
+                setQuickEdit(null)
+                setEventPopover(null)
+                setDayList({
+                  dateKey: cell.dateKey,
+                  anchorRect: rect
+                    ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+                    : null
+                })
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                openQuickEdit(cell, e)
+              }}
+            />
+          ) : null}
         </div>
       </div>
     )
   }
 
   const renderYearView = (): ReactElement => (
-    <div className="year-view">
+    <div className="year-view flex-1">
       {Array.from({ length: 12 }, (_, monthIndex) => {
         const weeks = buildMonthWeeks(year, monthIndex, weekStartsOn)
         return (
@@ -644,7 +1016,8 @@ export function CalendarGrid({
                     !cell.inMonth && 'other-month',
                     cell.isToday && 'today',
                     cell.weekday === 0 && cell.inMonth && 'sunday',
-                    cell.weekday === 6 && cell.inMonth && 'saturday'
+                    cell.weekday === 6 && cell.inMonth && 'saturday',
+                    holidayKeys.has(cell.dateKey) && cell.inMonth && 'holiday'
                   )}
                 >
                   {cell.inMonth ? cell.day : ''}
@@ -657,137 +1030,188 @@ export function CalendarGrid({
     </div>
   )
 
+  const dayListEvents = dayList ? (eventsByDate.get(dayList.dateKey) ?? []) : []
+
   return (
-    <div className="neo-cal-shell">
-      <AppChrome
-        mode={mode}
-        user={user}
-        searchOpen={searchOpen}
-        settingsOpen={settingsOpen}
-        modeBusy={modeBusy}
-        switchReady={switchReady}
-        chromeRef={chromeRef}
-        onOpenSearch={() => {
-          setSettingsOpen(false)
-          setSearchOpen(true)
-        }}
-        onOpenSettings={() => {
-          setSearchOpen(false)
-          setSettingsOpen(true)
-        }}
-        onEnterDesktop={() => void enterDesktop()}
-        onEnterWindow={() => void enterWindow()}
-        onAuthToggle={handleAuthToggle}
-      />
-
+    <div
+      className={cn('neo-cal-shell flex h-full flex-col', roundedCorners && 'is-rounded-corners')}
+    >
       <header
-        ref={periodHeaderRef}
-        className="neo-cal-header header-period-row interaction-ui"
-        data-shell-chrome="period-header"
+        className={cn(headerShellClass, 'interaction-ui', mode === 'window' && 'is-window-mode')}
+        data-shell-chrome="header"
       >
-        <div className="header-view-modes" role="group" aria-label="보기 모드">
-          {VIEW_MODE_OPTIONS.map(({ value, label, Icon }) => (
+        <AppChrome
+          mode={mode}
+          user={user}
+          searchOpen={searchOpen}
+          settingsOpen={settingsOpen}
+          exporting={exporting}
+          modeBusy={modeBusy}
+          switchReady={switchReady}
+          chromeRef={chromeRef}
+          onOpenSearch={() => {
+            setSettingsOpen(false)
+            setSearchOpen(true)
+          }}
+          onOpenSettings={() => {
+            setSearchOpen(false)
+            setSettingsOpen(true)
+          }}
+          onExportExcel={() => void handleExport('excel')}
+          onExportPdf={() => void handleExport('pdf')}
+          onEnterDesktop={() => void enterDesktop()}
+          onEnterWindow={() => void enterWindow()}
+          onAuthToggle={handleAuthToggle}
+        />
+
+        <div
+          ref={periodHeaderRef}
+          className="header-period-row flex min-w-0 items-center justify-center gap-2"
+          data-shell-chrome="period-header"
+        >
+          <div className="flex shrink-0 items-center gap-1" role="group" aria-label="보기 모드">
+            {VIEW_MODE_OPTIONS.map(({ value, label, Icon }) => (
+              <InteractionUI
+                key={value}
+                as="button"
+                className={
+                  viewMode === value ? viewModeIconBtnActiveClass : viewModeIconBtnClass
+                }
+                aria-label={`${label} 보기`}
+                aria-pressed={viewMode === value}
+                title={`${label} 보기`}
+                onClick={() => setViewMode(value)}
+              >
+                <Icon />
+              </InteractionUI>
+            ))}
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            {viewMode === 'month' && (
+              <InteractionUI
+                as="button"
+                className={yearNavBtnClass}
+                onClick={() => shiftYear(-1)}
+                aria-label="이전 연도"
+                title="이전 연도"
+              >
+                <DoubleChevronLeftIcon />
+              </InteractionUI>
+            )}
             <InteractionUI
-              key={value}
               as="button"
-              className={cn('hdr-btn hdr-btn-view', viewMode === value && 'is-active')}
-              aria-label={`${label} 보기`}
-              aria-pressed={viewMode === value}
-              title={`${label} 보기`}
-              onClick={() => setViewMode(value)}
+              className={`${navBtnClass} mr-5`}
+              onClick={onPrev}
+              aria-label={
+                viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'
+              }
+              title={
+                viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'
+              }
             >
-              <Icon />
+              <ChevronLeftIcon />
             </InteractionUI>
-          ))}
-        </div>
 
-        <div className="header-period-nav">
-          {viewMode === 'month' && (
+            <div className="flex min-w-0 items-baseline gap-2 whitespace-nowrap">
+              <h1 className="m-0 text-[22px] font-semibold tracking-tight text-gcal-heading">
+                {periodTitle}
+              </h1>
+              {lunarMonthLabel ? (
+                <span
+                  className="hidden shrink-0 rounded-full bg-gcal-blue-soft px-2 py-0.5 text-xs text-gcal-blue-dark xl:inline-block"
+                  title={lunarMonthLabel}
+                >
+                  {lunarMonthLabel}
+                </span>
+              ) : null}
+            </div>
+
             <InteractionUI
               as="button"
-              className="hdr-btn hdr-btn-nav"
-              onClick={() => shiftYear(-1)}
-              aria-label="이전 연도"
-              title="이전 연도"
+              className={`${navBtnClass} ml-5`}
+              onClick={onNext}
+              aria-label={
+                viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'
+              }
+              title={
+                viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'
+              }
             >
-              <DoubleChevronLeftIcon />
+              <ChevronRightIcon />
             </InteractionUI>
-          )}
-          <InteractionUI
-            as="button"
-            className="hdr-btn hdr-btn-nav hdr-btn-nav-gap-end"
-            onClick={onPrev}
-            aria-label={viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'}
-            title={viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'}
-          >
-            <ChevronLeftIcon />
-          </InteractionUI>
+            {viewMode === 'month' && (
+              <InteractionUI
+                as="button"
+                className={yearNavBtnClass}
+                onClick={() => shiftYear(1)}
+                aria-label="다음 연도"
+                title="다음 연도"
+              >
+                <DoubleChevronRightIcon />
+              </InteractionUI>
+            )}
+          </div>
 
-          <h1 className="neo-cal-title">{periodTitle}</h1>
-
-          <InteractionUI
-            as="button"
-            className="hdr-btn hdr-btn-nav hdr-btn-nav-gap-start"
-            onClick={onNext}
-            aria-label={viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'}
-            title={viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'}
-          >
-            <ChevronRightIcon />
-          </InteractionUI>
-          {viewMode === 'month' && (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <InteractionUI as="button" className={todayBtnClass} onClick={goToday}>
+              오늘
+            </InteractionUI>
             <InteractionUI
               as="button"
-              className="hdr-btn hdr-btn-nav"
-              onClick={() => shiftYear(1)}
-              aria-label="다음 연도"
-              title="다음 연도"
+              className={cn(desktopModeIconBtnClass, softBlueIconBtnClass)}
+              onClick={openSite}
+              aria-label="인터넷"
+              title="사이트 열기"
             >
-              <DoubleChevronRightIcon />
+              <WebBrowserIcon />
             </InteractionUI>
-          )}
-        </div>
-
-        <div className="header-period-actions">
-          <InteractionUI as="button" className="hdr-btn hdr-btn-today" onClick={goToday}>
-            오늘
-          </InteractionUI>
-          <InteractionUI
-            as="button"
-            className="hdr-btn hdr-btn-tool"
-            onClick={openSite}
-            aria-label="인터넷"
-            title="사이트 열기"
-          >
-            <WebBrowserIcon />
-          </InteractionUI>
-          <InteractionUI
-            as="button"
-            className={cn('hdr-btn hdr-btn-tool', eventsHidden && 'is-active')}
-            onClick={() => setEventsHidden((v) => !v)}
-            aria-label={eventsHidden ? '모든 일정 보이기' : '모든 일정 숨기기'}
-            aria-pressed={eventsHidden}
-            title={eventsHidden ? '일정 다시 보이기' : '모든 일정 숨기기'}
-          >
-            <HideEventsEyeIcon open={!eventsHidden} />
-          </InteractionUI>
-          <InteractionUI
-            as="button"
-            className={cn('hdr-btn hdr-btn-tool', completedHidden && 'is-active')}
-            onClick={() => setCompletedHidden((v) => !v)}
-            aria-label={completedHidden ? '완료 일정 보이기' : '완료 일정 숨기기'}
-            aria-pressed={completedHidden}
-            title={completedHidden ? '완료된 일정 다시 보이기' : '완료된 일정만 숨기기'}
-          >
-            <HideCompletedCheckIcon checked={completedHidden} />
-          </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
+                softBlueIconBtnClass,
+                eventsHidden && softBlueIconBtnActiveClass
+              )}
+              onClick={() => setViewFlag({ eventsHidden: !eventsHidden })}
+              aria-label={eventsHidden ? '모든 일정 보이기' : '모든 일정 숨기기'}
+              aria-pressed={eventsHidden}
+              title={eventsHidden ? '일정 다시 보이기' : '모든 일정 숨기기'}
+            >
+              <HideEventsEyeIcon open={!eventsHidden} />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
+                softBlueIconBtnClass,
+                completedHidden && softBlueIconBtnActiveClass
+              )}
+              onClick={() => setViewFlag({ completedHidden: !completedHidden })}
+              aria-label={completedHidden ? '완료 일정 보이기' : '완료 일정 숨기기'}
+              aria-pressed={completedHidden}
+              title={completedHidden ? '완료된 일정 다시 보이기' : '완료된 일정만 숨기기'}
+            >
+              <HideCompletedCheckIcon checked={completedHidden} />
+            </InteractionUI>
+          </div>
         </div>
       </header>
 
       {viewMode === 'year' ? (
         renderYearView()
       ) : viewMode === 'week' ? (
-        <div className="month-view hide-week-numbers week-view">
+        <div
+          className={cn(
+            'month-view week-view flex-1',
+            !showWeekNumbers && 'hide-week-numbers',
+            eventsHidden && 'is-events-hidden',
+            completedHidden && 'is-completed-hidden'
+          )}
+          style={eventLayoutCssVars as CSSProperties}
+        >
           <div className="month-weekdays">
+            {showWeekNumbers ? <div className="week-number-header" aria-hidden /> : null}
             {weekdayLabels.map((label) => (
               <div
                 key={label}
@@ -799,13 +1223,33 @@ export function CalendarGrid({
               </div>
             ))}
           </div>
-          <div className="month-body">
-            <div className="month-week month-week--single">{weekDays.map((cell) => renderDayCell(cell, { tall: true }))}</div>
+          <div ref={monthBodyRef} className="month-body">
+            <div className="month-week month-week--single">
+              {showWeekNumbers ? (
+                <div className="week-number" title={`${getWeekNumber(weekDays[0].date)}주`}>
+                  {getWeekNumber(weekDays[0].date)}
+                </div>
+              ) : null}
+              {weekDays.map((cell) => renderDayCell(cell, { tall: true }))}
+            </div>
           </div>
         </div>
       ) : (
-        <div className={cn('month-view hide-week-numbers', eventsHidden && 'is-events-hidden')}>
+        <div
+          className={cn(
+            'month-view flex-1',
+            !showWeekNumbers && 'hide-week-numbers',
+            eventsHidden && 'is-events-hidden',
+            completedHidden && 'is-completed-hidden'
+          )}
+          style={eventLayoutCssVars as CSSProperties}
+        >
           <div className="month-weekdays">
+            {showWeekNumbers ? (
+              <div className="week-number-header" title="주차">
+                주
+              </div>
+            ) : null}
             {weekdayLabels.map((label) => (
               <div
                 key={label}
@@ -817,9 +1261,14 @@ export function CalendarGrid({
               </div>
             ))}
           </div>
-          <div className="month-body">
+          <div ref={monthBodyRef} className="month-body">
             {monthWeeks.map((week, wi) => (
               <div key={`week-${wi}`} className="month-week">
+                {showWeekNumbers ? (
+                  <div className="week-number" title={`${getWeekNumber(week[0].date)}주`}>
+                    {getWeekNumber(week[0].date)}
+                  </div>
+                ) : null}
                 {week.map((cell) => renderDayCell(cell))}
               </div>
             ))}
@@ -827,10 +1276,10 @@ export function CalendarGrid({
         </div>
       )}
 
-      <footer className="neo-cal-footer interaction-ui" data-shell-chrome="footer">
+      <footer className={cn(footerShellClass, 'interaction-ui')} data-shell-chrome="footer">
         <InteractionUI
           as="button"
-          className="neo-cal-footer-link"
+          className="border-0 bg-transparent p-0 text-xs text-gcal-muted transition-colors hover:text-gcal-blue hover:underline"
           onClick={openSite}
           title={SITE_URL}
           aria-label={SITE_URL}
@@ -841,15 +1290,30 @@ export function CalendarGrid({
 
       <SearchPanel
         open={searchOpen}
-        events={events}
+        events={visibleEvents}
+        calendars={store.calendars}
+        tags={store.tags}
         onClose={() => setSearchOpen(false)}
         onSelect={jumpToEvent}
       />
       <SettingsPanel
         open={settingsOpen}
         settings={settings}
+        store={store}
+        user={user}
         onClose={() => setSettingsOpen(false)}
         onSave={onSettingsSaved}
+        onPatchStore={patchStoreSettings}
+        onCreateCalendar={createCalendar}
+        onPatchCalendar={patchCalendar}
+        onDeleteCalendar={deleteCalendar}
+        onSetTags={setTags}
+        onReplaceStore={replaceStore}
+        onAddEvent={addEvent}
+        onListMembers={listMembers}
+        onSaveMembers={saveMembers}
+        onSyncHolidays={syncHolidays}
+        onRefresh={refresh}
       />
       <LoginDialog
         open={loginOpen}
@@ -863,24 +1327,169 @@ export function CalendarGrid({
         <DayQuickEditPopover
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
-          events={events}
+          events={eventsByDate.get(quickEdit.dateKey) ?? []}
+          calendars={store.calendars}
+          tags={store.tags}
           dayColor={dayColors[quickEdit.dateKey] ?? null}
           anchorRect={quickEdit.anchorRect}
-          canEdit
+          canEdit={canEdit}
           onClose={() => setQuickEdit(null)}
-          onCreate={(title) => createEvent(quickEdit.dateKey, title)}
-          onToggleCompleted={(id, completed) => toggleCompleted(id, completed)}
-          onRemove={removeEvent}
-          onDayColorChange={(color) => {
-            setDayColors((prev) => {
-              const next = { ...prev }
-              if (!color) delete next[quickEdit.dateKey]
-              else next[quickEdit.dateKey] = color
-              return next
+          onCreate={(title, calendarId, tagIds, links) =>
+            void addEvent({
+              title,
+              calendarId: calendarId || PRIMARY_CALENDAR_ID,
+              startDate: quickEdit.dateKey,
+              endDate: quickEdit.dateKey,
+              allDay: true,
+              tagIds,
+              links
             })
+          }
+          onToggleCompleted={(id, completed) => void toggleCompleted(id, completed)}
+          onRemove={(id) => void removeEvent(id)}
+          onDayColorChange={(color) => {
+            const next = { ...dayColors }
+            if (!color) delete next[quickEdit.dateKey]
+            else next[quickEdit.dateKey] = color
+            void patchStoreSettings({ dayColors: next })
+          }}
+          onEventCalendarChange={(event, calendarId) => void editEvent(event.id, { calendarId })}
+          onEventTagChange={(event, tagIds) => void editEvent(event.id, { tagIds })}
+          onEventMarkerShapeChange={(event, markerShape) =>
+            void editEvent(event.id, { markerShape })
+          }
+          onEventLinkChange={(event, links) => void editEvent(event.id, { links })}
+          onOpenMore={(event) =>
+            openEventEditor(event ?? null, {
+              defaultDate: quickEdit.dateKey,
+              returnQuickEdit: quickEdit
+            })
+          }
+          onOpenEvent={(event) => openEventDetail(event, quickEdit.anchorRect)}
+          onEditEvent={(event) => openEventEditor(event)}
+        />
+      ) : null}
+
+      {eventPopover ? (
+        <EventPopover
+          event={eventPopover.event}
+          calendar={calendarsById.get(eventPopover.event.calendarId)}
+          tags={store.tags}
+          anchorRect={eventPopover.anchorRect}
+          canEdit={canEdit}
+          onClose={() => setEventPopover(null)}
+          onEdit={() => openEventEditor(eventPopover.event)}
+          onDelete={() => {
+            void removeEvent(eventPopover.event.id).then(() => setEventPopover(null))
+          }}
+          onToggleCompleted={(completed) => {
+            void toggleCompleted(eventPopover.event.id, completed).then(() =>
+              setEventPopover((prev) =>
+                prev ? { ...prev, event: { ...prev.event, completed } } : null
+              )
+            )
           }}
         />
       ) : null}
+
+      {dayList ? (
+        <DayEventsPopover
+          dateKey={dayList.dateKey}
+          events={dayListEvents}
+          calendarsById={calendarsById}
+          tags={store.tags}
+          anchorRect={dayList.anchorRect}
+          canEdit={canEdit}
+          onClose={() => setDayList(null)}
+          onSelect={(event, rect) => {
+            setDayList(null)
+            openEventDetail(event, rect)
+          }}
+          onEdit={(event) => {
+            setDayList(null)
+            openEventEditor(event)
+          }}
+        />
+      ) : null}
+
+      {editor ? (
+        <EventEditor
+          open
+          event={editor.event}
+          defaultDate={editor.defaultDate}
+          calendars={store.calendars}
+          tags={store.tags}
+          onClose={() => {
+            const back = editor.returnQuickEdit
+            setEditor(null)
+            setPendingEdit(null)
+            if (back) setQuickEdit(back)
+          }}
+          onSave={async (payload) => {
+            try {
+              if (!editor.event) {
+                dismissEditorAfterSave()
+                await addEvent({
+                  ...payload,
+                  allDay: payload.allDay !== false
+                } as Parameters<typeof addEvent>[0])
+                return
+              }
+
+              if (pendingEdit?.needsScope) {
+                setPendingEdit((prev) =>
+                  prev
+                    ? { ...prev, payload: payload as Record<string, unknown> }
+                    : prev
+                )
+                setScopeDialog({ mode: 'edit' })
+                return
+              }
+
+              dismissEditorAfterSave()
+              await editEvent(editor.event.id, payload as Partial<CalendarEvent>)
+            } catch (error) {
+              window.alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
+            }
+          }}
+          onDelete={
+            editor.event
+              ? async () => {
+                  const master =
+                    store.events.find((item) => item.id === editor.event!.id) ?? editor.event!
+                  if (!isRecurringEvent(master)) {
+                    await removeEvent(master.id)
+                    setEditor(null)
+                    setPendingEdit(null)
+                    return
+                  }
+                  const occurrenceDate =
+                    editor.occurrenceDate ||
+                    getOccurrenceDate(master, selectedKey) ||
+                    master.startDate
+                  setPendingDelete({ master, occurrenceDate })
+                  setScopeDialog({ mode: 'delete' })
+                }
+              : undefined
+          }
+        />
+      ) : null}
+
+      <RecurrenceScopeDialog
+        open={Boolean(scopeDialog)}
+        mode={scopeDialog?.mode ?? 'edit'}
+        onClose={() => {
+          setScopeDialog(null)
+          if (scopeDialog?.mode === 'edit') {
+            setPendingEdit((prev) => (prev ? { ...prev, payload: undefined } : prev))
+          } else {
+            setPendingDelete(null)
+          }
+        }}
+        onSelect={(scope) => {
+          void handleScopeSelect(scope)
+        }}
+      />
     </div>
   )
 }

@@ -119,6 +119,14 @@ export class DesktopInputBridge {
 
         this.enterHoldMs = 0
 
+        const busy = this.options.isBusy()
+        // Keep undocked while settings/login/editor/quick-edit is open so Hangul IME
+        // and text focus are not torn down mid-composition.
+        if (busy) {
+          this.idleMs = 0
+          return
+        }
+
         const widget = this.options.getWidgetBounds()
         const outside = Boolean(widget && !contains(widget, pt))
 
@@ -133,10 +141,8 @@ export class DesktopInputBridge {
           !this.lastPt || this.lastPt.x !== pt.x || this.lastPt.y !== pt.y
         this.lastPt = pt
 
-        const busy = this.options.isBusy()
-
-        // Stay undocked while the user is moving/clicking inside or a UI task is open.
-        if (busy || moved || buttonsDown) {
+        // Stay undocked while the user is moving/clicking inside.
+        if (moved || buttonsDown) {
           this.idleMs = 0
           return
         }

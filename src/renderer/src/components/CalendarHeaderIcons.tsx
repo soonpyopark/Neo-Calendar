@@ -177,3 +177,42 @@ export function WindowModeIcon(): ReactElement {
     </svg>
   )
 }
+
+function DocumentOutlineIcon({ children }: { children: ReactNode }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"
+      />
+      {children}
+    </svg>
+  )
+}
+
+/** MDC Excel export icon (path-based X). */
+export function ExcelIcon(): ReactElement {
+  return (
+    <DocumentOutlineIcon>
+      <path
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.85"
+        strokeLinecap="round"
+        d="M9.4 12.4 14.6 17.6M14.6 12.4 9.4 17.6"
+      />
+    </DocumentOutlineIcon>
+  )
+}
+
+/** MDC PDF export icon. */
+export function PdfIcon(): ReactElement {
+  return (
+    <DocumentOutlineIcon>
+      <path
+        fill="currentColor"
+        d="M8.15 16.95V12.1h1.12v1.72h1.28V12.1h1.12v4.85h-1.12v-2.05H9.27v2.05H8.15zm5.02 0V12.1h1.95c.62 0 1.06.14 1.34.44.28.3.42.72.42 1.26 0 .52-.14.93-.42 1.22-.28.28-.7.43-1.26.43h-.88v1.5H13.17zm1.15-2.48h.72c.24 0 .42-.05.54-.16.12-.11.18-.28.18-.5s-.06-.4-.18-.5c-.12-.12-.3-.17-.54-.17h-.72v1.33zm3.2 2.48V12.1h1.12v3.78h1.58v1.07h-2.7z"
+      />
+    </DocumentOutlineIcon>
+  )
+}

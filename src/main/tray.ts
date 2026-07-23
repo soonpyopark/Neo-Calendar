@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, nativeImage } from 'electron'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import type { DesktopModeController } from './desktopMode'
+import { APP_NAME } from '../shared/constants'
 
 function resolveTrayImage(): Electron.NativeImage {
   const candidates = [
@@ -39,7 +40,7 @@ export function createAppTray(options: {
   }
 
   const tray = new Tray(image)
-  tray.setToolTip('My Desktop Calendar')
+  tray.setToolTip(APP_NAME)
 
   const rebuild = (): void => {
     const mode = options.desktopMode.getLaunchMode()
@@ -60,7 +61,11 @@ export function createAppTray(options: {
         label: mode === 'desktop' ? '✓ 바탕화면 모드' : '바탕화면 모드',
         click: () => {
           if (options.desktopMode.getLaunchMode() === 'desktop') return
-          options.desktopMode.enterDesktop({ intentional: true, force: true })
+          options.desktopMode.enterDesktop({
+            intentional: true,
+            force: true,
+            fromTray: true
+          })
           rebuild()
         }
       },

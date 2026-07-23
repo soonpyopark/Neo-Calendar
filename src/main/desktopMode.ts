@@ -4,6 +4,7 @@ import type { LaunchMode, ModeStatus, WidgetBounds } from '../shared/ipc'
 import type { SettingsStore } from './settingsStore'
 import { centerOnCursorDisplay, normalizeBoundsToDisplay } from './displayGeometry'
 import { clearWallpaperPin, isWorkerEmbedded, setAsWallpaper } from './wallpaper'
+import { focusWindowForTextInput } from './windowFocus'
 
 type DesktopModeOptions = {
   getWindow: () => BrowserWindow | null
@@ -38,6 +39,11 @@ export class DesktopModeController {
    * cursor is still over a wake button — clear once the cursor leaves wake zones.
    */
   private wakeHoldUntilLeave = false
+  /**
+   * After cold-start window restore, ignore non-forced enterDesktop briefly.
+   * Prevents a cursor sitting on the desktop-mode button from burying the UI.
+   */
+  private blockDesktopEnterUntil = 0
   /** Client-space wake zones (header/period buttons) from renderer. */
   private wakeClientZones: WidgetBounds[] = []
   /** Fallback strip height until renderer publishes wake zones. */
@@ -216,12 +222,26 @@ export class DesktopModeController {
     win.setAlwaysOnTop(false)
     win.setHasShadow(false)
     win.setBounds(footprint)
-    // Full mouse capture while temporarily undocked (day dblclick / header buttons).
+    // Full mouse + keyboard capture while temporarily undocked.
+    // Must activate the HWND — showInactive() alone leaves Hangul IME detached.
     win.setIgnoreMouseEvents(false)
-    win.showInactive()
+    win.setBounds(footprint)
+    focusWindowForTextInput(win)
     win.setBounds(footprint)
     console.log('[desktop] Suspended under-icons for header/UI input', footprint)
     this.onModeChanged?.(this.getStatus())
+  }
+
+  /** Re-attach OS/IME focus while an undocked text UI (settings/login/editor) is open. */
+  focusForTextInput(): void {
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) return
+    if (this.mode === 'desktop' && !this.interactionSuspended) {
+      this.suspendForInteraction()
+      return
+    }
+    win.setIgnoreMouseEvents(false)
+    focusWindowForTextInput(win)
   }
 
   resumeUnderIcons(): void {
@@ -260,6 +280,7 @@ export class DesktopModeController {
       this.enterDesktop({
         intentional: true,
         force: true,
+        fromTray: true,
         persist: true,
         bounds: this.lockedBounds
       })
@@ -267,6 +288,19 @@ export class DesktopModeController {
     }
 
     this.enterWindow({ persist: true, fromRestore: true, force: true })
+    // Re-assert focus after chrome finishes painting (keeps window on top).
+    setTimeout(() => {
+      if (this.mode !== 'window') return
+      const w = this.getWindow()
+      if (!w || w.isDestroyed()) return
+      w.setAlwaysOnTop(true, 'floating')
+      w.show()
+      w.focus()
+      w.moveTop()
+      setTimeout(() => {
+        if (this.mode === 'window' && !w.isDestroyed()) w.setAlwaysOnTop(false)
+      }, 1500)
+    }, 200)
   }
 
   /** Save mode + size/position for the next cold start (call on quit). */
@@ -318,6 +352,8 @@ export class DesktopModeController {
       bounds?: WidgetBounds
       intentional?: boolean
       force?: boolean
+      /** Tray / explicit restore only — bypasses startup window lock. */
+      fromTray?: boolean
     } = {}
   ): ModeStatus {
     const win = this.getWindow()
@@ -329,6 +365,15 @@ export class DesktopModeController {
     }
 
     if (this.mode === 'desktop') {
+      return this.getStatus()
+    }
+
+    // Startup lock applies even to force:true from the renderer IPC path.
+    if (!options.fromTray && Date.now() < this.blockDesktopEnterUntil) {
+      console.log('[desktop] Ignoring enterDesktop — startup window lock', {
+        force: Boolean(options.force),
+        remainingMs: this.blockDesktopEnterUntil - Date.now()
+      })
       return this.getStatus()
     }
 
@@ -400,7 +445,11 @@ export class DesktopModeController {
     this.mode = 'window'
     this.interactionSuspended = false
     this.wakeHoldUntilLeave = false
-    this.armModeSwitchGate(options.fromRestore ? 300 : 250)
+    if (options.fromRestore) {
+      this.blockDesktopEnterUntil = Date.now() + 4000
+    }
+    // Longer gate on cold-start restore so the window stays visible.
+    this.armModeSwitchGate(options.fromRestore ? 1500 : 250)
     this.lockInput(options.fromRestore ? 250 : 200)
 
     // Restore exact saved footprint (do not nudge away from cursor).

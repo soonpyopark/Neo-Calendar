@@ -1,3 +1,16 @@
+import type {
+  CalendarEvent,
+  CalendarRecord,
+  CalendarStoreSnapshot,
+  EventInput,
+  MemberRecord,
+  MemberSaveInput,
+  StoreSettings,
+  SyncHolidaysInput,
+  SyncHolidaysResult,
+  TagRecord
+} from './calendarTypes'
+
 export type SetIgnoreMouseOptions = {
   /** Electron native option mapped in main */
   forward?: boolean
@@ -71,13 +84,15 @@ export type NeoCalendarApi = {
   setHeaderHitZone: (rect: ClientHitRect | null) => void
   /** Client-space zones that temporarily undock under-icons mode on hover. */
   setWakeHitZones: (zones: ClientHitRect[]) => void
-  /** In-month day cells for WorkerW double-click → quick edit (no hover wake). */
+  /** Day cells for WorkerW double-click → quick edit (no hover wake). */
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
   /**
    * True while a desktop-mode UI task is open (quick edit / search / settings / login).
    * Keeps the temporary undock from re-embedding until work finishes + idle timeout.
    */
   setInteractionBusy: (busy: boolean) => void
+  /** Activate OS keyboard/IME focus for Hangul (and other IME) text input. */
+  focusForTextInput: () => void
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
   getAuth: () => Promise<AuthUser | null>
@@ -85,4 +100,29 @@ export type NeoCalendarApi = {
   logout: () => Promise<void>
   getSettings: () => Promise<AppSettings>
   patchSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
+  /** MDC-compatible calendar store */
+  getCalendarStore: () => Promise<CalendarStoreSnapshot>
+  patchStoreSettings: (patch: Partial<StoreSettings>) => Promise<CalendarStoreSnapshot>
+  replaceCalendarStore: (store: CalendarStoreSnapshot) => Promise<CalendarStoreSnapshot>
+  addEvent: (input: EventInput) => Promise<CalendarEvent>
+  editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
+  removeEvent: (id: string) => Promise<void>
+  createCalendar: (
+    input: Partial<CalendarRecord> & { name: string; color: string }
+  ) => Promise<CalendarRecord>
+  patchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  deleteCalendar: (id: string) => Promise<void>
+  setTags: (tags: TagRecord[]) => Promise<TagRecord[]>
+  listMembers: () => Promise<MemberRecord[]>
+  saveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
+  syncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>
+  exportCalendar: (input: {
+    format: 'excel' | 'pdf'
+    year: number
+    month: number
+    asAdmin?: boolean
+  }) => Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string }>
+  getDataRoot: () => Promise<string>
+  /** Open http(s) URL in the system browser. */
+  openExternal: (url: string) => Promise<void>
 }

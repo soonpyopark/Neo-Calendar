@@ -1,0 +1,111 @@
+{
+  "version": 2,
+  "settings": {
+    "ownerName": "박순표",
+    "timezone": "Asia/Seoul",
+    "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
+    "notifications": {
+      "enabled": "none",
+      "reminderTiming": "1min",
+      "playSound": true,
+      "onlyYesOrMaybe": false
+    },
+    "viewOptions": {
+      "showWeekNumbers": true,
+      "weekStartsOnSunday": true,
+      "roundedCorners": true,
+      "colorScheme": "light",
+      "accentColor": "#795548",
+      "runAtStartup": true,
+      "eventsHidden": false,
+      "completedHidden": false
+    },
+    "holidaysKr": {
+      "serviceKey": "mbVwY6DpRboKyt3qI1JLWJL7OFhgPVRwWQXtadUrLrgCT6x%2BdHxNEdBM1TOP2dTI8DtMZJhbWrN%2FXJMTNTUeJg%3D%3D",
+      "rememberKey": true,
+      "ok": true,
+      "skipped": false,
+      "reason": null,
+      "message": "번들 시드에서 불러옴",
+      "years": [
+        2025,
+        2026,
+        2027
+      ],
+      "count": 65,
+      "lastSyncedAt": "2026-07-22T09:12:46.1001567Z",
+      "source": "seed"
+    },
+    "widget": {
+      "launchMode": "window",
+      "enabled": false,
+      "alwaysOnTop": false,
+      "bounds": {
+        "x": 600,
+        "y": 20,
+        "width": 1310,
+        "height": 990
+      },
+      "chromeBottomInset": 0,
+      "chromeLeftInset": 0,
+      "chromeRightInset": 0,
+      "chromeTopInset": 0,
+      "embedStrategy": "auto",
+      "inputForward": "auto",
+      "margins": {
+        "bottom": 0.05,
+        "left": 0.2,
+        "right": 0.05,
+        "top": 0.05
+      }
+    },
+    "dayColors": {},
+    "dayColorsByLoginId": {},
+    "hiddenCalendarIdsByLoginId": {},
+    "allowedIpCidrs": [
+      {
+        "cidr": "221.168.0.216",
+        "description": "회사 인터넷망 PC"
+      },
+      {
+        "cidr": "192.168.0.1/24",
+        "description": "내 공유기 IP 주소"
+      }
+    ],
+    "headerOpacity": 0.9,
+    "shellOpacity": 0.9
+  },
+  "tags": [
+    {
+      "color": "#039be5",
+      "id": "tag-admin",
+      "name": "행정",
+      "sortOrder": 0
+    },
+    {
+      "color": "#ffe252",
+      "id": "8a759fc6-dc4f-461f-9d9c-8addb8826933",
+      "name": "작업",
+      "sortOrder": 1
+    },
+    {
+      "color": "#8e24aa",
+      "id": "tag-duty",
+      "name": "회의",
+      "sortOrder": 2
+    },
+    {
+      "color": "#f4511e",
+      "id": "tag-trip",
+      "name": "출장",
+      "sortOrder": 3
+    },
+    {
+      "color": "#33b679",
+      "id": "tag-personal",
+      "name": "개인",
+      "sortOrder": 4
+    }
+  ],
+  "updatedAt": "2026-07-23T17:07:09.896Z"
+}
