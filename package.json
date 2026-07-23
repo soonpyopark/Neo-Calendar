@@ -1,0 +1,58 @@
+{
+  "name": "neo-calendar",
+  "version": "1.0.0",
+  "description": "Lightweight desktop wallpaper calendar with dynamic click-through",
+  "main": "./out/main/main.js",
+  "author": "Neo Calendar",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "dev:restart": "node scripts/dev-restart.mjs",
+    "stop": "node scripts/kill-dev.mjs",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+    "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
+    "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "koffi": "^2.11.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "@types/node": "^22.16.5",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^37.10.3",
+    "electron-builder": "^26.0.12",
+    "electron-vite": "^4.0.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tailwindcss": "^4.1.11",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.5"
+  },
+  "build": {
+    "appId": "com.neocalendar.app",
+    "productName": "Neo Calendar",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    }
+  },
+  "allowScripts": {
+    "electron@37.10.3": true,
+    "koffi@2.16.3": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.1": true
+  }
+}
