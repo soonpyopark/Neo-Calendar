@@ -11,14 +11,24 @@ import {
 } from 'react'
 import { InteractionUI } from './InteractionUI'
 import { AppChrome } from './AppChrome'
-import { DayNumber } from './DayNumber'
 import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
-import { getEventBarStyle } from '../lib/colors'
-import { getDayParts, getLunarMonthLabel } from '../lib/lunar'
+import { getLunarMonthLabel } from '../lib/lunar'
+import {
+  generateWeekRange,
+  getWeeksInMonth
+} from '../lib/calendarUtils'
+import { useMonthWeekScroll } from '../hooks/useMonthWeekScroll.js'
 import { buildDayDisplayEvents, DayEventsPopover } from './DayEventsPopover'
 import { EventEditor } from './EventEditor'
-import { EventMoreButton } from './EventMoreButton'
 import { EventPopover, type EventPopoverAnchor } from './EventPopover'
+import { MonthDayCell, type DaySegment } from './MonthDayCell'
+import {
+  buildAllWeekEventLayouts,
+  buildWeekEventLayout
+} from '../../../shared/mdcExport/monthWeekLayout.js'
+
+const WEEKS_BEFORE = 56
+const WEEKS_AFTER = 56
 import { parseDateKey as parseDateKeyLocal } from '../lib/calendarUtils'
 import {
   getEventSortOrderForDay,
@@ -28,11 +38,7 @@ import { LoginDialog } from './LoginDialog'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
-import {
-  resolveDayVisibleEventLimit,
-  useEventLayoutCssVars,
-  useMaxVisibleEvents
-} from '../hooks/useMaxVisibleEvents'
+import { useEventLayoutCssVars, useMaxVisibleEvents } from '../hooks/useMaxVisibleEvents'
 import {
   addExdate,
   buildFollowingSeriesEvent,
@@ -78,8 +84,6 @@ export type { CalendarEvent }
 export type ViewMode = 'year' | 'week' | 'month'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
-const EVENT_PALETTE = ['#039be5', '#33b679', '#8e24aa', '#e67c73', '#f6bf26', '#0b8043'] as const
-
 const VIEW_MODE_OPTIONS: Array<{ value: ViewMode; label: string; Icon: () => ReactElement }> = [
   { value: 'year', label: '연', Icon: YearViewIcon },
   { value: 'week', label: '주', Icon: WeekViewIcon },
@@ -155,6 +159,46 @@ type DayCell = {
   date: Date
 }
 
+function isMonthInWeekBuffer(
+  anchor: Date,
+  weekStartsOn: 0 | 1,
+  weeksBefore: number,
+  weeksAfter: number,
+  year: number,
+  monthIndex: number
+): boolean {
+  const weeks = generateWeekRange(anchor, weekStartsOn, weeksBefore, weeksAfter)
+  return weeks.some((week) =>
+    week.some(
+      ({ date }) =>
+        date.getFullYear() === year && date.getMonth() === monthIndex && date.getDate() === 1
+    )
+  )
+}
+
+function mapWeekToDayCells(
+  week: Array<{ date: Date }>,
+  displayYear: number,
+  displayMonth: number
+): DayCell[] {
+  const today = new Date()
+  const todayKey = toDateKey(today.getFullYear(), today.getMonth(), today.getDate())
+  return week.map(({ date }) => {
+    const y = date.getFullYear()
+    const m = date.getMonth()
+    const day = date.getDate()
+    const dateKey = toDateKey(y, m, day)
+    return {
+      day,
+      dateKey,
+      inMonth: y === displayYear && m === displayMonth,
+      isToday: dateKey === todayKey,
+      weekday: date.getDay(),
+      date: new Date(y, m, day)
+    }
+  })
+}
+
 function buildMonthWeeks(year: number, month: number, weekStartsOn: 0 | 1 = 0): DayCell[][] {
   const first = new Date(year, month, 1)
   const start = startOfWeek(first, weekStartsOn)
@@ -205,12 +249,12 @@ function buildWeekDays(anchor: Date, weekStartsOn: 0 | 1 = 0): DayCell[] {
   return days
 }
 
-function eventStyle(color: string, completed = false, lane = 0): CSSProperties {
-  return getEventBarStyle(color, { completed, lane }) as CSSProperties
-}
-
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
+}
+
+function toWeekStartKey(week: DayCell[]): string {
+  return week[0]?.dateKey ?? ''
 }
 
 export type CalendarGridProps = {
@@ -288,7 +332,9 @@ export function CalendarGrid({
     occurrenceDate?: string | null
     returnQuickEdit?: { dateKey: string; date: Date; anchorRect: AnchorRect | null } | null
   } | null>(null)
-  const [scopeDialog, setScopeDialog] = useState<{ mode: 'edit' | 'delete' } | null>(null)
+  const [scopeDialog, setScopeDialog] = useState<{
+    mode: 'edit' | 'delete' | 'complete'
+  } | null>(null)
   const [pendingEdit, setPendingEdit] = useState<{
     master: CalendarEvent
     occurrenceDate: string
@@ -299,6 +345,19 @@ export function CalendarGrid({
     master: CalendarEvent
     occurrenceDate: string
   } | null>(null)
+  const [pendingComplete, setPendingComplete] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+    completed: boolean
+  } | null>(null)
+  /** Search-opened detail may stay up even while grid hide toggles are on (MDC). */
+  const detailFromSearchRef = useRef(false)
+
+  /** MDC App.clearEventDetail */
+  const clearEventDetail = useCallback((): void => {
+    detailFromSearchRef.current = false
+    setEventPopover(null)
+  }, [])
 
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
@@ -442,10 +501,134 @@ export function CalendarGrid({
   )
   const weekDays = useMemo(() => buildWeekDays(viewDate, weekStartsOn), [viewDate, weekStartsOn])
 
+  const scrollAnchorRef = useRef(viewDate)
+  const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0)
+  const viewDateRef = useRef(viewDate)
+  viewDateRef.current = viewDate
+  const hasInitialScrollRef = useRef(false)
+  const prevViewMonthRef = useRef('')
+  const prevWeeksInViewportRef = useRef(0)
+
+  useLayoutEffect(() => {
+    if (viewMode !== 'month') {
+      const anchor = viewDateRef.current
+      scrollAnchorRef.current = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
+      setScrollAnchorVersion((version) => version + 1)
+    }
+  }, [viewMode])
+
+  const weekRangeAnchor = useMemo(() => {
+    const current = scrollAnchorRef.current
+    if (
+      isMonthInWeekBuffer(current, weekStartsOn, WEEKS_BEFORE, WEEKS_AFTER, year, month)
+    ) {
+      return current
+    }
+    const next = new Date(year, month, 1)
+    scrollAnchorRef.current = next
+    return next
+  }, [year, month, weekStartsOn, scrollAnchorVersion])
+
+  /** MDC infinite buffer (~113 weeks) mapped to DayCells for the header month. */
+  const scrollWeeks = useMemo(() => {
+    const raw = generateWeekRange(weekRangeAnchor, weekStartsOn, WEEKS_BEFORE, WEEKS_AFTER)
+    return raw.map((week) => mapWeekToDayCells(week, year, month))
+  }, [weekRangeAnchor, weekStartsOn, year, month])
+
+  const effectiveWeeksInViewport =
+    viewMode === 'week' ? 1 : viewMode === 'month' ? getWeeksInMonth(year, month, weekStartsOn) : 0
+
   /** MDC: row height ÷ weeks → how many bars fit before "더보기". */
-  const weeksInViewport = viewMode === 'week' ? 1 : viewMode === 'month' ? monthWeeks.length : 0
-  const eventCapacity = useMaxVisibleEvents(monthBodyRef, weeksInViewport)
+  const eventCapacity = useMaxVisibleEvents(monthBodyRef, effectiveWeeksInViewport)
   const eventLayoutCssVars = useEventLayoutCssVars()
+
+  const layoutEvents = useMemo(
+    () => (completedHidden ? visibleEvents.filter((event) => !event.completed) : visibleEvents),
+    [visibleEvents, completedHidden]
+  )
+
+  const monthWeekLayouts = useMemo(
+    () =>
+      buildAllWeekEventLayouts(scrollWeeks, layoutEvents, store.tags) as Map<
+        string,
+        Record<string, DaySegment[]>
+      >,
+    [scrollWeeks, layoutEvents, store.tags]
+  )
+
+  const weekViewLayout = useMemo(
+    () =>
+      buildWeekEventLayout(weekDays, layoutEvents, store.tags) as Record<string, DaySegment[]>,
+    [weekDays, layoutEvents, store.tags]
+  )
+
+  const segmentsForDay = useCallback(
+    (cell: DayCell, weeks: DayCell[][]): DaySegment[] => {
+      if (viewMode === 'week') return weekViewLayout[cell.dateKey] ?? []
+      const week = weeks.find((row) => row.some((d) => d.dateKey === cell.dateKey))
+      if (!week) return []
+      const layout = monthWeekLayouts.get(toWeekStartKey(week))
+      return layout?.[cell.dateKey] ?? []
+    },
+    [viewMode, weekViewLayout, monthWeekLayouts]
+  )
+
+  const wheelLocked = Boolean(
+    quickEdit ||
+      searchOpen ||
+      settingsOpen ||
+      loginOpen ||
+      eventPopover ||
+      dayList ||
+      editor ||
+      scopeDialog
+  )
+
+  const {
+    setWeekRef,
+    scrollToMonth,
+    consumeSkipScroll
+  } = useMonthWeekScroll({
+    scrollRef: monthBodyRef,
+    weeks: scrollWeeks,
+    weeksInViewport: effectiveWeeksInViewport,
+    onVisibleMonthChange: (nextYear: number, nextMonth1: number) => {
+      const next = new Date(nextYear, nextMonth1 - 1, 1)
+      setViewDate(next)
+    },
+    wheelLocked: wheelLocked || mode === 'desktop'
+  })
+
+  const scrollToMonthRef = useRef(scrollToMonth)
+  scrollToMonthRef.current = scrollToMonth
+
+  useLayoutEffect(() => {
+    if (viewMode !== 'month') return
+    const monthKey = `${year}-${month}`
+    const weeksCountChanged = prevWeeksInViewportRef.current !== effectiveWeeksInViewport
+    prevWeeksInViewportRef.current = effectiveWeeksInViewport
+
+    if (!hasInitialScrollRef.current) {
+      hasInitialScrollRef.current = true
+      scrollToMonthRef.current(year, month, weekStartsOn, 'auto')
+      prevViewMonthRef.current = monthKey
+      return
+    }
+
+    if (prevViewMonthRef.current !== monthKey || weeksCountChanged) {
+      if (weeksCountChanged) consumeSkipScroll()
+      prevViewMonthRef.current = monthKey
+      scrollToMonthRef.current(year, month, weekStartsOn, 'auto')
+    }
+  }, [
+    viewMode,
+    year,
+    month,
+    weekStartsOn,
+    effectiveWeeksInViewport,
+    scrollWeeks,
+    consumeSkipScroll
+  ])
 
   const eventsByDate = useMemo(() => {
     const map = new Map<string, CalendarEvent[]>()
@@ -481,17 +664,59 @@ export function CalendarGrid({
 
   const closeOverlays = useCallback((): void => {
     setQuickEdit(null)
+    detailFromSearchRef.current = false
     setEventPopover(null)
     setDayList(null)
     setEditor(null)
     setScopeDialog(null)
     setPendingEdit(null)
     setPendingDelete(null)
+    setPendingComplete(null)
     setSearchOpen(false)
     setSettingsOpen(false)
     setLoginOpen(false)
     setLoginError(null)
   }, [])
+
+  // Keep open detail in sync when store patches the same event (preserve occurrence day).
+  useEffect(() => {
+    if (!eventPopover) return
+    const seriesId = getSeriesId(eventPopover.event) || eventPopover.event.id
+    const next =
+      store.events.find((item) => item.id === seriesId || item.id === eventPopover.event.id) ??
+      null
+    if (!next) {
+      clearEventDetail()
+      return
+    }
+    setEventPopover((prev) => {
+      if (!prev) return null
+      const occurrenceDate = prev.event.occurrenceDate
+      const merged = occurrenceDate ? { ...next, occurrenceDate } : next
+      if (
+        prev.event.title === merged.title &&
+        prev.event.completed === merged.completed &&
+        prev.event.description === merged.description &&
+        prev.event.calendarId === merged.calendarId
+      ) {
+        return prev
+      }
+      return { ...prev, event: merged }
+    })
+  }, [store.events, eventPopover?.event.id, clearEventDetail])
+
+  // MDC: hide-events / hide-completed dismisses bar detail (search-opened stays).
+  useEffect(() => {
+    if (!eventsHidden) return
+    if (detailFromSearchRef.current) return
+    clearEventDetail()
+  }, [eventsHidden, clearEventDetail])
+
+  useEffect(() => {
+    if (!completedHidden || !eventPopover?.event.completed) return
+    if (detailFromSearchRef.current) return
+    clearEventDetail()
+  }, [completedHidden, eventPopover?.event.completed, clearEventDetail])
 
   const dismissEditorAfterSave = useCallback((): void => {
     const back = editor?.returnQuickEdit ?? null
@@ -609,15 +834,44 @@ export function CalendarGrid({
     }
   }
 
-  const openQuickEdit = (cell: DayCell, event?: MouseEvent): void => {
+  const openQuickEdit = (
+    cell: DayCell,
+    eventOrRect?: MouseEvent | DOMRect | null
+  ): void => {
     setEventPopover(null)
     setDayList(null)
     setSelectedKey(cell.dateKey)
+    let anchorRect: AnchorRect | null = null
+    if (eventOrRect instanceof DOMRect) {
+      anchorRect = {
+        top: eventOrRect.top,
+        left: eventOrRect.left,
+        width: eventOrRect.width,
+        height: eventOrRect.height
+      }
+    } else if (eventOrRect) {
+      anchorRect = rectFromTarget(eventOrRect.currentTarget)
+    }
     setQuickEdit({
       dateKey: cell.dateKey,
       date: cell.date,
-      anchorRect: event ? rectFromTarget(event.currentTarget) : null
+      anchorRect
     })
+  }
+
+  const openQuickEditFromDate = (date: Date, rect?: DOMRect | null): void => {
+    const dateKey = toDateKey(date.getFullYear(), date.getMonth(), date.getDate())
+    openQuickEdit(
+      {
+        day: date.getDate(),
+        dateKey,
+        inMonth: true,
+        isToday: false,
+        weekday: date.getDay(),
+        date
+      },
+      rect ?? null
+    )
   }
 
   const openQuickEditByDateKey = (dateKey: string): void => {
@@ -685,9 +939,6 @@ export function CalendarGrid({
     })
   }, [onModeChange, closeOverlays])
 
-  const eventColor = (item: CalendarEvent): string =>
-    item.color || calendarsById.get(item.calendarId)?.color || EVENT_PALETTE[0]
-
   const toggleCompleted = async (id: string, completed?: boolean): Promise<void> => {
     if (!canEdit) return
     const current = store.events.find((e) => e.id === id)
@@ -749,27 +1000,39 @@ export function CalendarGrid({
     }
   }
 
-  const jumpToEvent = (event: CalendarEvent): void => {
-    const day = event.occurrenceDate || event.startDate
-    const date = parseDateKey(day)
-    if (!date) return
-    setViewDate(date)
-    setSelectedKey(day)
-    setViewMode('month')
-  }
-
+  /**
+   * MDC App.openEventDetail — pointer `{x,y}` or null (centered, e.g. search).
+   * Callers that must not open over QE/editor (bar click) guard themselves.
+   */
   const openEventDetail = (
     event: CalendarEvent,
-    anchorRect: EventPopoverAnchor,
-    opts?: { dayKey?: string; keepDayList?: boolean }
+    anchorRect: EventPopoverAnchor = null,
+    opts?: { dayKey?: string; keepDayList?: boolean; fromSearch?: boolean }
   ): void => {
-    setQuickEdit(null)
+    detailFromSearchRef.current = Boolean(opts?.fromSearch)
     if (!opts?.keepDayList) setDayList(null)
     setEventPopover({
       event,
       anchorRect,
       dayKey: opts?.dayKey ?? event.occurrenceDate ?? event.startDate
     })
+  }
+
+  const handleSearchSelect = ({
+    event,
+    date,
+    dayKey
+  }: {
+    event: CalendarEvent
+    date: Date
+    dayKey: string
+  }): void => {
+    setSearchOpen(false)
+    setViewDate(date)
+    setSelectedKey(dayKey)
+    setViewMode('month')
+    // MDC: search result → centered detail (null anchor).
+    openEventDetail(event, null, { dayKey, fromSearch: true })
   }
 
   const handleReorderEvents = useCallback(
@@ -848,6 +1111,50 @@ export function CalendarGrid({
         await applyRecurringEdit(master, payload, occurrenceDate, scope)
         return
       }
+      if (dialogMode === 'complete' && pendingComplete?.master) {
+        const { master, occurrenceDate, completed } = pendingComplete
+        const nextCompleted = Boolean(completed)
+        const durationDays = Math.max(
+          1,
+          Math.round(
+            (new Date(`${master.endDate || master.startDate}T00:00:00`).getTime() -
+              new Date(`${master.startDate}T00:00:00`).getTime()) /
+              86400000
+          ) + 1
+        )
+        const occurrenceEnd = addDays(new Date(`${occurrenceDate}T00:00:00`), durationDays - 1)
+        const occurrenceEndDate = toDateKey(
+          occurrenceEnd.getFullYear(),
+          occurrenceEnd.getMonth(),
+          occurrenceEnd.getDate()
+        )
+        const payload = {
+          calendarId: master.calendarId,
+          title: master.title,
+          description: master.description ?? '',
+          location: master.location ?? '',
+          startDate: occurrenceDate,
+          endDate: occurrenceEndDate,
+          allDay: master.allDay,
+          startTime: master.startTime,
+          endTime: master.endTime,
+          repeat: master.repeat ?? 'none',
+          repeatUntil: master.repeatUntil ?? null,
+          repeatCount: master.repeatCount ?? null,
+          color: master.color ?? null,
+          completed: nextCompleted,
+          markerShape: master.markerShape ?? null,
+          tagIds: master.tagIds,
+          links: master.links,
+          link: master.link
+        }
+        await applyRecurringEdit(master, payload, occurrenceDate, scope)
+        setPendingComplete(null)
+        setEventPopover((prev) =>
+          prev ? { ...prev, event: { ...prev.event, completed: nextCompleted } } : null
+        )
+        return
+      }
       if (dialogMode === 'delete' && pendingDelete?.master) {
         const { master, occurrenceDate } = pendingDelete
         setPendingDelete(null)
@@ -868,6 +1175,7 @@ export function CalendarGrid({
             })
           }
         }
+        clearEventDetail()
         setEditor(null)
       }
     } catch (error) {
@@ -923,132 +1231,56 @@ export function CalendarGrid({
   )
 
   const renderDayCell = (cell: DayCell, options?: { tall?: boolean }): ReactElement => {
-    const dayEvents = eventsHidden ? [] : (eventsByDate.get(cell.dateKey) ?? [])
-    const daySegments = dayEvents.map((event, lane) => ({ event, lane }))
-    const { visibleCount, hiddenEventCount } = resolveDayVisibleEventLimit(
-      daySegments,
-      eventCapacity
-    )
-    const visible = dayEvents.slice(0, visibleCount)
-    const weekdayClass = cell.weekday === 0 ? 'sunday' : cell.weekday === 6 ? 'saturday' : ''
-    const isKrHoliday = holidayKeys.has(cell.dateKey)
-    const dayColor = dayColors[cell.dateKey]
-    const cellStyle = dayColor
-      ? ({ '--day-cell-bg': dayColor } as CSSProperties)
-      : undefined
-    const { solar, lunar, lunarDay, solarTerm } = getDayParts(
-      cell.date.getFullYear(),
-      cell.date.getMonth() + 1,
-      cell.day
-    )
-
+    const weeks = options?.tall ? [weekDays] : scrollWeeks
     return (
-      <div
+      <MonthDayCell
         key={cell.dateKey}
-        data-date-key={cell.dateKey}
-        className={cn(
-          'day-cell',
-          'interaction-ui',
-          weekdayClass,
-          isKrHoliday && 'holiday',
-          !cell.inMonth && 'other-month',
-          cell.isToday && 'today',
-          selectedKey === cell.dateKey && 'selected',
-          dayColor && 'has-day-color',
-          options?.tall && 'day-cell--tall'
-        )}
-        style={cellStyle}
-        onDoubleClick={(event) => {
-          if ((event.target as Element | null)?.closest?.('.event-bar, .event-more')) return
-          event.preventDefault()
-          event.stopPropagation()
-          openQuickEdit(cell, event)
+        cell={cell}
+        segments={segmentsForDay(cell, weeks)}
+        calendarsById={calendarsById}
+        tags={store.tags}
+        selected={selectedKey === cell.dateKey}
+        isKrHoliday={holidayKeys.has(cell.dateKey)}
+        dayColor={dayColors[cell.dateKey] ?? null}
+        eventCapacity={eventCapacity}
+        eventsHidden={eventsHidden}
+        completedHidden={completedHidden}
+        canEdit={canEdit}
+        tall={options?.tall}
+        themeEpoch={themeEpoch}
+        onDaySelect={(date) => {
+          setSelectedKey(toDateKey(date.getFullYear(), date.getMonth(), date.getDate()))
         }}
-      >
-        <DayNumber
-          solar={solar}
-          lunarLabel={lunar}
-          lunarDay={lunarDay}
-          solarTerm={solarTerm}
-        />
-
-        <div className={cn('day-events', eventsHidden && 'is-hidden')}>
-          {visible.map((item, lane) => (
-            <InteractionUI
-              key={`${item.id}-${themeEpoch}`}
-              as="button"
-              className={cn('event-bar event-bar--single', item.completed && 'is-completed')}
-              style={eventStyle(eventColor(item), Boolean(item.completed), lane)}
-              onClick={(e) => {
-                e.stopPropagation()
-                setSelectedKey(cell.dateKey)
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                openEventDetail(item, {
-                  top: rect.top,
-                  left: rect.left,
-                  width: rect.width,
-                  height: rect.height
-                })
-              }}
-              onDoubleClick={(event) => {
-                event.stopPropagation()
-                if (!canEdit) return
-                openEventEditor(item)
-              }}
-              aria-label={item.title}
-              title={canEdit ? '클릭: 상세 · 더블클릭: 편집' : '클릭: 상세'}
-            >
-              <span className="event-bar-accent" aria-hidden />
-              <span className={cn('event-title', item.completed && 'is-completed')}>{item.title}</span>
-              {canEdit ? (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  className="event-bar-remove"
-                  aria-label={`${item.title} 삭제`}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    void removeEvent(item.id)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      void removeEvent(item.id)
-                    }
-                  }}
-                >
-                  ×
-                </span>
-              ) : null}
-            </InteractionUI>
-          ))}
-          {hiddenEventCount > 0 ? (
-            <EventMoreButton
-              count={hiddenEventCount}
-              lane={visible.length}
-              onClick={(e) => {
-                e.stopPropagation()
-                const rect = (e.currentTarget as HTMLElement)
-                  .closest('.day-cell')
-                  ?.getBoundingClientRect()
-                setQuickEdit(null)
-                setEventPopover(null)
-                setDayList({
-                  dateKey: cell.dateKey,
-                  anchorRect: rect
-                    ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-                    : null
-                })
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation()
-                openQuickEdit(cell, e)
-              }}
-            />
-          ) : null}
-        </div>
-      </div>
+        onDayQuickEdit={(date, rect) => openQuickEditFromDate(date, rect)}
+        onEventDetail={(event, clientX, clientY, dayKey) => {
+          // MDC: bar / list click (or context menu) → pointer-anchored detail.
+          // Don't open over quick-edit / full editor (guard is here, not in openEventDetail).
+          if (quickEdit || editor) return
+          setSelectedKey(dayKey)
+          openEventDetail(event, { x: clientX, y: clientY }, { dayKey })
+        }}
+        onEventEdit={(event, dayKey) => {
+          setSelectedKey(dayKey)
+          openEventEditor(event, { defaultDate: dayKey })
+        }}
+        onMoreOpen={(date, dayKey, _segments, rect) => {
+          // MDC onCloseEventDetail: "더보기" list opening closes bar detail.
+          setSelectedKey(dayKey)
+          setQuickEdit(null)
+          clearEventDetail()
+          setDayList({
+            dateKey: dayKey,
+            anchorRect: {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height
+            }
+          })
+          void date
+        }}
+        onReorderEvents={handleReorderEvents}
+      />
     )
   }
 
@@ -1057,17 +1289,21 @@ export function CalendarGrid({
       {Array.from({ length: 12 }, (_, monthIndex) => {
         const weeks = buildMonthWeeks(year, monthIndex, weekStartsOn)
         return (
-          <InteractionUI
+          <div
             key={monthIndex}
-            as="button"
             className={cn('year-month', monthIndex === month && 'is-current')}
-            onClick={() => {
-              setViewDate(new Date(year, monthIndex, 1))
-              setViewMode('month')
-            }}
-            aria-label={`${year}년 ${monthIndex + 1}월`}
           >
-            <div className="year-month-title">{monthIndex + 1}월</div>
+            <InteractionUI
+              as="button"
+              className="year-month-title"
+              onClick={() => {
+                setViewDate(new Date(year, monthIndex, 1))
+                setViewMode('month')
+              }}
+              aria-label={`${year}년 ${monthIndex + 1}월로 이동`}
+            >
+              {monthIndex + 1}월
+            </InteractionUI>
             <div className="year-month-weekdays">
               {weekdayLabels.map((d) => (
                 <span key={d}>{d}</span>
@@ -1075,22 +1311,43 @@ export function CalendarGrid({
             </div>
             <div className="year-month-grid">
               {weeks.flat().map((cell) => (
-                <span
+                <button
                   key={cell.dateKey}
+                  type="button"
                   className={cn(
                     'year-day',
+                    'interaction-ui',
                     !cell.inMonth && 'other-month',
                     cell.isToday && 'today',
+                    selectedKey === cell.dateKey && !cell.isToday && 'selected',
                     cell.weekday === 0 && cell.inMonth && 'sunday',
                     cell.weekday === 6 && cell.inMonth && 'saturday',
                     holidayKeys.has(cell.dateKey) && cell.inMonth && 'holiday'
                   )}
+                  disabled={!cell.inMonth}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    if (!cell.inMonth) return
+                    setSelectedKey(cell.dateKey)
+                    setViewDate(cell.date)
+                  }}
+                  onDoubleClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (!cell.inMonth) return
+                    openQuickEdit(cell)
+                  }}
+                  aria-label={
+                    cell.inMonth
+                      ? `${year}년 ${monthIndex + 1}월 ${cell.day}일`
+                      : undefined
+                  }
                 >
                   {cell.inMonth ? cell.day : ''}
-                </span>
+                </button>
               ))}
             </div>
-          </InteractionUI>
+          </div>
         )
       })}
     </div>
@@ -1314,7 +1571,12 @@ export function CalendarGrid({
             eventsHidden && 'is-events-hidden',
             completedHidden && 'is-completed-hidden'
           )}
-          style={eventLayoutCssVars as CSSProperties}
+          style={
+            {
+              ...eventLayoutCssVars,
+              '--weeks-in-viewport': effectiveWeeksInViewport
+            } as CSSProperties
+          }
         >
           <div className="month-weekdays">
             {showWeekNumbers ? (
@@ -1334,16 +1596,23 @@ export function CalendarGrid({
             ))}
           </div>
           <div ref={monthBodyRef} className="month-body">
-            {monthWeeks.map((week, wi) => (
-              <div key={`week-${wi}`} className="month-week">
-                {showWeekNumbers ? (
-                  <div className="week-number" title={`${getWeekNumber(week[0].date)}주`}>
-                    {getWeekNumber(week[0].date)}
-                  </div>
-                ) : null}
-                {week.map((cell) => renderDayCell(cell))}
-              </div>
-            ))}
+            {scrollWeeks.map((week) => {
+              const weekStartKey = toWeekStartKey(week)
+              return (
+                <div
+                  key={weekStartKey}
+                  className="month-week"
+                  ref={(node) => setWeekRef(weekStartKey, node)}
+                >
+                  {showWeekNumbers ? (
+                    <div className="week-number" title={`${getWeekNumber(week[0].date)}주`}>
+                      {getWeekNumber(week[0].date)}
+                    </div>
+                  ) : null}
+                  {week.map((cell) => renderDayCell(cell))}
+                </div>
+              )
+            })}
           </div>
         </div>
       )}
@@ -1367,7 +1636,7 @@ export function CalendarGrid({
         calendars={store.calendars}
         tags={store.tags}
         onClose={() => setSearchOpen(false)}
-        onSelect={jumpToEvent}
+        onSelectResult={handleSearchSelect}
       />
       <SettingsPanel
         open={settingsOpen}
@@ -1406,6 +1675,8 @@ export function CalendarGrid({
           dayColor={dayColors[quickEdit.dateKey] ?? null}
           anchorRect={quickEdit.anchorRect}
           canEdit={canEdit}
+          expandBody={viewMode === 'month'}
+          onReorderEvents={handleReorderEvents}
           onClose={() => setQuickEdit(null)}
           onCreate={(title, calendarId, tagIds, links) =>
             void addEvent({
@@ -1446,22 +1717,57 @@ export function CalendarGrid({
       {eventPopover ? (
         <EventPopover
           event={eventPopover.event}
-          calendar={calendarsById.get(eventPopover.event.calendarId)}
+          calendar={calendarsById.get(eventPopover.event.calendarId) ?? null}
           tags={store.tags}
           dayKey={eventPopover.dayKey}
           anchorRect={eventPopover.anchorRect}
-          canEdit={canEdit}
-          onClose={() => setEventPopover(null)}
-          onEdit={(event) => openEventEditor(event)}
+          canEdit={
+            canEdit && eventPopover.event.calendarId !== HOLIDAYS_KR_CALENDAR_ID
+          }
+          onClose={clearEventDetail}
+          onEdit={(event) => {
+            // MDC: detail pencil → full EventEditor (closes detail + day list).
+            openEventEditor(event, { defaultDate: eventPopover.dayKey })
+          }}
           onDelete={(event) => {
-            void removeEvent(event.id).then(() => setEventPopover(null))
+            const master =
+              store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ??
+              event
+            if (!isRecurringEvent(master)) {
+              void removeEvent(master.id).then(() => clearEventDetail())
+              return
+            }
+            const occurrenceDate =
+              getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
+            setPendingDelete({ master, occurrenceDate })
+            setScopeDialog({ mode: 'delete' })
           }}
           onToggleCompleted={(event, completed) => {
-            void toggleCompleted(event.id, completed).then(() =>
-              setEventPopover((prev) =>
-                prev ? { ...prev, event: { ...prev.event, completed } } : null
+            if (!canEdit) return
+            const master =
+              store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ??
+              event
+            if (master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const nextCompleted = Boolean(completed)
+            if (!isRecurringEvent(master)) {
+              void editEvent(master.id, { completed: nextCompleted }).then(() =>
+                setEventPopover((prev) =>
+                  prev
+                    ? { ...prev, event: { ...prev.event, completed: nextCompleted } }
+                    : null
+                )
               )
-            )
+              return
+            }
+            // MDC: recurring complete → scope dialog.
+            const occurrenceDate =
+              getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
+            setPendingComplete({
+              master,
+              occurrenceDate,
+              completed: nextCompleted
+            })
+            setScopeDialog({ mode: 'complete' })
           }}
         />
       ) : null}
@@ -1477,10 +1783,15 @@ export function CalendarGrid({
           canEdit={canEdit}
           onClose={() => {
             setDayList(null)
-            setEventPopover(null)
+            clearEventDetail()
           }}
           onEventDetail={(event, _x, _y, dayKey, pointerAnchor) => {
-            openEventDetail(event, pointerAnchor, { dayKey, keepDayList: true })
+            // MDC: list-row click → detail anchored at the mouse pointer; keep day list.
+            if (quickEdit || editor) return
+            openEventDetail(event, pointerAnchor ?? { x: _x, y: _y }, {
+              dayKey,
+              keepDayList: true
+            })
           }}
           onEventEdit={(event, dayKey) => {
             setDayList(null)
@@ -1557,9 +1868,12 @@ export function CalendarGrid({
         open={Boolean(scopeDialog)}
         mode={scopeDialog?.mode ?? 'edit'}
         onClose={() => {
+          const mode = scopeDialog?.mode
           setScopeDialog(null)
-          if (scopeDialog?.mode === 'edit') {
+          if (mode === 'edit') {
             setPendingEdit((prev) => (prev ? { ...prev, payload: undefined } : prev))
+          } else if (mode === 'complete') {
+            setPendingComplete(null)
           } else {
             setPendingDelete(null)
           }

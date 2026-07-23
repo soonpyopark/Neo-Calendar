@@ -348,10 +348,17 @@ textarea {
 }
 
 .year-month-title {
+  display: block;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-size: 13px;
   font-weight: 600;
   color: var(--gcal-heading);
-  margin-bottom: 4px;
+  text-align: left;
+  cursor: pointer;
 }
 
 .year-month-weekdays,
@@ -369,10 +376,25 @@ textarea {
 }
 
 .year-day {
+  border: 0;
+  padding: 0;
+  background: transparent;
   text-align: center;
   font-size: 10px;
   line-height: 1.6;
   color: var(--gcal-heading);
+  cursor: pointer;
+}
+
+.year-day:disabled {
+  cursor: default;
+}
+
+.year-day.selected {
+  border-radius: 999px;
+  background: var(--gcal-blue-soft);
+  color: var(--gcal-blue);
+  font-weight: 700;
 }
 
 .year-day.other-month {
@@ -463,10 +485,29 @@ textarea {
   overflow: hidden;
 }
 
+/* MDC infinite month: snap-scroll week rows inside a fixed viewport. */
+.month-view:not(.week-view) .month-body {
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scrollbar-width: none;
+}
+
+.month-view:not(.week-view) .month-body::-webkit-scrollbar {
+  display: none;
+}
+
 .month-week {
   flex: 1 1 0;
   min-height: 0;
   border-bottom: 1px solid var(--gcal-grid-line);
+}
+
+.month-view:not(.week-view) .month-week {
+  flex: 0 0 calc(100% / var(--weeks-in-viewport, 5));
+  height: calc(100% / var(--weeks-in-viewport, 5));
+  min-height: calc(100% / var(--weeks-in-viewport, 5));
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
 }
 
 .month-week:last-child {
@@ -661,6 +702,39 @@ textarea {
   cursor: pointer;
   z-index: 1;
   opacity: 1;
+}
+
+.event-bar.is-draggable {
+  cursor: grab;
+}
+
+.event-bar.is-draggable:active {
+  cursor: grabbing;
+}
+
+.event-bar.is-dragging {
+  opacity: 0.45;
+}
+
+.event-bar.is-drop-target {
+  box-shadow: inset 0 0 0 1px var(--gcal-blue, #1a73e8);
+  z-index: 2;
+}
+
+.event-bar > .event-time,
+.event-bar > .event-day-index,
+.event-bar > .event-tag-icons,
+.event-bar > .event-title {
+  margin-left: 1ch;
+}
+
+.event-time {
+  flex-shrink: 0;
+  opacity: 0.8;
+}
+
+.event-day-index {
+  flex-shrink: 0;
 }
 
 .event-bar--single {

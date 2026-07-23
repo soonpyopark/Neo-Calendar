@@ -72,8 +72,8 @@
         "description": "내 공유기 IP 주소"
       }
     ],
-    "headerOpacity": 0.95,
-    "shellOpacity": 0.95
+    "headerOpacity": 0.8,
+    "shellOpacity": 0.8
   },
   "tags": [
     {
@@ -107,5 +107,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-23T17:29:36.030Z"
+  "updatedAt": "2026-07-23T17:46:28.944Z"
 }

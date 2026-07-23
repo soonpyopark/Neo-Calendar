@@ -18,15 +18,19 @@ import { EventMarkerShapeButton } from './EventMarkerShapeButton'
 import { EventTagIcons } from './EventTagIcons'
 import { QuickEditCalendarButton } from './QuickEditCalendarButton'
 import { QuickEditTagButton } from './QuickEditTagButton'
+import { EventAttachIcon } from './EventAttachIcon'
+import { EventLinkIcon } from './EventLinkIcon'
 import { getEventLinks } from '../lib/eventLinks'
 import { insertTextAtCursor } from '../lib/insertAtCursor'
 import { formatDayHeaderTitle } from '../lib/dayHeaderFormat'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
+import type { DayReorderItem } from '../lib/dayReorder'
 
 const QUICK_EDIT_CHROME_HEIGHT = 88
-const QUICK_EDIT_BODY_EXTRA = 96
+const QUICK_EDIT_BODY_EXTRA_MONTH = 96
 const COLOR_PANEL_PAD = 8
 
 export type AnchorRect = {
@@ -45,6 +49,10 @@ export type DayQuickEditPopoverProps = {
   dayColor?: string | null
   anchorRect: AnchorRect | null
   canEdit?: boolean
+  /** Pre-select a row (e.g. opened from an event bar). */
+  focusEvent?: CalendarEvent | null
+  /** Month view: grow taller than the day cell (MDC). */
+  expandBody?: boolean
   onClose: () => void
   onCreate: (title: string, calendarId: string, tagIds?: string[], links?: EventLink[]) => void
   onToggleCompleted: (id: string, completed: boolean) => void
@@ -54,6 +62,7 @@ export type DayQuickEditPopoverProps = {
   onEventTagChange?: (event: CalendarEvent, tagIds: string[]) => void
   onEventMarkerShapeChange?: (event: CalendarEvent, shapeId: string) => void
   onEventLinkChange?: (event: CalendarEvent, links: EventLink[]) => void
+  onReorderEvents?: (ordered: DayReorderItem[], dayKey: string) => void | Promise<void>
   onOpenMore: (event?: CalendarEvent | null) => void
   onOpenEvent?: (event: CalendarEvent) => void
   onEditEvent?: (event: CalendarEvent) => void
@@ -81,7 +90,11 @@ function clampRectToViewport(rect: {
   return { top, left, width, maxHeight }
 }
 
-function buildQuickEditStyle(anchorRect: AnchorRect | null): CSSProperties | undefined {
+function buildQuickEditStyle(
+  anchorRect: AnchorRect | null,
+  options?: { bodyExtra?: number }
+): CSSProperties | undefined {
+  const bodyExtra = options?.bodyExtra ?? 0
   if (!anchorRect) {
     return {
       top: '50%',
@@ -95,7 +108,10 @@ function buildQuickEditStyle(anchorRect: AnchorRect | null): CSSProperties | und
 
   const padX = 12
   const width = Math.max(anchorRect.width + padX * 2, 300)
-  const bodyHeight = Math.max(Math.round(anchorRect.height) + QUICK_EDIT_BODY_EXTRA, 160)
+  const bodyHeight = Math.max(
+    Math.round(anchorRect.height) + bodyExtra,
+    bodyExtra > 0 ? 160 : 72
+  )
   const height = bodyHeight + QUICK_EDIT_CHROME_HEIGHT
   const left = anchorRect.left + anchorRect.width / 2 - width / 2
   const top = anchorRect.top + anchorRect.height / 2 - height / 2
@@ -127,6 +143,8 @@ export function DayQuickEditPopover({
   dayColor = null,
   anchorRect,
   canEdit = true,
+  focusEvent = null,
+  expandBody = false,
   onClose,
   onCreate,
   onToggleCompleted,
@@ -135,6 +153,7 @@ export function DayQuickEditPopover({
   onEventTagChange,
   onEventMarkerShapeChange,
   onEventLinkChange,
+  onReorderEvents,
   onOpenMore,
   onEditEvent
 }: DayQuickEditPopoverProps): ReactElement {
@@ -142,16 +161,43 @@ export function DayQuickEditPopover({
   const [draftCalendarId, setDraftCalendarId] = useState(() => defaultCalendarId(calendars))
   const [draftTagIds, setDraftTagIds] = useState<string[]>([])
   const [draftLinks, setDraftLinks] = useState<EventLink[]>([])
-  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null)
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(focusEvent)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteStyle, setPaletteStyle] = useState<CSSProperties | undefined>()
   const [optimisticDayColor, setOptimisticDayColor] = useState<string | null>(dayColor)
   const [saving, setSaving] = useState(false)
+  const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
+  const [dragSeriesId, setDragSeriesId] = useState<string | null>(null)
+  const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const colorTriggerRef = useRef<HTMLButtonElement>(null)
 
-  const style = useMemo(() => buildQuickEditStyle(anchorRect), [anchorRect])
-  const dayEvents = events
+  const style = useMemo(
+    () =>
+      buildQuickEditStyle(anchorRect, {
+        bodyExtra: expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
+      }),
+    [anchorRect, expandBody]
+  )
+
+  const storeDayEvents = events
+  const dayEvents = useMemo(() => {
+    if (!orderOverride?.length) return storeDayEvents
+    const holidays = storeDayEvents.filter((event) => event.calendarId === HOLIDAYS_KR_CALENDAR_ID)
+    const movable = storeDayEvents.filter((event) => event.calendarId !== HOLIDAYS_KR_CALENDAR_ID)
+    const byId = new Map(movable.map((event) => [getSeriesId(event) || event.id, event]))
+    const ordered: CalendarEvent[] = []
+    for (const id of orderOverride) {
+      const event = byId.get(id)
+      if (event) {
+        ordered.push(event)
+        byId.delete(id)
+      }
+    }
+    for (const event of Array.from(byId.values())) ordered.push(event)
+    return [...holidays, ...ordered]
+  }, [storeDayEvents, orderOverride])
+
   const displayDayColor = optimisticDayColor
 
   const activeCalendarId = selectedEvent?.calendarId ?? draftCalendarId
@@ -164,17 +210,53 @@ export function DayQuickEditPopover({
     setDraftCalendarId(defaultCalendarId(calendars))
     setDraftTagIds([])
     setPaletteOpen(false)
-    setSelectedEvent(null)
+    setSelectedEvent(focusEvent)
     setOptimisticDayColor(dayColor)
+    setOrderOverride(null)
+    setDragSeriesId(null)
+    setDropSeriesId(null)
     setSaving(false)
-    const id = window.setTimeout(() => inputRef.current?.focus(), 30)
+    const id = window.setTimeout(() => {
+      if (!focusEvent) inputRef.current?.focus()
+    }, 30)
     return () => window.clearTimeout(id)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only when day changes
-  }, [dateKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only when day/focus changes
+  }, [dateKey, focusEvent])
 
   useEffect(() => {
     setOptimisticDayColor(dayColor)
   }, [dayColor])
+
+  useEffect(() => {
+    if (!orderOverride) return
+    const movable = storeDayEvents.filter((event) => event.calendarId !== HOLIDAYS_KR_CALENDAR_ID)
+    const current = movable.map((event) => getSeriesId(event) || event.id)
+    if (
+      current.length === orderOverride.length &&
+      current.every((id, index) => id === orderOverride[index])
+    ) {
+      setOrderOverride(null)
+    }
+  }, [storeDayEvents, orderOverride])
+
+  const reorderMovable = (fromSeriesId: string, toSeriesId: string): void => {
+    if (!canEdit || !fromSeriesId || !toSeriesId || fromSeriesId === toSeriesId) return
+    const movable = dayEvents.filter((event) => event.calendarId !== HOLIDAYS_KR_CALENDAR_ID)
+    const fromIndex = movable.findIndex(
+      (event) => (getSeriesId(event) || event.id) === fromSeriesId
+    )
+    const toIndex = movable.findIndex((event) => (getSeriesId(event) || event.id) === toSeriesId)
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return
+    const next = [...movable]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    setOrderOverride(next.map((event) => getSeriesId(event) || event.id))
+    setSelectedEvent(moved)
+    void onReorderEvents?.(
+      next.map((event, index) => ({ event, sortOrder: index })),
+      dateKey
+    )
+  }
 
   useEffect(() => {
     if (!selectedEvent) return
@@ -393,16 +475,64 @@ export function DayQuickEditPopover({
             ) : (
               dayEvents.map((item) => {
                 const isHoliday = item.calendarId === HOLIDAYS_KR_CALENDAR_ID
+                const canDrag = canEdit && Boolean(onReorderEvents) && !isHoliday
                 const completed = Boolean(item.completed)
                 const cal = calendars.find((c) => c.id === item.calendarId)
                 const accent = completed ? '#9aa0a6' : (item.color ?? cal?.color ?? '#f6bf26')
-                const isSelected = selectedEvent?.id === item.id
+                const seriesId = getSeriesId(item) || item.id
+                const selectedId = selectedEvent
+                  ? getSeriesId(selectedEvent) || selectedEvent.id
+                  : null
+                const isSelected = Boolean(selectedId && seriesId === selectedId)
+                const isDragging = dragSeriesId === seriesId
+                const isDropTarget = Boolean(
+                  canDrag && dropSeriesId === seriesId && dragSeriesId && dragSeriesId !== seriesId
+                )
+                const hasLinkOrAttach =
+                  getEventLinks(item).length > 0 ||
+                  (Array.isArray(item.attachments) && item.attachments.length > 0)
                 return (
-                  <li key={item.id} className="day-quick-edit-item">
+                  <li
+                    key={`${seriesId}-${dateKey}`}
+                    className={`day-quick-edit-item${isDragging ? ' is-dragging' : ''}${
+                      isDropTarget ? ' is-drop-target' : ''
+                    }`}
+                  >
                     <div
                       className={`day-quick-edit-row${completed ? ' is-completed' : ''}${
                         isSelected ? ' is-selected' : ''
-                      }`}
+                      }${canDrag ? ' is-draggable' : ''}`}
+                      draggable={canDrag}
+                      onDragStart={(e) => {
+                        if (!canDrag) return
+                        e.dataTransfer.effectAllowed = 'move'
+                        e.dataTransfer.setData('text/plain', seriesId)
+                        setDragSeriesId(seriesId)
+                        setSelectedEvent(item)
+                      }}
+                      onDragEnd={() => {
+                        setDragSeriesId(null)
+                        setDropSeriesId(null)
+                      }}
+                      onDragOver={(e) => {
+                        if (!canDrag || !dragSeriesId || dragSeriesId === seriesId) return
+                        e.preventDefault()
+                        e.dataTransfer.dropEffect = 'move'
+                        if (dropSeriesId !== seriesId) setDropSeriesId(seriesId)
+                      }}
+                      onDragLeave={(e) => {
+                        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                          setDropSeriesId((current) => (current === seriesId ? null : current))
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        const fromId = e.dataTransfer.getData('text/plain') || dragSeriesId
+                        setDragSeriesId(null)
+                        setDropSeriesId(null)
+                        if (fromId) reorderMovable(fromId, seriesId)
+                      }}
                       onClick={() => setSelectedEvent(item)}
                     >
                       <input
@@ -449,6 +579,12 @@ export function DayQuickEditPopover({
                       >
                         {item.title}
                       </span>
+                      {hasLinkOrAttach ? (
+                        <span className="day-quick-edit-trailing">
+                          <EventLinkIcon event={item} />
+                          <EventAttachIcon event={item} />
+                        </span>
+                      ) : null}
                     </div>
                   </li>
                 )

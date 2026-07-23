@@ -170,13 +170,13 @@
       "repeatUntil": null,
       "sortOrder": 2,
       "sortOrderByDay": {
-        "2026-07-20": 1
+        "2026-07-20": 0
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "점심 커피(고국희 누나 + 최소영)",
-      "updatedAt": "2026-07-23T05:34:22.3368436Z"
+      "updatedAt": "2026-07-23T17:34:55.885Z"
     },
     {
       "allDay": true,
@@ -233,13 +233,13 @@
       "repeatUntil": null,
       "sortOrder": 1,
       "sortOrderByDay": {
-        "2026-07-20": 0
+        "2026-07-20": 1
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "방학(서영) + 권여사",
-      "updatedAt": "2026-07-23T05:34:38.3756323Z"
+      "updatedAt": "2026-07-23T17:34:55.893Z"
     },
     {
       "allDay": true,
@@ -361,7 +361,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "테스트1",
-      "updatedAt": "2026-07-23T05:34:23.8027448Z"
+      "updatedAt": "2026-07-23T17:34:57.685Z"
     },
     {
       "allDay": true,
@@ -393,8 +393,8 @@
       "startTime": null,
       "tagIds": [],
       "title": "테스트2",
-      "updatedAt": "2026-07-23T05:34:23.8821908Z"
+      "updatedAt": "2026-07-23T17:34:57.711Z"
     }
   ],
-  "updatedAt": "2026-07-23T17:08:33.888Z"
+  "updatedAt": "2026-07-23T17:34:57.711Z"
 }

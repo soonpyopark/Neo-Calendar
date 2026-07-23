@@ -39,3 +39,9 @@ export function buildFollowingSeriesEvent(
 ): Record<string, unknown>
 
 export function getSeriesId(event: { id?: string; seriesId?: string } | null | undefined): string | null
+
+export function expandEventsForRange(
+  events: unknown[] | null | undefined,
+  rangeStart: string,
+  rangeEnd: string
+): unknown[]

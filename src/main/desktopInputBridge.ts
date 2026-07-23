@@ -24,7 +24,8 @@ type BridgeOptions = {
 }
 
 const POLL_MS = 20
-const SUSPEND_HOLD_MS = 40
+/** Hover must stay on a wake button this long before temporary undock. */
+const SUSPEND_HOLD_MS = 500
 /** After undock: re-embed once mouse is idle and work is done for this long. */
 const RESUME_IDLE_MS = 10_000
 

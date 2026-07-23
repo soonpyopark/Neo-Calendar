@@ -178,13 +178,13 @@
       "repeatUntil": null,
       "sortOrder": 4,
       "sortOrderByDay": {
-        "2026-07-20": 3
+        "2026-07-20": 2
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "현장지원단 지출 서류 제출(to 박소은쌤)",
-      "updatedAt": "2026-07-23T05:34:23.7175655Z"
+      "updatedAt": "2026-07-23T17:34:57.627Z"
     },
     {
       "allDay": true,
@@ -269,13 +269,13 @@
       "repeatUntil": null,
       "sortOrder": 3,
       "sortOrderByDay": {
-        "2026-07-20": 2
+        "2026-07-20": 3
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "나이스 지방비 편성 협의회 참석자 명단 제출",
-      "updatedAt": "2026-07-23T05:34:23.6704611Z"
+      "updatedAt": "2026-07-23T17:34:57.637Z"
     },
     {
       "allDay": true,
@@ -307,7 +307,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "현장지원단 하반기 역량강화 연수 안내 공문 시행",
-      "updatedAt": "2026-07-23T05:34:23.7555667Z"
+      "updatedAt": "2026-07-23T17:34:57.662Z"
     },
     {
       "allDay": true,
@@ -368,5 +368,5 @@
       "updatedAt": "2026-07-23T02:16:30.8366128Z"
     }
   ],
-  "updatedAt": "2026-07-23T16:44:53.133Z"
+  "updatedAt": "2026-07-23T17:34:57.662Z"
 }
