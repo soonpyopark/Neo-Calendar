@@ -14,7 +14,10 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
-    "dist": "npm run build && electron-builder --win"
+    "sync-version": "node scripts/sync-version.mjs",
+    "dist": "npm run build && electron-builder --win",
+    "build:msi": "node scripts/build-msi.mjs",
+    "build:dist:msi": "node scripts/build-msi.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -43,15 +46,30 @@
     "appId": "com.neocalendar.app",
     "productName": "Neo Calendar",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "out/**/*"
     ],
+    "extraResources": [
+      {
+        "from": "src/renderer/public/icons",
+        "to": "icons",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   },
   "allowScripts": {

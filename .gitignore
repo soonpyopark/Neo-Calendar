@@ -7,3 +7,7 @@ release
 .env
 .env.*
 !.env.example
+msi/payload/
+msi/Neo Calendar/
+msi/*.msi
+msi/*.wixpdb

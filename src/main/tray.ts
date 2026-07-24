@@ -1,11 +1,28 @@
 import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'electron'
 import { existsSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { DesktopModeController } from './desktopMode'
 import { APP_NAME, APP_TITLE, SITE_URL } from '../shared/constants'
 
-function resolveTrayImage(): Electron.NativeImage {
-  const candidates = [
+/** Visible 16×16 blue square PNG — last-resort fallback (old 1px placeholder was invisible). */
+const FALLBACK_TRAY_PNG =
+  'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAALElEQVQ4T2NkYGD4z0AEYBxVMFQGD4waMGrAqAGjBtDIgKECRg0YNWAUDADhAQEA0o8B/6Yx9e8AAAAASUVORK5CYII='
+
+function trayIconCandidates(): string[] {
+  const exeDir = dirname(process.execPath)
+  const resourcesPath =
+    typeof process.resourcesPath === 'string' && process.resourcesPath
+      ? process.resourcesPath
+      : join(exeDir, 'resources')
+
+  return [
+    // Packaged MSI / electron-builder: extraResources → resources/icons/
+    join(resourcesPath, 'icons', 'trayIcon-16.png'),
+    join(resourcesPath, 'icons', 'trayIcon.png'),
+    join(resourcesPath, 'icons', 'appIcon.png'),
+    join(exeDir, 'app-icon.ico'),
+    join(exeDir, 'resources', 'icons', 'trayIcon-16.png'),
+    // Dev
     join(process.cwd(), 'src/renderer/public/icons/trayIcon-16.png'),
     join(process.cwd(), 'src/renderer/public/icons/trayIcon.png'),
     join(process.cwd(), 'src/renderer/public/icon.png'),
@@ -14,32 +31,29 @@ function resolveTrayImage(): Electron.NativeImage {
     join(__dirname, '../../src/renderer/public/icons/trayIcon-16.png'),
     join(__dirname, '../../src/renderer/public/icon.png')
   ]
+}
 
-  for (const iconPath of candidates) {
+function resolveTrayImage(): Electron.NativeImage {
+  for (const iconPath of trayIconCandidates()) {
     if (!existsSync(iconPath)) continue
     const image = nativeImage.createFromPath(iconPath)
     if (!image.isEmpty()) {
       console.log('[tray] Using icon:', iconPath)
-      return image.resize({ width: 16, height: 16 })
+      return image.getSize().width > 16 ? image.resize({ width: 16, height: 16 }) : image
     }
   }
 
-  return nativeImage.createFromDataURL(
-    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAIElEQVQ4T2NkYGD4z0ABYBzVMKoBVgBE0AAAhQH9zqK9WwAAAABJRU5ErkJggg=='
-  )
+  console.warn('[tray] No packaged icon found — using fallback PNG')
+  return nativeImage.createFromDataURL(FALLBACK_TRAY_PNG)
 }
 
 function resolveAppIconForMenu(): Electron.NativeImage | undefined {
-  const candidates = [
-    join(process.cwd(), 'src/renderer/public/icons/trayIcon-16.png'),
-    join(process.cwd(), 'src/renderer/public/icon.png'),
-    join(app.getAppPath(), 'src/renderer/public/icons/trayIcon-16.png'),
-    join(__dirname, '../../src/renderer/public/icons/trayIcon-16.png')
-  ]
-  for (const iconPath of candidates) {
+  for (const iconPath of trayIconCandidates()) {
     if (!existsSync(iconPath)) continue
     const image = nativeImage.createFromPath(iconPath)
-    if (!image.isEmpty()) return image.resize({ width: 16, height: 16 })
+    if (!image.isEmpty()) {
+      return image.getSize().width > 16 ? image.resize({ width: 16, height: 16 }) : image
+    }
   }
   return undefined
 }

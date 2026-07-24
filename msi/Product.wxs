@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Neo Calendar — per-user MSI (no admin rights required).
+
+  Built by scripts/build-msi.mjs, which stages the electron-builder
+  win-unpacked output into a space-free temp work dir as "payload\", then:
+    wix build Product.wxs -d ProductVersion=... -d ProductCode={guid} -d MsiDir=...
+      -bindpath <work> -ext WixToolset.UI.wixext -o "...msi"
+
+  UpgradeCode below MUST stay constant across every release — it is what lets a newer
+  MSI silently replace an older one (MajorUpgrade). ProductCode changes on every build
+  (passed in via -d) so each build is a distinct upgrade target and old Add/Remove
+  Programs entries get cleaned up automatically.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="Neo Calendar"
+    Manufacturer="Neo Calendar"
+    Version="$(var.ProductVersion)"
+    ProductCode="$(var.ProductCode)"
+    UpgradeCode="C3B4E005-D17F-41E1-929D-2E1142A94075"
+    Scope="perUser"
+    Codepage="65001"
+    Compressed="yes">
+
+    <SummaryInformation Manufacturer="Neo Calendar" Description="Neo Calendar 설치 관리자" />
+
+    <MajorUpgrade
+      AllowSameVersionUpgrades="yes"
+      DowngradeErrorMessage="이미 더 최신 버전의 [ProductName]이 설치되어 있습니다." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="AppIcon.ico" SourceFile="$(var.MsiDir)\payload\app-icon.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
+    <Property Id="ARPURLINFOABOUT" Value="https://note4all.tistory.com" />
+
+    <!-- WixUI_InstallDir: license → choose install folder → install.
+         (WixUI_Minimal has no directory page — that is why folder picker was missing.) -->
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.MsiDir)\License.rtf" />
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="INSTALLFOLDER" Name="Neo Calendar">
+        <!-- Harvests electron-builder win-unpacked output staged as payload/
+             under a space-free temp MsiDir (repo path has spaces). -->
+        <Files Include="$(var.MsiDir)\payload\**">
+          <Exclude Files="**\*.pdb" />
+        </Files>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut" Guid="*">
+        <Shortcut
+          Id="StartMenuShortcutLnk"
+          Name="Neo Calendar"
+          Target="[INSTALLFOLDER]Neo Calendar.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="AppIcon.ico" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Neo Calendar"
+          Name="StartMenuShortcut"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder">
+      <Component Id="DesktopShortcut" Guid="*">
+        <Shortcut
+          Id="DesktopShortcutLnk"
+          Name="Neo Calendar"
+          Target="[INSTALLFOLDER]Neo Calendar.exe"
+          WorkingDirectory="INSTALLFOLDER"
+          Icon="AppIcon.ico" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\Neo Calendar"
+          Name="DesktopShortcut"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+  </Package>
+</Wix>

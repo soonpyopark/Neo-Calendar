@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { AuthService } from './auth'
 import { CalendarStore } from './calendarStore/CalendarStore'
@@ -119,9 +119,29 @@ function createWindow(): void {
     return { action: 'deny' }
   })
 
-  win.once('ready-to-show', () => {
+  let sessionRestored = false
+  const restoreSession = (): void => {
+    if (sessionRestored) return
+    sessionRestored = true
     desktopMode.restoreFromSettings()
+  }
+
+  win.once('ready-to-show', () => {
+    restoreSession()
   })
+
+  // Packaged / remote installs: if the renderer never paints, still surface a window
+  // (or tray) instead of leaving a forever-hidden BrowserWindow.
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error('[main] did-fail-load', { code, desc, url })
+  })
+  setTimeout(() => {
+    if (win.isDestroyed()) return
+    if (!sessionRestored) {
+      console.warn('[main] ready-to-show timed out — forcing window restore')
+      restoreSession()
+    }
+  }, 4000)
 
   // Window mode: keep footprint in sync while dragging/resizing.
   const persistBounds = (): void => {
@@ -321,6 +341,21 @@ function registerIpc(): void {
 }
 
 app.whenReady().then(() => {
+  try {
+    bootApp()
+  } catch (error) {
+    const message = error instanceof Error ? error.stack ?? error.message : String(error)
+    console.error('[main] startup failed:', message)
+    try {
+      dialog.showErrorBox('Neo Calendar 시작 실패', message)
+    } catch {
+      /* ignore */
+    }
+    app.quit()
+  }
+})
+
+function bootApp(): void {
   loadDotEnv()
   calendarStore = new CalendarStore()
   const holidayKey = getEnvValue('DATA_GO_KR_SERVICE_KEY', 'HOLIDAY_API_KEY')
@@ -336,13 +371,14 @@ app.whenReady().then(() => {
   })
 
   registerIpc()
-  createWindow()
+  // Tray first so a later window/bridge failure still leaves a visible shell icon.
   tray = createAppTray({
     getWindow: () => mainWindow,
     desktopMode,
     getDataRoot: () => calendarStore.dataRoot,
     requestQuit
   })
+  createWindow()
 
   // Fully embedded: window-mode button still works via hit-zone.
   windowModeHitZone = new WindowModeHitZone(
@@ -431,7 +467,7 @@ app.whenReady().then(() => {
       createWindow()
     }
   })
-})
+}
 
 app.on('before-quit', () => {
   forceQuit = true
