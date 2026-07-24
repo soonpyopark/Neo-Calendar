@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState, type ReactElement } from 'react'
+import {
+  defaultMemberPassword,
+  isBootstrapAdminMember,
+  memberRoleToLabel,
+  normalizeMemberRole
+} from '../../../shared/members'
 import type { MemberRecord, MemberRole, MemberSaveInput } from '../../../shared/calendarTypes'
+import { cn } from '../lib/cn'
+import { useAppDialog } from './AppDialogProvider'
 
 type MemberDraft = MemberRecord & {
   password?: string
@@ -7,275 +15,490 @@ type MemberDraft = MemberRecord & {
   markedDelete?: boolean
 }
 
+type MembersSubTab = 'member-list' | 'member-add'
+
+const fieldClass =
+  'w-full rounded-lg border border-gcal-border bg-gcal-input px-3 py-2 text-sm text-gcal-heading outline-none focus:border-gcal-blue focus:ring-2 focus:ring-gcal-blue/15'
+
+function createMemberDraft(member: MemberRecord): MemberDraft {
+  return { ...member, password: '', isNew: false, markedDelete: false }
+}
+
+function matchesMemberSearch(member: MemberDraft, query: string): boolean {
+  const normalized = query.trim().toLowerCase()
+  if (!normalized) return true
+  return (
+    member.displayName.toLowerCase().includes(normalized) ||
+    member.loginId.toLowerCase().includes(normalized)
+  )
+}
+
+function buildPayloadFromDraft(draftMembers: MemberDraft[]): MemberSaveInput[] {
+  const memberPayload: MemberSaveInput[] = []
+  for (const member of draftMembers) {
+    if (member.markedDelete && !member.isNew) {
+      memberPayload.push({
+        id: member.id,
+        loginId: member.loginId,
+        displayName: member.displayName,
+        role: member.role,
+        active: member.active,
+        _delete: true
+      })
+      continue
+    }
+    if (member.markedDelete) continue
+    if (member.isNew) {
+      memberPayload.push({
+        loginId: member.loginId,
+        displayName: member.displayName,
+        role: member.role,
+        active: member.active,
+        password: member.password
+      })
+    } else {
+      memberPayload.push({
+        id: member.id,
+        loginId: member.loginId,
+        displayName: member.displayName,
+        role: member.role,
+        active: member.active,
+        ...(member.password ? { password: member.password } : {})
+      })
+    }
+  }
+  return memberPayload
+}
+
 export type MembersPanelProps = {
   listMembers: () => Promise<MemberRecord[]>
   saveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
 }
 
-function roleLabel(role: MemberRole): string {
-  if (role === 'super_admin' || role === 'admin') return '관리자'
-  return '회원'
-}
-
 export function MembersPanel({ listMembers, saveMembers }: MembersPanelProps): ReactElement {
+  const { alert, confirm } = useAppDialog()
+  const [tab, setTab] = useState<MembersSubTab>('member-list')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [members, setMembers] = useState<MemberDraft[]>([])
-  const [query, setQuery] = useState('')
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [loginId, setLoginId] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [role, setRole] = useState<MemberRole>('member')
-  const [active, setActive] = useState(true)
-  const [password, setPassword] = useState('')
-  const [tab, setTab] = useState<'list' | 'edit'>('list')
+  const [editingMemberId, setEditingMemberId] = useState<string | null>(null)
+  const [memberLoginId, setMemberLoginId] = useState('')
+  const [memberRole, setMemberRole] = useState<MemberRole>('member')
+  const [memberActive, setMemberActive] = useState(true)
+  const [memberPassword, setMemberPassword] = useState('')
+  const [memberSearchQuery, setMemberSearchQuery] = useState('')
 
-  const load = useCallback(async () => {
+  const applyMembers = useCallback((nextMembers: MemberRecord[]) => {
+    setMembers((Array.isArray(nextMembers) ? nextMembers : []).map(createMemberDraft))
+  }, [])
+
+  const loadMembers = useCallback(async () => {
     setLoading(true)
     setError('')
     try {
-      const rows = await listMembers()
-      setMembers(rows.map((m) => ({ ...m, password: '', isNew: false, markedDelete: false })))
+      const result = await listMembers()
+      applyMembers(result ?? [])
     } catch (err) {
       setError(err instanceof Error ? err.message : '회원 목록을 불러오지 못했습니다.')
     } finally {
       setLoading(false)
     }
-  }, [listMembers])
+  }, [applyMembers, listMembers])
 
   useEffect(() => {
-    void load()
-  }, [load])
+    void loadMembers()
+  }, [loadMembers])
 
-  const visible = useMemo(
-    () =>
-      members.filter((m) => {
-        if (m.markedDelete) return false
-        const q = query.trim().toLowerCase()
-        if (!q) return true
-        return (
-          m.loginId.toLowerCase().includes(q) ||
-          m.displayName.toLowerCase().includes(q)
-        )
-      }),
-    [members, query]
+  const visibleMembers = members.filter((member) => !member.markedDelete)
+  const filteredMembers = useMemo(
+    () => visibleMembers.filter((member) => matchesMemberSearch(member, memberSearchQuery)),
+    [visibleMembers, memberSearchQuery]
   )
 
-  const resetForm = (): void => {
-    setEditingId(null)
-    setLoginId('')
-    setDisplayName('')
-    setRole('member')
-    setActive(true)
-    setPassword('')
+  const resetMemberForm = (): void => {
+    setEditingMemberId(null)
+    setMemberLoginId('')
+    setMemberRole('member')
+    setMemberActive(true)
+    setMemberPassword('')
   }
 
-  const persist = async (draft: MemberDraft[]): Promise<boolean> => {
+  const openMemberAddTab = (): void => {
+    resetMemberForm()
+    setTab('member-add')
+  }
+
+  const startEditMember = (member: MemberDraft): void => {
+    setEditingMemberId(member.id)
+    setMemberLoginId(member.loginId)
+    setMemberRole(normalizeMemberRole(member.role))
+    setMemberActive(member.active)
+    setMemberPassword('')
+    setTab('member-add')
+  }
+
+  const persistMembers = async (
+    draftMembers: MemberDraft[],
+    { silent = false }: { silent?: boolean } = {}
+  ): Promise<boolean> => {
     setSaving(true)
     setError('')
     try {
-      const payload: MemberSaveInput[] = draft
-        .filter((m) => !(m.markedDelete && m.isNew))
-        .filter((m) => !m.markedDelete)
-        .map((m) => ({
-          id: m.id,
-          loginId: m.loginId,
-          displayName: m.displayName,
-          role: m.role === 'member' ? 'member' : 'super_admin',
-          active: m.active !== false,
-          ...(m.password ? { password: m.password } : {})
-        }))
-      const next = await saveMembers(payload)
-      setMembers(next.map((m) => ({ ...m, password: '', isNew: false, markedDelete: false })))
+      const next = await saveMembers(buildPayloadFromDraft(draftMembers))
+      applyMembers(next)
+      if (!silent) {
+        await alert('회원 설정을 저장했습니다.', { title: '회원 관리' })
+      }
       return true
     } catch (err) {
-      setError(err instanceof Error ? err.message : '회원 저장에 실패했습니다.')
+      const message = err instanceof Error ? err.message : '회원 저장에 실패했습니다.'
+      setError(message)
+      setMembers(draftMembers)
+      await alert(message, { title: '회원 관리' })
       return false
     } finally {
       setSaving(false)
     }
   }
 
-  const startAdd = (): void => {
-    resetForm()
-    setTab('edit')
-  }
+  const editingMember = editingMemberId
+    ? (members.find((member) => member.id === editingMemberId) ?? null)
+    : null
+  const editingBootstrapAdmin = isBootstrapAdminMember(editingMember)
 
-  const startEdit = (m: MemberDraft): void => {
-    setEditingId(m.id)
-    setLoginId(m.loginId)
-    setDisplayName(m.displayName)
-    setRole(m.role === 'member' ? 'member' : 'super_admin')
-    setActive(m.active !== false)
-    setPassword('')
-    setTab('edit')
-  }
-
-  const submitForm = async (): Promise<void> => {
-    const id = loginId.trim()
-    if (!id) {
-      setError('로그인 아이디를 입력하세요.')
+  const handleMemberSubmit = async (): Promise<void> => {
+    const loginId = (
+      editingBootstrapAdmin ? (editingMember?.loginId ?? memberLoginId) : memberLoginId
+    ).trim()
+    if (!loginId) {
+      await alert('로그인 아이디를 입력해 주세요.', { title: '회원 관리' })
       return
     }
-    if (!editingId && password.trim().length < 6) {
-      setError('새 회원 비밀번호는 6자 이상이어야 합니다.')
+    if (!editingMemberId && memberPassword.trim().length < 6) {
+      await alert('비밀번호는 6자 이상이어야 합니다.', { title: '회원 관리' })
       return
     }
-    let next = [...members]
-    if (editingId) {
-      next = next.map((m) =>
-        m.id === editingId
+    if (editingMemberId && memberPassword.trim() && memberPassword.trim().length < 6) {
+      await alert('비밀번호는 6자 이상이어야 합니다.', { title: '회원 관리' })
+      return
+    }
+
+    const duplicate = members.some(
+      (member) =>
+        !member.markedDelete &&
+        member.id !== editingMemberId &&
+        member.loginId.toLowerCase() === loginId.toLowerCase()
+    )
+    if (duplicate) {
+      await alert(`아이디 「${loginId}」가 이미 사용 중입니다.`, { title: '회원 관리' })
+      return
+    }
+
+    let nextMembers: MemberDraft[]
+    if (editingMemberId) {
+      nextMembers = members.map((member) =>
+        member.id === editingMemberId
           ? {
-              ...m,
-              loginId: m.isBootstrapAdmin ? m.loginId : id,
-              displayName: displayName.trim() || id,
-              role,
-              active,
-              password: password.trim() || undefined
+              ...member,
+              loginId: editingBootstrapAdmin ? member.loginId : loginId,
+              displayName: editingBootstrapAdmin ? member.displayName || member.loginId : loginId,
+              role: editingBootstrapAdmin ? 'super_admin' : memberRole,
+              active: editingBootstrapAdmin ? true : memberActive,
+              password: memberPassword
             }
-          : m
+          : member
       )
     } else {
-      next.push({
-        id: `member-${Date.now().toString(36)}`,
-        loginId: id,
-        displayName: displayName.trim() || id,
-        role,
-        active,
-        password: password.trim(),
-        isNew: true
-      })
+      nextMembers = [
+        ...members,
+        {
+          id: `new-member-${Date.now()}`,
+          loginId,
+          displayName: loginId,
+          role: memberRole,
+          active: memberActive,
+          password: memberPassword,
+          isNew: true
+        }
+      ]
     }
-    const ok = await persist(next)
-    if (ok) {
-      resetForm()
-      setTab('list')
-    }
+
+    setMembers(nextMembers)
+    resetMemberForm()
+    setTab('member-list')
+    await persistMembers(nextMembers, { silent: true })
   }
 
-  const markDelete = async (m: MemberDraft): Promise<void> => {
-    if (m.isBootstrapAdmin) {
-      setError('부트스트랩 관리자는 삭제할 수 없습니다.')
+  const markMemberDelete = async (member: MemberDraft): Promise<void> => {
+    if (isBootstrapAdminMember(member)) {
+      await alert('기본 관리자(admin) 계정은 삭제할 수 없습니다.', { title: '회원 관리' })
       return
     }
-    if (!window.confirm(`회원 "${m.loginId}"을(를) 삭제할까요?`)) return
-    const next = members.map((row) =>
-      row.id === m.id ? { ...row, markedDelete: true } : row
+    const ok = await confirm(
+      `「${member.loginId}」 회원과 해당 회원의 캘린더·일정이 모두 삭제됩니다.`,
+      {
+        title: '회원 삭제',
+        confirmLabel: '삭제',
+        variant: 'danger'
+      }
     )
-    await persist(next)
-  }
+    if (!ok) return
 
-  if (loading) {
-    return <p className="settings-note">회원 목록을 불러오는 중…</p>
+    const nextMembers: MemberDraft[] = member.isNew
+      ? members.filter((entry) => entry.id !== member.id)
+      : members.map((entry) =>
+          entry.id === member.id ? { ...entry, markedDelete: true } : entry
+        )
+
+    if (editingMemberId === member.id) resetMemberForm()
+    setMembers(nextMembers)
+    await persistMembers(nextMembers, { silent: true })
   }
 
   return (
-    <div className="members-panel">
-      {error ? <p className="settings-error">{error}</p> : null}
+    <div className="w-full max-w-full text-left">
+      <h2 className="mb-2 text-[22px] font-normal text-gcal-heading">회원 관리</h2>
+      <p className="mb-6 text-sm text-gcal-muted">
+        로그인할 수 있는 계정을 추가·수정합니다. 기본 관리자(admin)는 목록에 포함되며, 여기서 바꾼
+        비밀번호가 .env 설정보다 우선합니다.
+      </p>
 
-      {tab === 'list' ? (
-        <>
-          <div className="members-toolbar">
-            <input
-              className="search-input"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="회원 검색"
-            />
-            <button type="button" className="is-primary" onClick={startAdd}>
-              회원 추가
-            </button>
+      <div
+        className="mb-4 flex gap-1 border-b border-gcal-border-light"
+        role="tablist"
+        aria-label="회원 관리"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'member-list'}
+          className={cn(
+            '-mb-px rounded-t-lg px-3 py-2 text-sm',
+            tab === 'member-list'
+              ? 'border border-b-transparent border-gcal-border-light bg-gcal-surface font-medium text-gcal-heading'
+              : 'border border-transparent font-medium text-gcal-muted hover:text-gcal-heading'
+          )}
+          onClick={() => setTab('member-list')}
+        >
+          회원목록
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={tab === 'member-add'}
+          className={cn(
+            '-mb-px rounded-t-lg px-3 py-2 text-sm',
+            tab === 'member-add'
+              ? 'border border-b-transparent border-gcal-border-light bg-gcal-surface font-medium text-gcal-heading'
+              : 'border border-transparent font-medium text-gcal-muted hover:text-gcal-heading'
+          )}
+          onClick={openMemberAddTab}
+        >
+          회원추가
+        </button>
+      </div>
+
+      {loading ? <p className="text-sm text-gcal-muted">회원 목록을 불러오는 중…</p> : null}
+      {error ? <p className="text-sm text-[#c5221f]">{error}</p> : null}
+      {saving ? <p className="text-sm text-gcal-muted">저장 중…</p> : null}
+
+      {!loading && tab === 'member-list' ? (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h3 className="text-sm font-medium text-gcal-heading">회원 목록</h3>
+              <p className="text-xs text-gcal-muted">
+                총 {visibleMembers.length}명
+                {memberSearchQuery.trim() ? ` · 검색 결과 ${filteredMembers.length}명` : ''}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="search"
+                className="h-8 w-52 rounded-lg border border-gcal-border bg-gcal-input px-2 text-sm text-gcal-heading outline-none focus:border-gcal-blue"
+                value={memberSearchQuery}
+                onChange={(event) => setMemberSearchQuery(event.target.value)}
+                placeholder="회원 이름·아이디 검색"
+                aria-label="회원 검색"
+              />
+              {memberSearchQuery ? (
+                <button
+                  type="button"
+                  className="settings-btn-secondary h-8 rounded-lg px-2 text-xs"
+                  onClick={() => setMemberSearchQuery('')}
+                >
+                  검색 초기화
+                </button>
+              ) : null}
+            </div>
           </div>
-          <ul className="members-list">
-            {visible.length === 0 ? (
-              <li className="search-empty">회원이 없습니다.</li>
-            ) : (
-              visible.map((m) => (
-                <li key={m.id} className="members-row">
-                  <div>
-                    <strong>{m.displayName}</strong>
-                    <span className="members-meta">
-                      {m.loginId} · {roleLabel(m.role)}
-                      {!m.active ? ' · 비활성' : ''}
-                      {m.isBootstrapAdmin ? ' · 부트스트랩' : ''}
-                    </span>
-                  </div>
-                  <div className="members-row-actions">
-                    <button type="button" onClick={() => startEdit(m)}>
-                      편집
-                    </button>
-                    <button type="button" className="is-danger" onClick={() => void markDelete(m)}>
-                      삭제
-                    </button>
-                  </div>
-                </li>
-              ))
+
+          {filteredMembers.length === 0 ? (
+            <p className="rounded-lg border border-dashed border-gcal-border px-3 py-4 text-sm text-gcal-muted">
+              표시할 회원이 없습니다.
+            </p>
+          ) : (
+            <ul className="m-0 list-none divide-y divide-gcal-border-light overflow-hidden rounded-lg border border-gcal-border-light p-0">
+              {filteredMembers.map((member) => {
+                const bootstrapAdmin = isBootstrapAdminMember(member)
+                return (
+                  <li
+                    key={member.id}
+                    className={cn(
+                      'flex items-center justify-between gap-3 px-3 py-2.5',
+                      editingMemberId === member.id ? 'bg-gcal-blue-soft/50' : 'bg-gcal-surface'
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-gcal-heading">
+                        {member.displayName}
+                        {bootstrapAdmin ? (
+                          <span className="ml-1.5 text-xs font-normal text-gcal-muted">
+                            (기본 관리자)
+                          </span>
+                        ) : null}
+                      </p>
+                      <p className="truncate text-xs text-gcal-muted">
+                        {member.loginId}
+                        {' · '}
+                        {memberRoleToLabel(member.role)}
+                        {!member.active ? ' · 비활성' : ''}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        type="button"
+                        className="settings-btn-secondary rounded-lg px-2 py-1 text-xs"
+                        disabled={saving}
+                        onClick={() => startEditMember(member)}
+                      >
+                        수정
+                      </button>
+                      {bootstrapAdmin ? null : (
+                        <button
+                          type="button"
+                          className="settings-btn-danger rounded-lg px-2 py-1 text-xs"
+                          disabled={saving}
+                          onClick={() => void markMemberDelete(member)}
+                        >
+                          삭제
+                        </button>
+                      )}
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+      ) : null}
+
+      {!loading && tab === 'member-add' ? (
+        <section className="space-y-3">
+          <h3 className="text-sm font-medium text-gcal-heading">
+            {editingMemberId
+              ? editingBootstrapAdmin
+                ? '기본 관리자 수정'
+                : '회원 수정'
+              : '회원 추가'}
+          </h3>
+          <p className="text-xs text-gcal-muted">
+            {editingBootstrapAdmin
+              ? '기본 관리자 비밀번호를 변경할 수 있습니다. 변경한 비밀번호가 .env 설정보다 우선합니다.'
+              : editingMemberId
+                ? '회원 정보를 수정합니다. 비밀번호는 변경할 때만 입력하세요.'
+                : '새 회원을 추가합니다. 표시 이름은 로그인 아이디와 동일하게 등록됩니다.'}
+          </p>
+          <div className="space-y-3 rounded-xl border border-gcal-border-light bg-gcal-surface p-4">
+            <label className="block space-y-1">
+              <span className="text-xs text-gcal-muted">로그인 아이디</span>
+              <input
+                type="text"
+                className={fieldClass}
+                value={memberLoginId}
+                onChange={(event) => setMemberLoginId(event.target.value)}
+                placeholder="로그인 아이디"
+                autoComplete="off"
+                disabled={editingBootstrapAdmin}
+              />
+            </label>
+            {editingBootstrapAdmin ? null : (
+              <>
+                <label className="block space-y-1">
+                  <span className="text-xs text-gcal-muted">역할</span>
+                  <select
+                    className={fieldClass}
+                    value={memberRole === 'member' ? 'member' : 'super_admin'}
+                    onChange={(event) =>
+                      setMemberRole(
+                        event.target.value === 'member' ? 'member' : 'super_admin'
+                      )
+                    }
+                  >
+                    <option value="member">일반사용자</option>
+                    <option value="super_admin">총괄관리자</option>
+                  </select>
+                </label>
+                <label className="inline-flex items-center gap-2 text-sm text-gcal-body">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gcal-border"
+                    checked={memberActive}
+                    onChange={(event) => setMemberActive(event.target.checked)}
+                  />
+                  활성 계정
+                </label>
+              </>
             )}
-          </ul>
-        </>
-      ) : (
-        <div className="members-form">
-          <h3>{editingId ? '회원 편집' : '회원 추가'}</h3>
-          <label className="settings-field">
-            <span>로그인 아이디</span>
-            <input
-              value={loginId}
-              disabled={Boolean(members.find((m) => m.id === editingId)?.isBootstrapAdmin)}
-              onChange={(e) => setLoginId(e.target.value)}
-            />
-          </label>
-          <label className="settings-field">
-            <span>표시 이름</span>
-            <input value={displayName} onChange={(e) => setDisplayName(e.target.value)} />
-          </label>
-          <label className="settings-field">
-            <span>역할</span>
-            <select
-              value={role === 'member' ? 'member' : 'super_admin'}
-              onChange={(e) =>
-                setRole(e.target.value === 'member' ? 'member' : 'super_admin')
-              }
-            >
-              <option value="member">회원</option>
-              <option value="super_admin">관리자</option>
-            </select>
-          </label>
-          <label className="settings-field">
-            <span>비밀번호 {editingId ? '(변경 시에만)' : ''}</span>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="new-password"
-            />
-          </label>
-          <label className="mdc-login-remember">
-            <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-            활성
-          </label>
-          <div className="panel-actions">
-            <button
-              type="button"
-              onClick={() => {
-                resetForm()
-                setTab('list')
-              }}
-              disabled={saving}
-            >
-              취소
-            </button>
-            <button
-              type="button"
-              className="is-primary"
-              disabled={saving}
-              onClick={() => void submitForm()}
-            >
-              {saving ? '저장 중…' : '저장'}
-            </button>
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="min-w-[12rem] flex-1 space-y-1">
+                <span className="text-xs text-gcal-muted">비밀번호</span>
+                <input
+                  type="text"
+                  className={fieldClass}
+                  value={memberPassword}
+                  onChange={(event) => setMemberPassword(event.target.value)}
+                  placeholder={
+                    editingMemberId ? '비밀번호 (변경 시에만 입력)' : '비밀번호 (6자 이상)'
+                  }
+                  autoComplete="off"
+                />
+              </label>
+              <button
+                type="button"
+                className="settings-btn-secondary h-[38px] rounded-lg px-3 text-sm"
+                onClick={() => setMemberPassword(defaultMemberPassword(memberLoginId))}
+              >
+                초기 비밀번호 설정
+              </button>
+            </div>
+            <div className="flex justify-end gap-2">
+              {editingMemberId ? (
+                <button
+                  type="button"
+                  className="settings-btn-secondary rounded-lg px-3 py-1.5 text-sm"
+                  disabled={saving}
+                  onClick={() => {
+                    resetMemberForm()
+                    setTab('member-list')
+                  }}
+                >
+                  취소
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className="settings-btn-primary rounded-lg px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+                disabled={saving}
+                onClick={() => void handleMemberSubmit()}
+              >
+                {saving ? '저장 중…' : editingMemberId ? '적용' : '회원 추가'}
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        </section>
+      ) : null}
     </div>
   )
 }

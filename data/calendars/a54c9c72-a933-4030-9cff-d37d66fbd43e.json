@@ -1,7 +1,7 @@
 {
   "version": 1,
   "calendar": {
-    "color": "#f6bf26",
+    "color": "#ffc107",
     "custom": false,
     "dataKey": "a54c9c72-a933-4030-9cff-d37d66fbd43e",
     "description": "",
@@ -11,7 +11,7 @@
     "ownerLoginId": "admin",
     "ownerName": "박순표",
     "password": "",
-    "sortOrder": 0,
+    "sortOrder": 1,
     "timezone": "Asia/Seoul",
     "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
     "visible": true
@@ -123,7 +123,10 @@
       "startTime": "18:00",
       "tagIds": [],
       "title": "나이스 서비스 작업",
-      "updatedAt": "2026-07-22T09:13:29.6401838Z"
+      "updatedAt": "2026-07-24T03:18:09.844Z",
+      "sortOrderByDay": {
+        "2026-07-15": 1
+      }
     },
     {
       "allDay": true,
@@ -366,7 +369,36 @@
       "tagIds": [],
       "title": "주통 사이버위현 모의훈련",
       "updatedAt": "2026-07-23T02:16:30.8366128Z"
+    },
+    {
+      "id": "0c5b3ea0-8f4b-466d-b020-32266d3372ca",
+      "calendarId": "primary",
+      "title": "나이스 자료권한 부여(조경선 감사과장님)",
+      "description": "",
+      "links": [],
+      "location": "",
+      "startDate": "2026-07-24",
+      "endDate": "2026-07-24",
+      "allDay": true,
+      "startTime": null,
+      "endTime": null,
+      "repeat": "none",
+      "repeatUntil": null,
+      "repeatCount": null,
+      "exdates": [],
+      "color": null,
+      "guests": [],
+      "completed": false,
+      "markerShape": null,
+      "tagIds": [],
+      "attachments": [],
+      "createdAt": "2026-07-24T01:53:07.273Z",
+      "updatedAt": "2026-07-24T02:17:55.860Z",
+      "createdBy": "local",
+      "link": "",
+      "sortOrder": null,
+      "ownerLoginId": "admin"
     }
   ],
-  "updatedAt": "2026-07-23T17:34:57.662Z"
+  "updatedAt": "2026-07-24T03:26:24.557Z"
 }

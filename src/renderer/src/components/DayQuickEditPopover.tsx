@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -24,6 +25,7 @@ import { getEventLinks } from '../lib/eventLinks'
 import { insertTextAtCursor } from '../lib/insertAtCursor'
 import { formatDayHeaderTitle } from '../lib/dayHeaderFormat'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { clampFixedPosition, clampRectToViewport } from '../lib/popoverPosition'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
@@ -32,6 +34,9 @@ import type { DayReorderItem } from '../lib/dayReorder'
 const QUICK_EDIT_CHROME_HEIGHT = 88
 const QUICK_EDIT_BODY_EXTRA_MONTH = 96
 const COLOR_PANEL_PAD = 8
+/** Inset from shell content edges (principle #4). */
+const VIEWPORT_PAD = 5
+const MIN_BODY_HEIGHT = 72
 
 export type AnchorRect = {
   top: number
@@ -66,29 +71,9 @@ export type DayQuickEditPopoverProps = {
   onOpenMore: (event?: CalendarEvent | null) => void
   onOpenEvent?: (event: CalendarEvent) => void
   onEditEvent?: (event: CalendarEvent) => void
+  onAttachFiles?: (event: CalendarEvent) => void | Promise<void>
 }
 
-
-function clampRectToViewport(rect: {
-  top: number
-  left: number
-  width: number
-  height: number
-  padding?: number
-}): { top: number; left: number; width: number; maxHeight: number } {
-  const pad = rect.padding ?? 8
-  const vw = window.innerWidth
-  const vh = window.innerHeight
-  const width = Math.min(rect.width, vw - pad * 2)
-  const maxHeight = Math.min(rect.height, vh - pad * 2)
-  let left = rect.left
-  let top = rect.top
-  if (left < pad) left = pad
-  if (left + width > vw - pad) left = Math.max(pad, vw - pad - width)
-  if (top < pad) top = pad
-  if (top + maxHeight > vh - pad) top = Math.max(pad, vh - pad - maxHeight)
-  return { top, left, width, maxHeight }
-}
 
 function buildQuickEditStyle(
   anchorRect: AnchorRect | null,
@@ -96,26 +81,44 @@ function buildQuickEditStyle(
 ): CSSProperties | undefined {
   const bodyExtra = options?.bodyExtra ?? 0
   if (!anchorRect) {
+    const width = 320
+    const height = 280
+    const clamped = clampRectToViewport({
+      top: (window.innerHeight - height) / 2,
+      left: (window.innerWidth - width) / 2,
+      width,
+      height,
+      padding: VIEWPORT_PAD
+    })
+    const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
     return {
-      top: '50%',
-      left: '50%',
-      width: 320,
-      height: 280,
-      transform: 'translate(-50%, -50%)',
-      '--day-quick-edit-body-height': '180px'
+      top: clamped.top,
+      left: clamped.left,
+      width: clamped.width,
+      height: clamped.maxHeight,
+      maxHeight: clamped.maxHeight,
+      '--day-quick-edit-body-height': `${fittedBody}px`
     } as CSSProperties
   }
 
   const padX = 12
   const width = Math.max(anchorRect.width + padX * 2, 300)
-  const bodyHeight = Math.max(
+  const desiredBody = Math.max(
     Math.round(anchorRect.height) + bodyExtra,
-    bodyExtra > 0 ? 160 : 72
+    bodyExtra > 0 ? 160 : MIN_BODY_HEIGHT
   )
-  const height = bodyHeight + QUICK_EDIT_CHROME_HEIGHT
+  const height = desiredBody + QUICK_EDIT_CHROME_HEIGHT
   const left = anchorRect.left + anchorRect.width / 2 - width / 2
   const top = anchorRect.top + anchorRect.height / 2 - height / 2
-  const clamped = clampRectToViewport({ top, left, width, height, padding: 8 })
+  const clamped = clampRectToViewport({
+    top,
+    left,
+    width,
+    height,
+    padding: VIEWPORT_PAD
+  })
+  // Keep chrome + body inside the clamped panel height (principle #4).
+  const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
 
   return {
     top: clamped.top,
@@ -123,7 +126,7 @@ function buildQuickEditStyle(
     width: clamped.width,
     height: clamped.maxHeight,
     maxHeight: clamped.maxHeight,
-    '--day-quick-edit-body-height': `${bodyHeight}px`
+    '--day-quick-edit-body-height': `${fittedBody}px`
   } as CSSProperties
 }
 
@@ -155,7 +158,8 @@ export function DayQuickEditPopover({
   onEventLinkChange,
   onReorderEvents,
   onOpenMore,
-  onEditEvent
+  onEditEvent,
+  onAttachFiles
 }: DayQuickEditPopoverProps): ReactElement {
   const [title, setTitle] = useState('')
   const [draftCalendarId, setDraftCalendarId] = useState(() => defaultCalendarId(calendars))
@@ -171,14 +175,74 @@ export function DayQuickEditPopover({
   const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const colorTriggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const bodyExtra = expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
 
-  const style = useMemo(
-    () =>
-      buildQuickEditStyle(anchorRect, {
-        bodyExtra: expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
-      }),
-    [anchorRect, expandBody]
+  const [style, setStyle] = useState<CSSProperties | undefined>(() =>
+    buildQuickEditStyle(anchorRect, { bodyExtra })
   )
+
+  // Principle #4: remeasure after layout / resize so the panel never leaves the window.
+  useLayoutEffect(() => {
+    const base = buildQuickEditStyle(anchorRect, { bodyExtra })
+    setStyle(base)
+
+    const panel = panelRef.current
+    if (!panel || !base) return undefined
+
+    const apply = (): void => {
+      const desiredTop = typeof base.top === 'number' ? base.top : panel.getBoundingClientRect().top
+      const desiredLeft =
+        typeof base.left === 'number' ? base.left : panel.getBoundingClientRect().left
+      const measured = panel.getBoundingClientRect()
+      const width = Math.max(measured.width, Number(base.width) || 300)
+      const height = Math.max(measured.height, Number(base.height) || 120)
+      const clamped = clampRectToViewport({
+        top: desiredTop,
+        left: desiredLeft,
+        width,
+        height,
+        padding: VIEWPORT_PAD
+      })
+      const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
+      const next: CSSProperties = {
+        top: clamped.top,
+        left: clamped.left,
+        width: clamped.width,
+        height: clamped.maxHeight,
+        maxHeight: clamped.maxHeight,
+        '--day-quick-edit-body-height': `${fittedBody}px`
+      } as CSSProperties
+      setStyle((prev) => {
+        if (
+          prev &&
+          prev.top === next.top &&
+          prev.left === next.left &&
+          prev.width === next.width &&
+          prev.height === next.height &&
+          prev.maxHeight === next.maxHeight &&
+          (prev as CSSProperties & { ['--day-quick-edit-body-height']?: string })[
+            '--day-quick-edit-body-height'
+          ] === fittedBody + 'px'
+        ) {
+          return prev
+        }
+        return next
+      })
+    }
+
+    apply()
+    const raf = window.requestAnimationFrame(apply)
+    const ro =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(() => apply()) : null
+    ro?.observe(panel)
+    window.addEventListener('resize', apply)
+    return () => {
+      window.cancelAnimationFrame(raf)
+      ro?.disconnect()
+      window.removeEventListener('resize', apply)
+    }
+  }, [anchorRect, bodyExtra])
 
   const storeDayEvents = events
   const dayEvents = useMemo(() => {
@@ -302,6 +366,7 @@ export function DayQuickEditPopover({
       if (target.closest('.event-link-flyout')) return
       if (target.closest('.emoji-picker-panel')) return
       if (target.closest('.custom-color-panel')) return
+      if (target.closest('.app-dialog-root')) return
       onClose()
     }
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -321,12 +386,18 @@ export function DayQuickEditPopover({
       const height = 240
       let left = ar.left
       let top = ar.top - height - COLOR_PANEL_PAD
-      if (top < COLOR_PANEL_PAD) top = ar.bottom + COLOR_PANEL_PAD
-      left = Math.min(Math.max(left, COLOR_PANEL_PAD), window.innerWidth - width - COLOR_PANEL_PAD)
+      if (top < VIEWPORT_PAD) top = ar.bottom + COLOR_PANEL_PAD
+      const clamped = clampFixedPosition({
+        left,
+        top,
+        width,
+        height,
+        padding: VIEWPORT_PAD
+      })
       setPaletteStyle({
         position: 'fixed',
-        left: Math.round(left),
-        top: Math.round(top),
+        left: Math.round(clamped.left),
+        top: Math.round(clamped.top),
         zIndex: 80
       })
     }
@@ -395,6 +466,7 @@ export function DayQuickEditPopover({
         onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
       />
       <InteractionUI
+        ref={panelRef}
         className="day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg"
         style={style}
         role="dialog"
@@ -658,8 +730,9 @@ export function DayQuickEditPopover({
                 || !selectedEvent
                 || selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID
               }
+              title="파일 첨부"
               onClick={() => {
-                if (selectedEvent) onOpenMore(selectedEvent)
+                if (selectedEvent) void onAttachFiles?.(selectedEvent)
               }}
             />
             <button

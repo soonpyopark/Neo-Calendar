@@ -20,18 +20,22 @@
     "build:dist:msi": "node scripts/build-msi.mjs"
   },
   "dependencies": {
+    "adm-zip": "^0.6.0",
     "exceljs": "^4.4.0",
     "koffi": "^2.11.0",
     "kor-lunar": "^1.7.0",
     "pdfkit": "^0.19.1",
-    "solarlunar": "^3.1.0"
+    "solarlunar": "^3.1.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.11",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.16.5",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.7.0",
     "electron": "^37.10.3",
     "electron-builder": "^26.0.12",

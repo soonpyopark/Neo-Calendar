@@ -35,19 +35,12 @@ import {
 } from '../lib/eventAttachments'
 import { openExternalUrl } from '../lib/openExternal'
 import { InteractionUI } from './InteractionUI'
+import { useAppDialog } from './AppDialogProvider'
 import DateInput from './DateInput'
 import { EmojiPickerButton } from './EmojiPickerButton'
 import { EventMarkerShapeButton } from './EventMarkerShapeButton'
 import { QuickEditCalendarButton } from './QuickEditCalendarButton'
 import { QuickEditTagButton } from './QuickEditTagButton'
-
-async function appAlert(message: string): Promise<void> {
-  window.alert(message)
-}
-
-async function appConfirm(message: string): Promise<boolean> {
-  return window.confirm(message)
-}
 
 const fieldClass =
   'rounded border border-gcal-border bg-gcal-page px-2.5 py-2 text-gcal-heading placeholder:text-gcal-muted focus:border-gcal-blue focus:outline-none focus:ring-2 focus:ring-gcal-blue/15';
@@ -144,8 +137,7 @@ export function EventEditor({
   onDelete,
   onEventRefresh
 }: EventEditorProps) {
-  const alert = appAlert
-  const confirm = appConfirm
+  const { alert, confirm } = useAppDialog()
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -517,9 +509,9 @@ export function EventEditor({
         <div className="h-1" style={{ background: calendarTheme.base }} />
 
         <div className="flex items-center gap-3 border-b border-gcal-border-light px-[18px] py-3.5">
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="event-editor-toolbar-icons flex shrink-0 items-center gap-1">
             <label
-              className="inline-flex h-9 w-9 shrink-0 cursor-pointer items-center justify-center rounded border border-transparent text-gcal-muted transition-colors hover:border-gcal-border hover:bg-gcal-surface-2"
+              className="event-editor-toolbar-check inline-flex shrink-0 cursor-pointer items-center justify-center border border-transparent text-gcal-muted transition-colors hover:border-gcal-border hover:bg-gcal-surface-2"
               title={completed ? '미완료로 표시' : '완료로 표시'}
             >
               <input
@@ -530,16 +522,16 @@ export function EventEditor({
                 aria-label={completed ? '미완료로 표시' : '완료로 표시'}
               />
             </label>
-            <EmojiPickerButton
-              title="이모지 추가"
-              buttonClassName="event-editor-toolbar-trigger event-editor-emoji-trigger"
-              onSelect={insertTitleEmoji}
-            />
             <EventMarkerShapeButton
               buttonClassName="event-editor-toolbar-trigger event-editor-shape-trigger"
               value={markerShape}
               color={selectedCalendar?.color ?? calendarTheme.base}
               onChange={setMarkerShape}
+            />
+            <EmojiPickerButton
+              title="이모지 추가"
+              buttonClassName="event-editor-toolbar-trigger event-editor-emoji-trigger"
+              onSelect={insertTitleEmoji}
             />
             <QuickEditCalendarButton
               calendars={calendars}

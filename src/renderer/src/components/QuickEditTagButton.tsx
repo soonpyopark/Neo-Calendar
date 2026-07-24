@@ -55,10 +55,14 @@ export function QuickEditTagButton({
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
       const ar = btn.getBoundingClientRect()
+      const width = 220
+      const height = 200
+      const left = Math.min(Math.max(8, ar.left), window.innerWidth - width - 8)
+      const top = Math.min(Math.max(8, ar.bottom + 8), window.innerHeight - height - 8)
       setStyle({
         position: 'fixed',
-        left: Math.min(ar.left, window.innerWidth - 220),
-        top: Math.min(ar.bottom + 8, window.innerHeight - 200),
+        left,
+        top,
         zIndex: 80
       })
     }

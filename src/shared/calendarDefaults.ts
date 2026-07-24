@@ -56,7 +56,7 @@ export function createDefaultSettings(): StoreSettings {
     viewOptions: {
       showWeekNumbers: true,
       weekStartsOnSunday: true,
-      roundedCorners: false,
+      roundedCorners: true,
       colorScheme: 'light',
       accentColor: '#039be5',
       runAtStartup: false,
@@ -84,8 +84,8 @@ export function createDefaultSettings(): StoreSettings {
     dayColorsByLoginId: {},
     hiddenCalendarIdsByLoginId: {},
     allowedIpCidrs: [],
-    headerOpacity: 0.62,
-    shellOpacity: 0.35
+    headerOpacity: 0.9,
+    shellOpacity: 0.9
   }
 }
 

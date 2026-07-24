@@ -303,9 +303,9 @@ export function MonthDayCell({
               onDoubleClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                if (!canEdit) return
                 clearEventClickTimer()
                 clearMoreClickTimer()
+                if (!canEdit) return
                 if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
                 onEventEdit(event, dayKey)
               }}

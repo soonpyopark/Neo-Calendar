@@ -72,6 +72,14 @@ const api: NeoCalendarApi = {
     }
   },
   getAuth: () => ipcRenderer.invoke('get-auth'),
+  getSyncInfo: () =>
+    ipcRenderer.invoke('get-sync-info') as Promise<{
+      running: boolean
+      port: number | null
+      hostname: string | null
+      lanMode: boolean
+      addresses: string[]
+    }>,
   login: (loginId: string, password: string, remember?: boolean) =>
     ipcRenderer.invoke('login', loginId, password, remember) as Promise<LoginResult>,
   logout: () => ipcRenderer.invoke('logout') as Promise<void>,
@@ -84,19 +92,52 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('calendar:patch-settings', patch) as Promise<CalendarStoreSnapshot>,
   replaceCalendarStore: (store: CalendarStoreSnapshot) =>
     ipcRenderer.invoke('calendar:replace-store', store) as Promise<CalendarStoreSnapshot>,
+  importCalendarStore: (payload: unknown) =>
+    ipcRenderer.invoke('calendar:import-store', payload) as Promise<CalendarStoreSnapshot>,
+  exportBackupZip: () =>
+    ipcRenderer.invoke('calendar:export-backup-zip') as ReturnType<
+      NeoCalendarApi['exportBackupZip']
+    >,
+  importBackupZip: () =>
+    ipcRenderer.invoke('calendar:import-backup-zip') as ReturnType<
+      NeoCalendarApi['importBackupZip']
+    >,
   addEvent: (input: EventInput) =>
     ipcRenderer.invoke('calendar:add-event', input) as Promise<CalendarEvent>,
   editEvent: (id: string, patch: Partial<CalendarEvent>) =>
     ipcRenderer.invoke('calendar:edit-event', id, patch) as Promise<CalendarEvent>,
   removeEvent: (id: string) => ipcRenderer.invoke('calendar:remove-event', id) as Promise<void>,
+  addEventAttachments: (eventId: string) =>
+    ipcRenderer.invoke('calendar:add-attachments', eventId) as Promise<CalendarEvent>,
+  removeEventAttachment: (eventId: string, attachmentId: string) =>
+    ipcRenderer.invoke(
+      'calendar:remove-attachment',
+      eventId,
+      attachmentId
+    ) as Promise<CalendarEvent>,
+  openEventAttachment: (eventId: string, attachmentId: string) =>
+    ipcRenderer.invoke('calendar:open-attachment', eventId, attachmentId) as Promise<void>,
   createCalendar: (input: Partial<CalendarRecord> & { name: string; color: string }) =>
     ipcRenderer.invoke('calendar:create-calendar', input) as Promise<CalendarRecord>,
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) =>
     ipcRenderer.invoke('calendar:patch-calendar', id, patch) as Promise<CalendarRecord>,
   deleteCalendar: (id: string) =>
     ipcRenderer.invoke('calendar:delete-calendar', id) as Promise<void>,
+  clearCalendarEvents: (id: string) =>
+    ipcRenderer.invoke('calendar:clear-events', id) as Promise<void>,
+  importEventsIntoCalendar: (id: string, events: unknown[]) =>
+    ipcRenderer.invoke('calendar:import-into-calendar', id, events) as Promise<{
+      ok: true
+      importedCount: number
+      calendarId: string
+    }>,
   setTags: (tags: TagRecord[]) =>
     ipcRenderer.invoke('calendar:set-tags', tags) as Promise<TagRecord[]>,
+  createTag: (input: { name: string; color: string; sortOrder?: number }) =>
+    ipcRenderer.invoke('calendar:create-tag', input) as Promise<TagRecord>,
+  patchTag: (id: string, patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>) =>
+    ipcRenderer.invoke('calendar:patch-tag', id, patch) as Promise<TagRecord>,
+  deleteTag: (id: string) => ipcRenderer.invoke('calendar:delete-tag', id) as Promise<void>,
   listMembers: () => ipcRenderer.invoke('calendar:list-members') as Promise<MemberRecord[]>,
   saveMembers: (members: MemberSaveInput[]) =>
     ipcRenderer.invoke('calendar:save-members', members) as Promise<MemberRecord[]>,

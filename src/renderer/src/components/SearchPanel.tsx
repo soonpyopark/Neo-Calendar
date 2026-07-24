@@ -483,9 +483,9 @@ export function SearchPanel({
         aria-label="일정 검색"
       >
         <div className="shell-solid-surface overflow-hidden rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
-          <div className="flex items-center gap-2 border-b border-gcal-border-light px-3 py-2.5">
+          <div className="search-panel-query-row flex h-14 items-center gap-1 border-b border-gcal-border-light px-3">
             <span
-              className="inline-flex h-9 w-9 items-center justify-center text-gcal-muted"
+              className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-gcal-muted"
               aria-hidden="true"
             >
               <svg viewBox="0 0 24 24" width="22" height="22">
@@ -497,23 +497,26 @@ export function SearchPanel({
             </span>
             <input
               ref={inputRef}
-              type="search"
+              type="text"
               value={query}
               onChange={(event) => {
                 setQuery(event.target.value)
                 setPage(1)
               }}
               placeholder="검색어 입력"
-              className="min-w-0 flex-1 border-0 bg-transparent py-2 text-base text-gcal-heading outline-none placeholder:text-gcal-muted"
+              className="search-panel-query-input min-w-0 h-9 flex-1 border-0 bg-transparent py-0 text-base leading-9 text-gcal-heading outline-none placeholder:text-gcal-muted"
               aria-label="검색어 입력"
+              autoComplete="off"
+              spellCheck={false}
             />
             {trimmed ? (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading"
                 onClick={() => {
                   setQuery('')
                   setPage(1)
+                  inputRef.current?.focus()
                 }}
                 aria-label="검색어 지우기"
               >
@@ -527,7 +530,7 @@ export function SearchPanel({
             ) : null}
             <button
               type="button"
-              className="rounded-full px-3 py-1.5 text-sm font-medium text-gcal-blue transition-colors hover:bg-gcal-blue-soft"
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-full px-3 text-sm font-medium leading-none text-gcal-blue transition-colors hover:bg-gcal-blue-soft"
               onClick={onClose}
             >
               닫기

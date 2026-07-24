@@ -47,17 +47,6 @@ function resolveTrayImage(): Electron.NativeImage {
   return nativeImage.createFromDataURL(FALLBACK_TRAY_PNG)
 }
 
-function resolveAppIconForMenu(): Electron.NativeImage | undefined {
-  for (const iconPath of trayIconCandidates()) {
-    if (!existsSync(iconPath)) continue
-    const image = nativeImage.createFromPath(iconPath)
-    if (!image.isEmpty()) {
-      return image.getSize().width > 16 ? image.resize({ width: 16, height: 16 }) : image
-    }
-  }
-  return undefined
-}
-
 export type AppTray = Tray & {
   rebuildMenu?: () => void
   hideToTray?: () => void
@@ -67,13 +56,20 @@ export type AppTray = Tray & {
 
 /**
  * MDC NotifyIcon context menu (MainWindow.SetupTray) — Neo Electron port.
- * Web-server items are included for parity but disabled (Neo has no LAN editor host).
  */
 export function createAppTray(options: {
   getWindow: () => BrowserWindow | null
   desktopMode: DesktopModeController
   getDataRoot: () => string
   requestQuit: () => void
+  webServer?: {
+    isRunning: boolean
+    tryStart: (opts?: {
+      mode?: 'local' | 'lan' | 'env'
+      requirePortInEnv?: boolean
+    }) => Promise<{ ok: boolean; message: string }>
+    stop: () => { ok: boolean; message: string }
+  } | null
 }): AppTray | null {
   const image = resolveTrayImage()
   if (image.isEmpty()) {
@@ -83,7 +79,6 @@ export function createAppTray(options: {
 
   const tray = new Tray(image) as AppTray
   tray.setToolTip(APP_TITLE)
-  const desktopIcon = resolveAppIconForMenu()
   let closeTipShown = false
   try {
     if (existsSync(join(options.getDataRoot(), '.close-to-tray-tip-shown'))) {
@@ -204,22 +199,55 @@ export function createAppTray(options: {
     })
   }
 
+  const balloon = (content: string): void => {
+    try {
+      tray.displayBalloon({
+        title: APP_NAME,
+        content,
+        iconType: 'info'
+      })
+    } catch {
+      /* ignore */
+    }
+  }
+
   const rebuild = (): void => {
     const mode = options.desktopMode.getLaunchMode()
+    const web = options.webServer
+    const running = Boolean(web?.isRunning)
     const menu = Menu.buildFromTemplate([
       {
-        label: 'Start Server (local)',
-        enabled: false,
-        toolTip: 'Neo Calendar는 로컬 웹 서버 편집을 지원하지 않습니다.'
+        label: running ? '✓ Start Server (local)' : 'Start Server (local)',
+        enabled: Boolean(web) && !running,
+        click: () => {
+          if (!web) return
+          void web.tryStart({ mode: 'local', requirePortInEnv: false }).then((result) => {
+            balloon(result.message)
+            rebuild()
+          })
+        }
       },
       {
-        label: 'Start Server (Web)',
-        enabled: false,
-        toolTip: 'Neo Calendar는 LAN 웹 서버 편집을 지원하지 않습니다.'
+        label: running ? '✓ Start Server (Web)' : 'Start Server (Web)',
+        enabled: Boolean(web) && !running,
+        toolTip: 'LAN: HOSTNAME=0.0.0.0 (URL ACL·방화벽 필요할 수 있음)',
+        click: () => {
+          if (!web) return
+          void web.tryStart({ mode: 'lan', requirePortInEnv: false }).then((result) => {
+            balloon(result.message)
+            rebuild()
+          })
+        }
       },
       {
         label: 'Stop Server',
-        enabled: false
+        enabled: Boolean(web) && running,
+        click: () => {
+          if (!web) return
+          const result = web.stop()
+          balloon(result.message)
+          rebuild()
+        }
       },
       { type: 'separator' },
       {
@@ -233,7 +261,6 @@ export function createAppTray(options: {
       { type: 'separator' },
       {
         label: mode === 'desktop' ? '✓ 바탕화면 모드' : '바탕화면 모드',
-        ...(desktopIcon ? { icon: desktopIcon } : {}),
         click: () => {
           if (options.desktopMode.getLaunchMode() === 'desktop') {
             bringToFront()

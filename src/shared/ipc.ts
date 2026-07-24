@@ -101,6 +101,14 @@ export type NeoCalendarApi = {
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
   getAuth: () => Promise<AuthUser | null>
+  /** Local/LAN HTTP editor status (MDC /api/sync-info). */
+  getSyncInfo: () => Promise<{
+    running: boolean
+    port: number | null
+    hostname: string | null
+    lanMode: boolean
+    addresses: string[]
+  }>
   login: (loginId: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => Promise<void>
   getSettings: () => Promise<AppSettings>
@@ -109,15 +117,46 @@ export type NeoCalendarApi = {
   getCalendarStore: () => Promise<CalendarStoreSnapshot>
   patchStoreSettings: (patch: Partial<StoreSettings>) => Promise<CalendarStoreSnapshot>
   replaceCalendarStore: (store: CalendarStoreSnapshot) => Promise<CalendarStoreSnapshot>
+  /** MDC import: full replace (keep holidays-kr) or single-calendar merge */
+  importCalendarStore: (payload: unknown) => Promise<CalendarStoreSnapshot>
+  exportBackupZip: () => Promise<{
+    ok: boolean
+    cancelled?: boolean
+    path?: string
+    attachmentFiles?: number
+    eventsWithAttachments?: number
+  }>
+  importBackupZip: () => Promise<{
+    ok: boolean
+    cancelled?: boolean
+    path?: string
+    attachmentFiles?: number
+    store?: CalendarStoreSnapshot
+  }>
   addEvent: (input: EventInput) => Promise<CalendarEvent>
   editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
   removeEvent: (id: string) => Promise<void>
+  /** Native multi-file picker → copy into data/attachments/{eventId}/ */
+  addEventAttachments: (eventId: string) => Promise<CalendarEvent>
+  removeEventAttachment: (eventId: string, attachmentId: string) => Promise<CalendarEvent>
+  openEventAttachment: (eventId: string, attachmentId: string) => Promise<void>
   createCalendar: (
     input: Partial<CalendarRecord> & { name: string; color: string }
   ) => Promise<CalendarRecord>
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
   deleteCalendar: (id: string) => Promise<void>
+  clearCalendarEvents: (id: string) => Promise<void>
+  importEventsIntoCalendar: (
+    id: string,
+    events: unknown[]
+  ) => Promise<{ ok: true; importedCount: number; calendarId: string }>
   setTags: (tags: TagRecord[]) => Promise<TagRecord[]>
+  createTag: (input: { name: string; color: string; sortOrder?: number }) => Promise<TagRecord>
+  patchTag: (
+    id: string,
+    patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>
+  ) => Promise<TagRecord>
+  deleteTag: (id: string) => Promise<void>
   listMembers: () => Promise<MemberRecord[]>
   saveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
   syncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>

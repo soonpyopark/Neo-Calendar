@@ -41,10 +41,14 @@ export function QuickEditCalendarButton({
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
       const ar = btn.getBoundingClientRect()
+      const width = 200
+      const height = 180
+      const left = Math.min(Math.max(8, ar.left), window.innerWidth - width - 8)
+      const top = Math.min(Math.max(8, ar.bottom + 8), window.innerHeight - height - 8)
       setStyle({
         position: 'fixed',
-        left: Math.min(ar.left, window.innerWidth - 200),
-        top: Math.min(ar.bottom + 8, window.innerHeight - 180),
+        left,
+        top,
         zIndex: 80
       })
     }

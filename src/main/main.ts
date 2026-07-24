@@ -2,9 +2,11 @@ import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { AuthService } from './auth'
 import { CalendarStore } from './calendarStore/CalendarStore'
+import { EventAttachmentService } from './calendarStore/eventAttachments'
 import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
-import { getEnvValue, loadDotEnv } from './dotEnv'
+import { getEnvValue, loadDotEnv, resolveAdminCredentials } from './dotEnv'
+import { exportBackupZip, importBackupZip } from './calendarStore/backupZip'
 import { applyHolidayKeyFromEnv, syncKoreanHolidays } from './calendarStore/holidaySync'
 import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
@@ -16,6 +18,10 @@ import { WindowModeHitZone } from './windowModeHitZone'
 import { HeaderClickBridge } from './headerClickBridge'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import {
+  CalendarWebServer,
+  resolveLaunchServerMode
+} from './webServer/CalendarWebServer'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -30,11 +36,26 @@ import type { AppSettings, ClientHitRect, DayCellHitZone, ModeStatus } from '../
 
 let mainWindow: WallpaperBrowserWindow | null = null
 let calendarStore: CalendarStore
+let attachmentService: EventAttachmentService
 let membersStore: MembersStore
 let settingsStore: SettingsStore
 let auth: AuthService
 let desktopMode: DesktopModeController
+let webServer: CalendarWebServer | null = null
 let tray: AppTray | null = null
+
+function notifyStoreChanged(): void {
+  try {
+    webServer?.broadcastStoreChanged()
+  } catch {
+    /* ignore */
+  }
+  try {
+    tray?.rebuildMenu?.()
+  } catch {
+    /* ignore */
+  }
+}
 let windowModeHitZone: WindowModeHitZone | null = null
 let headerClickBridge: HeaderClickBridge | null = null
 let desktopInputBridge: DesktopInputBridge | null = null
@@ -47,7 +68,21 @@ let forceQuit = false
 function requestQuit(): void {
   forceQuit = true
   desktopMode?.persistSession()
+  try {
+    webServer?.stop()
+  } catch {
+    /* ignore */
+  }
   app.quit()
+}
+
+/** Display owner name follows the signed-in member loginId. */
+function syncOwnerNameFromLoginId(loginId: string): void {
+  const id = loginId.trim()
+  if (!id) return
+  const current = calendarStore.getSnapshot().settings.ownerName?.trim() ?? ''
+  if (current === id) return
+  calendarStore.patchStoreSettings({ ownerName: id })
 }
 
 function broadcastMode(status: ModeStatus): void {
@@ -259,10 +294,22 @@ function registerIpc(): void {
   ipcMain.handle('set-window-bounds', (_event, bounds) => desktopMode.setWindowBounds(bounds))
 
   ipcMain.handle('get-auth', () => auth.getUser())
+  ipcMain.handle('get-sync-info', () => webServer?.getSyncInfo() ?? {
+    running: false,
+    port: null,
+    hostname: null,
+    lanMode: false,
+    addresses: []
+  })
   ipcMain.handle(
     'login',
-    (_event, loginId: string, password: string, remember?: boolean) =>
-      auth.login(loginId, password, Boolean(remember))
+    (_event, loginId: string, password: string, remember?: boolean) => {
+      const result = auth.login(loginId, password, Boolean(remember))
+      if (result.ok && result.user?.loginId) {
+        syncOwnerNameFromLoginId(result.user.loginId)
+      }
+      return result
+    }
   )
   ipcMain.handle('logout', () => {
     auth.logout()
@@ -273,10 +320,13 @@ function registerIpc(): void {
     settingsStore.patchSettings(patch ?? {})
   )
 
-  ipcMain.handle('calendar:get-store', () => calendarStore.getSnapshot())
+  ipcMain.handle('calendar:get-store', () => {
+    const snap = calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
+    return snap
+  })
   ipcMain.handle('calendar:get-data-root', () => calendarStore.dataRoot)
   ipcMain.handle('calendar:patch-settings', (_event, patch: Partial<StoreSettings>) => {
-    const next = calendarStore.patchStoreSettings(patch ?? {})
+    calendarStore.patchStoreSettings(patch ?? {})
     if (patch?.viewOptions && typeof patch.viewOptions.runAtStartup === 'boolean') {
       try {
         app.setLoginItemSettings({ openAtLogin: patch.viewOptions.runAtStartup })
@@ -284,41 +334,172 @@ function registerIpc(): void {
         console.warn('[settings] setLoginItemSettings failed', err)
       }
     }
-    return next
+    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
   })
-  ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) =>
-    calendarStore.replaceStore(store)
-  )
-  ipcMain.handle('calendar:add-event', (_event, input: EventInput) => calendarStore.addEvent(input))
-  ipcMain.handle('calendar:edit-event', (_event, id: string, patch: Partial<CalendarEvent>) =>
-    calendarStore.editEvent(id, patch ?? {})
-  )
+  ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) => {
+    const next = calendarStore.replaceStore(store)
+    notifyStoreChanged()
+    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId) ?? next
+  })
+  ipcMain.handle('calendar:import-store', (_event, payload: unknown) => {
+    calendarStore.importStore(payload)
+    notifyStoreChanged()
+    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
+  })
+  ipcMain.handle('calendar:export-backup-zip', async () => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+    return exportBackupZip(calendarStore, win)
+  })
+  ipcMain.handle('calendar:import-backup-zip', async () => {
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+    return importBackupZip(calendarStore, win)
+  })
+  ipcMain.handle('calendar:add-event', (_event, input: EventInput) => {
+    const created = calendarStore.addEvent(input)
+    notifyStoreChanged()
+    return created
+  })
+  ipcMain.handle('calendar:edit-event', (_event, id: string, patch: Partial<CalendarEvent>) => {
+    const updated = calendarStore.editEvent(id, patch ?? {})
+    notifyStoreChanged()
+    return updated
+  })
   ipcMain.handle('calendar:remove-event', (_event, id: string) => {
     calendarStore.removeEvent(id)
+    attachmentService.deleteAllForEvent(id)
+    notifyStoreChanged()
+  })
+  ipcMain.handle('calendar:add-attachments', async (_event, eventId: string) => {
+    const options: Electron.OpenDialogOptions = {
+      title: '일정에 첨부할 파일 선택',
+      properties: ['openFile', 'multiSelections'],
+      buttonLabel: '첨부'
+    }
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+    const result = win
+      ? await dialog.showOpenDialog(win, options)
+      : await dialog.showOpenDialog(options)
+    if (result.canceled || result.filePaths.length === 0) {
+      const current = calendarStore.getSnapshot().events.find((item) => item.id === eventId)
+      if (!current) throw new Error('일정을 찾을 수 없습니다.')
+      return current
+    }
+    return attachmentService.addFromPaths(eventId, result.filePaths)
   })
   ipcMain.handle(
+    'calendar:remove-attachment',
+    (_event, eventId: string, attachmentId: string) =>
+      attachmentService.remove(eventId, attachmentId)
+  )
+  ipcMain.handle(
+    'calendar:open-attachment',
+    async (_event, eventId: string, attachmentId: string) => {
+      await attachmentService.open(eventId, attachmentId)
+    }
+  )
+  ipcMain.handle(
     'calendar:create-calendar',
-    (_event, input: Partial<CalendarRecord> & { name: string; color: string }) =>
-      calendarStore.createCalendar(input)
+    (_event, input: Partial<CalendarRecord> & { name: string; color: string }) => {
+      const created = calendarStore.createCalendar(input)
+      const adminId = resolveAdminCredentials().id
+      calendarStore.hideNewMemberCalendarForAdmin(created, adminId)
+      const projected = calendarStore
+        .getSnapshotForLogin(auth.getUser()?.loginId)
+        .calendars.find((c) => c.id === created.id)
+      notifyStoreChanged()
+      return projected ?? created
+    }
   )
   ipcMain.handle(
     'calendar:patch-calendar',
-    (_event, id: string, patch: Partial<CalendarRecord>) =>
-      calendarStore.patchCalendar(id, patch ?? {})
+    (_event, id: string, patch: Partial<CalendarRecord>) => {
+      const body = { ...(patch ?? {}) }
+      const loginId = auth.getUser()?.loginId?.trim() ?? ''
+      // Eye-toggle is per-member, not shared calendar.visible (MDC).
+      if (Object.prototype.hasOwnProperty.call(body, 'visible') && loginId) {
+        const wantVisible = body.visible !== false
+        calendarStore.setCalendarHiddenForLogin(loginId, id, !wantVisible)
+        delete body.visible
+      }
+      const updated =
+        Object.keys(body).length > 0
+          ? calendarStore.patchCalendar(id, body)
+          : (calendarStore.getSnapshot().calendars.find((c) => c.id === id) ?? null)
+      if (!updated) throw new Error('캘린더를 찾을 수 없습니다.')
+      const projected = calendarStore
+        .getSnapshotForLogin(loginId || auth.getUser()?.loginId)
+        .calendars.find((c) => c.id === id)
+      notifyStoreChanged()
+      return projected ?? updated
+    }
   )
   ipcMain.handle('calendar:delete-calendar', (_event, id: string) => {
     calendarStore.deleteCalendar(id)
+    notifyStoreChanged()
   })
+  ipcMain.handle('calendar:clear-events', (_event, id: string) => {
+    calendarStore.clearCalendarEvents(id)
+    notifyStoreChanged()
+  })
+  ipcMain.handle(
+    'calendar:import-into-calendar',
+    (_event, id: string, events: unknown[]) => {
+      const loginId = auth.getUser()?.loginId ?? resolveAdminCredentials().id
+      const result = calendarStore.importEventsIntoCalendar(
+        id,
+        Array.isArray(events) ? events : [],
+        loginId
+      )
+      notifyStoreChanged()
+      return result
+    }
+  )
   ipcMain.handle('calendar:set-tags', (_event, tags: TagRecord[]) =>
     calendarStore.setTags(Array.isArray(tags) ? tags : [])
   )
+  ipcMain.handle(
+    'calendar:create-tag',
+    (_event, input: { name: string; color: string; sortOrder?: number }) =>
+      calendarStore.createTag(input ?? { name: '', color: '' })
+  )
+  ipcMain.handle(
+    'calendar:patch-tag',
+    (_event, id: string, patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>) =>
+      calendarStore.patchTag(id, patch ?? {})
+  )
+  ipcMain.handle('calendar:delete-tag', (_event, id: string) => {
+    calendarStore.deleteTag(id)
+  })
   ipcMain.handle('calendar:list-members', () => membersStore.listPublic())
-  ipcMain.handle('calendar:save-members', (_event, members: MemberSaveInput[]) =>
-    membersStore.saveMembers(Array.isArray(members) ? members : [])
-  )
-  ipcMain.handle('calendar:sync-holidays', (_event, body: SyncHolidaysInput) =>
-    syncKoreanHolidays(calendarStore, body ?? {})
-  )
+  ipcMain.handle('calendar:save-members', (_event, members: MemberSaveInput[]) => {
+    const result = membersStore.saveMembers(Array.isArray(members) ? members : [])
+    for (const loginId of result.deletedLoginIds) {
+      try {
+        calendarStore.purgeMemberOwnedData(loginId)
+      } catch (err) {
+        console.warn('[members] purge failed', loginId, err)
+      }
+    }
+    // MDC: ensure a personal calendar for every active member after each save.
+    const adminId = auth.getUser()?.loginId ?? resolveAdminCredentials().id
+    for (const member of result.members) {
+      if (member.active === false) continue
+      const loginId = String(member.loginId ?? '').trim()
+      if (!loginId) continue
+      try {
+        calendarStore.ensurePersonalCalendar(loginId, member.displayName, adminId)
+      } catch (err) {
+        console.warn('[members] ensure personal calendar failed', loginId, err)
+      }
+    }
+    notifyStoreChanged()
+    return result.members
+  })
+  ipcMain.handle('calendar:sync-holidays', (_event, body: SyncHolidaysInput) => {
+    const result = syncKoreanHolidays(calendarStore, body ?? {})
+    notifyStoreChanged()
+    return result
+  })
   ipcMain.handle(
     'calendar:export',
     async (
@@ -358,11 +539,26 @@ app.whenReady().then(() => {
 function bootApp(): void {
   loadDotEnv()
   calendarStore = new CalendarStore()
+  attachmentService = new EventAttachmentService(calendarStore)
   const holidayKey = getEnvValue('DATA_GO_KR_SERVICE_KEY', 'HOLIDAY_API_KEY')
   if (holidayKey) applyHolidayKeyFromEnv(calendarStore, holidayKey)
   membersStore = new MembersStore(calendarStore.dataRoot)
   settingsStore = new SettingsStore(calendarStore)
   auth = new AuthService(settingsStore, membersStore)
+  try {
+    const adminId = resolveAdminCredentials().id
+    const memberIds = membersStore
+      .listPublic()
+      .filter((m) => m.active !== false)
+      .map((m) => m.loginId)
+    calendarStore.ensureMemberOwnership(adminId, memberIds)
+  } catch (err) {
+    console.warn('[calendar-store] ensure member ownership failed', err)
+  }
+  const sessionUser = auth.getUser()
+  if (sessionUser?.loginId) {
+    syncOwnerNameFromLoginId(sessionUser.loginId)
+  }
   console.log('[calendar-store] Data root:', calendarStore.dataRoot)
   desktopMode = new DesktopModeController({
     getWindow: () => mainWindow,
@@ -371,12 +567,33 @@ function bootApp(): void {
   })
 
   registerIpc()
+
+  webServer = new CalendarWebServer({
+    auth,
+    calendarStore,
+    membersStore,
+    getWwwroot: () => join(__dirname, '../renderer'),
+    getViteOrigin: () => process.env.ELECTRON_RENDERER_URL?.trim() || null
+  })
+  void (async () => {
+    try {
+      const mode = resolveLaunchServerMode()
+      const started = await webServer.tryStart({ mode, requirePortInEnv: false })
+      if (!started.ok) {
+        console.warn('[web-server] auto-start skipped:', started.message)
+      }
+    } catch (err) {
+      console.warn('[web-server] auto-start failed', err)
+    }
+  })()
+
   // Tray first so a later window/bridge failure still leaves a visible shell icon.
   tray = createAppTray({
     getWindow: () => mainWindow,
     desktopMode,
     getDataRoot: () => calendarStore.dataRoot,
-    requestQuit
+    requestQuit,
+    webServer
   })
   createWindow()
 
@@ -428,28 +645,50 @@ function bootApp(): void {
       const win = mainWindow
       if (!win || win.isDestroyed()) return
 
-      const open = (): void => {
-        if (!desktopMode.isInteractionSuspended()) {
-          desktopMode.suspendForInteraction()
-        }
-        win.webContents.send('open-day-quick-edit', { dateKey, clientX, clientY })
-      }
-
-      // Ignore double-clicks that land on the open quick-edit chrome itself.
+      // Re-hit-test in the live DOM before undocking. Published zones can be stale after
+      // month scroll (infinite buffer), which opened quick-edit for off-screen days.
       void win.webContents
         .executeJavaScript(
           `(() => {
             const el = document.elementFromPoint(${clientX}, ${clientY});
-            return Boolean(el && el.closest && el.closest('.day-quick-edit'));
+            if (!el || !el.closest) return { ok: false };
+            if (el.closest('.day-quick-edit')) return { ok: false };
+            const cell = el.closest('.neo-cal-shell .day-cell[data-date-key]');
+            if (!cell) return { ok: false };
+            const key = cell.getAttribute('data-date-key') || '';
+            if (!key) return { ok: false };
+            const body = cell.closest('.month-body');
+            if (body) {
+              const br = body.getBoundingClientRect();
+              const cr = cell.getBoundingClientRect();
+              const visible =
+                cr.bottom > br.top + 2 &&
+                cr.top < br.bottom - 2 &&
+                cr.right > br.left + 2 &&
+                cr.left < br.right - 2;
+              if (!visible) return { ok: false };
+            }
+            return { ok: true, dateKey: key };
           })()`,
           true
         )
-        .then((onPopover: unknown) => {
-          if (onPopover) return
-          open()
+        .then((result: unknown) => {
+          const hit = result as { ok?: boolean; dateKey?: string } | null
+          if (!hit?.ok || !hit.dateKey) return
+          if (!desktopMode.isInteractionSuspended()) {
+            desktopMode.suspendForInteraction()
+          }
+          win.webContents.send('open-day-quick-edit', {
+            dateKey: hit.dateKey,
+            clientX,
+            clientY
+          })
         })
         .catch(() => {
-          open()
+          if (!desktopMode.isInteractionSuspended()) {
+            desktopMode.suspendForInteraction()
+          }
+          win.webContents.send('open-day-quick-edit', { dateKey, clientX, clientY })
         })
     }
   })
@@ -472,6 +711,11 @@ function bootApp(): void {
 app.on('before-quit', () => {
   forceQuit = true
   desktopMode?.persistSession()
+  try {
+    webServer?.stop()
+  } catch {
+    /* ignore */
+  }
 })
 
 app.on('window-all-closed', () => {

@@ -154,14 +154,17 @@ body,
   box-sizing: border-box;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-}
+/* Keep in @layer base so Tailwind text/font utilities on buttons are not wiped. */
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
 
-button {
-  cursor: pointer;
+  button {
+    cursor: pointer;
+  }
 }
 
 input,
@@ -315,23 +318,38 @@ textarea {
 
 /* Year view — 12 mini months (transparent shell; cards use --gcal-in-month-bg) */
 .year-view {
-  flex: 1;
-  min-height: 0;
   display: grid;
+  flex: 1 1 90%;
+  min-height: 0;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   grid-template-rows: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px;
+  gap: 14px;
+  padding: 14px 16px;
   overflow: auto;
   background: transparent;
   color: var(--gcal-body);
+}
+
+/* Year grid takes ~90% of the shell; chrome (header/footer) shares the rest. */
+.neo-cal-shell:has(> .year-view) > .year-view {
+  flex: 1 1 90%;
+  min-height: 0;
+}
+
+.neo-cal-shell:has(> .year-view) > .neo-mdc-chrome[data-shell-chrome='header'] {
+  flex: 0 1 auto;
+}
+
+.neo-cal-shell:has(> .year-view) > .neo-mdc-chrome[data-shell-chrome='footer'] {
+  flex: 0 0 auto;
 }
 
 .year-month {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 8px;
+  padding: 12px 12px 10px;
+  gap: 6px;
   border: 1px solid var(--gcal-border-light);
   border-radius: 8px;
   background: var(--gcal-in-month-bg);
@@ -350,12 +368,12 @@ textarea {
 .year-month-title {
   display: block;
   width: 100%;
-  margin: 0 0 4px;
+  margin: 0;
   padding: 0;
   border: 0;
   background: transparent;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: clamp(13px, 1.4vh, 15px);
+  font-weight: 700;
   color: var(--gcal-heading);
   text-align: left;
   cursor: pointer;
@@ -365,12 +383,18 @@ textarea {
 .year-month-grid {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1px;
+  gap: 2px;
+}
+
+.year-month-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: stretch;
 }
 
 .year-month-weekdays span {
   text-align: center;
-  font-size: 9px;
+  font-size: clamp(10px, 1.25vh, 12px);
   font-weight: 700;
   color: var(--gcal-muted);
 }
@@ -380,8 +404,9 @@ textarea {
   padding: 0;
   background: transparent;
   text-align: center;
-  font-size: 10px;
-  line-height: 1.6;
+  font-size: clamp(11px, 1.35vh, 13px);
+  font-weight: 500;
+  line-height: 1.75;
   color: var(--gcal-heading);
   cursor: pointer;
 }
@@ -852,6 +877,17 @@ textarea {
 }
 
 /* —— Overlay panels (search / settings / login) —— */
+
+/* Hide Chromium/WebKit/Edge native clear (X) — SearchPanel uses a custom clear button. */
+input[type='search']::-webkit-search-cancel-button,
+input[type='search']::-webkit-search-decoration,
+input[type='search']::-ms-clear,
+.search-panel-query-input::-ms-clear {
+  display: none !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
 .panel-backdrop {
   position: fixed;
   inset: 0;
@@ -920,8 +956,8 @@ textarea {
   border: 1px solid var(--gcal-border);
   background: #fff;
   color: var(--gcal-heading);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .panel-actions button.is-primary {
@@ -938,6 +974,7 @@ textarea {
   border: 1px solid var(--gcal-border);
   background: #fff;
   color: var(--gcal-heading);
+  font-size: 14px;
   outline: none;
 }
 
@@ -994,7 +1031,7 @@ textarea {
   padding: 18px 8px;
   text-align: center;
   color: var(--gcal-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .settings-body {
@@ -1007,7 +1044,8 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--gcal-body);
 }
 
@@ -1178,7 +1216,7 @@ textarea {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--gcal-body);
   cursor: pointer;
   user-select: none;
@@ -1230,7 +1268,7 @@ textarea {
 
 .settings-note {
   margin: 0;
-  font-size: 12px;
+  font-size: 14px;
   line-height: 1.45;
   color: var(--gcal-muted);
 }
@@ -2419,15 +2457,29 @@ body.is-resizing-window {
   border-radius: 8px;
   background: #fff;
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
+}
+
+.members-row-actions button {
+  font-size: 12px;
 }
 
 .panel-actions .is-danger,
 .members-row-actions .is-danger,
 button.is-danger {
   color: #c5221f;
-  border-color: #f6c5c4;
+  border-color: #f6aea9;
+  background: var(--gcal-page, #fff);
+}
+
+.panel-actions .is-danger:hover:not(:disabled),
+.members-row-actions .is-danger:hover:not(:disabled),
+button.is-danger:hover:not(:disabled) {
+  background: var(--gcal-blue-soft);
+  border-color: var(--gcal-blue);
+  color: var(--gcal-blue);
 }
 
 .panel-actions .is-primary,
@@ -2437,10 +2489,148 @@ button.is-primary {
   color: #fff;
 }
 
+.panel-actions .is-primary:hover:not(:disabled),
+button.is-primary:hover:not(:disabled) {
+  background: var(--gcal-blue-dark);
+  border-color: var(--gcal-blue-dark);
+}
+
+.panel-actions button:not(.is-primary):not(.is-danger):hover:not(:disabled) {
+  background: var(--gcal-blue-soft);
+  border-color: var(--gcal-blue);
+  color: var(--gcal-blue);
+}
+
+/* Settings dialog — theme-aware action buttons */
+.settings-btn-primary {
+  background: var(--gcal-blue);
+  border: 1px solid var(--gcal-blue);
+  color: #fff;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--gcal-blue) 35%, transparent);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.settings-btn-primary:hover:not(:disabled) {
+  background: var(--gcal-blue-dark);
+  border-color: var(--gcal-blue-dark);
+}
+
+.settings-btn-secondary {
+  border: 1px solid var(--gcal-border);
+  background: var(--gcal-page);
+  color: var(--gcal-heading);
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.settings-btn-secondary:hover:not(:disabled) {
+  background: var(--gcal-blue-soft);
+  border-color: var(--gcal-blue);
+  color: var(--gcal-blue);
+}
+
+.settings-btn-danger {
+  border: 1px solid #f6aea9;
+  background: var(--gcal-page);
+  color: #c5221f;
+  transition:
+    background-color 0.15s,
+    border-color 0.15s,
+    color 0.15s,
+    opacity 0.15s;
+}
+
+.settings-btn-danger:hover:not(:disabled) {
+  background: var(--gcal-blue-soft);
+  border-color: var(--gcal-blue);
+  color: var(--gcal-blue);
+}
+
+/* Event editor title-row toolbar: equal circular controls (check / mark / emoji / cal / tag). */
+.event-editor-toolbar-icons {
+  min-height: 2.1rem;
+}
+
+.event-editor-toolbar-check {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 9999px;
+  background: var(--gcal-surface-2, #f1f3f4);
+}
+
+.event-editor-toolbar-check:hover {
+  background: var(--gcal-surface-2, #f1f3f4);
+}
+
+/* Global mark trigger (EventEditor + elsewhere outside quick-edit footer). */
+.marker-shape-picker-root {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.marker-shape-picker-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: var(--gcal-surface-2, #f1f3f4);
+  color: var(--gcal-muted, #5f6368);
+  cursor: pointer;
+  box-shadow: none;
+  transition: background-color 0.15s, transform 0.15s;
+}
+
+.marker-shape-picker-trigger:hover {
+  transform: scale(1.08);
+}
+
+.marker-shape-picker-trigger[aria-expanded='true'] {
+  background: var(--gcal-blue-soft, #e8f0fe);
+  color: var(--gcal-blue, #1a73e8);
+}
+
+.marker-shape-picker-trigger:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.marker-shape-picker-trigger:disabled:hover {
+  transform: none;
+}
+
+.marker-shape-picker-trigger svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  flex-shrink: 0;
+}
+
 .event-editor-toolbar-trigger,
 .event-editor-shape-trigger {
   width: 2.1rem !important;
   height: 2.1rem !important;
+}
+
+.event-editor-toolbar-icons .emoji-picker-root,
+.event-editor-toolbar-icons .quick-edit-calendar-root,
+.event-editor-toolbar-icons .marker-shape-picker-root {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
 }
 
 .event-editor-action-btn {
@@ -2518,14 +2708,14 @@ button.is-primary {
   background: transparent;
   text-align: left;
   padding: 8px 10px;
-  font-size: 13px;
+  font-size: 14px;
   color: var(--gcal-heading);
   cursor: pointer;
 }
 .settings-nav button.is-active {
   background: var(--gcal-blue-soft, #e8f0fe);
   color: var(--gcal-blue-dark, #174ea6);
-  font-weight: 600;
+  font-weight: 500;
 }
 .settings-body--scroll {
   overflow: auto;
@@ -2537,7 +2727,7 @@ button.is-primary {
   border-radius: 8px;
   background: #e6f4ea;
   color: #137333;
-  font-size: 13px;
+  font-size: 14px;
 }
 .settings-error {
   margin: 0 0 10px;
@@ -2545,7 +2735,7 @@ button.is-primary {
   border-radius: 8px;
   background: var(--gcal-red-soft, #fce8e6);
   color: #c5221f;
-  font-size: 13px;
+  font-size: 14px;
 }
 .settings-color-row {
   display: flex;
@@ -2584,6 +2774,7 @@ button.is-primary {
   border: 1px solid var(--gcal-border);
   border-radius: 8px;
   padding: 6px 8px;
+  font-size: 14px;
 }
 .settings-file-btn {
   display: inline-flex;
@@ -2591,7 +2782,8 @@ button.is-primary {
   border: 1px solid var(--gcal-border);
   border-radius: 8px;
   padding: 6px 12px;
-  font-size: 13px;
+  font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
 }
 .settings-disabled-block {
@@ -2613,6 +2805,14 @@ button.is-primary {
 }
 .members-form h3 {
   margin: 0 0 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gcal-heading);
+}
+.members-row strong {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--gcal-heading);
 }
 .panel-actions {
   display: flex;
@@ -2750,7 +2950,7 @@ button.is-primary {
   text-align: left;
   cursor: pointer;
   color: var(--gcal-heading);
-  font-size: 13px;
+  font-size: 14px;
 }
 .settings-cal-nav-name {
   overflow: hidden;
@@ -2806,14 +3006,15 @@ button.is-primary {
 }
 .settings-muted {
   color: var(--gcal-muted);
-  font-size: 13px;
+  font-size: 14px;
 }
 .settings-field {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin-bottom: 14px;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 500;
   color: var(--gcal-muted);
 }
 .settings-field input,
@@ -2825,6 +3026,10 @@ button.is-primary {
   background: var(--gcal-input-bg, #fff);
   color: var(--gcal-heading);
   font-size: 14px;
+  font-weight: 400;
+}
+.settings-field input.text-base {
+  font-size: 16px;
 }
 .cal-color-palette {
   display: grid;
@@ -2857,6 +3062,7 @@ button.is-primary {
   border: 1px solid var(--gcal-border);
   border-radius: 8px;
   padding: 8px 10px;
+  font-size: 14px;
 }
 .settings-link-btn {
   display: inline-flex;
@@ -2979,19 +3185,37 @@ button.is-primary {
 .cal-settings-actions {
   display: grid;
   gap: 0.75rem;
-  justify-content: start;
-  justify-items: start;
+  justify-content: stretch;
+  justify-items: stretch;
   width: 100%;
-  grid-template-columns: auto auto;
+  /* Narrow: 3 rows — save/copy | export/import | clear/delete */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-areas:
     'save copy'
     'export import'
     'clear delete';
 }
 
+.cal-settings-actions > * {
+  width: 100%;
+  min-width: 0;
+}
+
+.cal-settings-actions button {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* CalendarFileFormatButton root is relative inline-block — stretch to cell */
+.cal-settings-actions > div > div {
+  display: block;
+  width: 100%;
+}
+
 @container cal-actions (min-width: 22rem) {
   .cal-settings-actions {
-    grid-template-columns: repeat(4, auto);
+    /* Mid: 2 rows — top 4 | clear/delete */
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     grid-template-areas:
       'save copy export import'
       'clear delete . .';
@@ -3000,7 +3224,8 @@ button.is-primary {
 
 @container cal-actions (min-width: 40rem) {
   .cal-settings-actions {
-    grid-template-columns: repeat(6, auto);
+    /* Wide: 1 row — all six */
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     grid-template-areas: 'save copy export import clear delete';
   }
 }

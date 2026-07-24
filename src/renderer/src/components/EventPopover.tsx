@@ -4,6 +4,7 @@ import {
   type ReactElement,
   type RefObject
 } from 'react'
+import { useAppDialog } from './AppDialogProvider'
 import { EventDetailContent } from './EventDetailContent'
 import {
   getAnchoredPopoverPosition,
@@ -45,6 +46,7 @@ export function EventPopover({
   onDelete,
   onToggleCompleted
 }: EventPopoverProps): ReactElement | null {
+  const { confirm } = useAppDialog()
   const popoverOptions = { width: 418, estimatedHeight: 360, padding: 12 }
   const resolvedAnchor = resolvePopoverAnchor(anchorRect)
   const { ref, style: anchoredStyle } = useAnchoredPopoverStyle(anchorRect, popoverOptions)
@@ -57,6 +59,7 @@ export function EventPopover({
       const panel = ref.current as HTMLElement | null
       if (panel?.contains(target)) return
       if (target instanceof Element && target.closest('.day-events-popover')) return
+      if (target instanceof Element && target.closest('.app-dialog-root')) return
       onClose()
     }
     document.addEventListener('mousedown', handlePointerDown, true)
@@ -68,8 +71,14 @@ export function EventPopover({
   const completed = Boolean(event.completed)
 
   const handleDeleteClick = (): void => {
-    if (!window.confirm('이 일정을 정말 삭제하시겠습니까?')) return
-    onDelete(event)
+    void (async () => {
+      const ok = await confirm('이 일정을 정말 삭제하시겠습니까?', {
+        variant: 'danger',
+        confirmLabel: '삭제'
+      })
+      if (!ok) return
+      onDelete(event)
+    })()
   }
 
   const panelStyle = resolvedAnchor

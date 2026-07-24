@@ -12,6 +12,8 @@ export type CalendarRecord = {
   owner: CalendarOwner
   custom?: boolean
   ownerLoginId?: string
+  /** Display owner label; Neo sets this from the member loginId. */
+  ownerName?: string
   sortOrder?: number
 }
 
@@ -84,9 +86,16 @@ export type MemberRecord = {
 }
 
 /** UI save payload — plain `password` is hashed in MembersStore. */
-export type MemberSaveInput = Omit<MemberRecord, 'passwordHash'> & {
+export type MemberSaveInput = {
+  id?: string
+  loginId: string
+  displayName?: string
+  role?: MemberRole
+  active?: boolean
   password?: string
   passwordHash?: string
+  /** MDC: mark row for deletion on save */
+  _delete?: boolean
 }
 
 export type HolidaysKrSettings = {
@@ -111,16 +120,19 @@ export type SyncHolidaysInput = {
 
 export type SyncHolidaysResult = {
   ok: boolean
+  skipped?: boolean
+  reason?: string | null
   count: number
   years: number[]
   source: string
   message?: string | null
+  error?: string
 }
 
 export type ViewOptions = {
   showWeekNumbers: boolean
   weekStartsOnSunday: boolean
-  /** Neo chrome: rounded shell/header/footer (legacy Neo look). Off = square MDC edges. */
+  /** Neo chrome: rounded shell/header/footer. Default on for new installs. */
   roundedCorners: boolean
   colorScheme: 'light' | 'dark' | 'system'
   accentColor: string

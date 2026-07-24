@@ -10,6 +10,7 @@ import {
   type ReactElement
 } from 'react'
 import { InteractionUI } from './InteractionUI'
+import { useAppDialog } from './AppDialogProvider'
 import { AppChrome } from './AppChrome'
 import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
 import { getLunarMonthLabel } from '../lib/lunar'
@@ -77,7 +78,6 @@ import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/ca
 import type { CalendarEvent } from '../../../shared/calendarTypes'
 import type { AppSettings, AuthUser, ClientHitRect, LaunchMode } from '../../../shared/ipc'
 import { SiteLink } from './SiteLink'
-import { SITE_URL } from '../../../shared/constants'
 import { openExternalUrl } from '../lib/openExternal'
 
 export type { CalendarEvent }
@@ -279,6 +279,7 @@ export function CalendarGrid({
   onModeChange,
   onSettingsSaved
 }: CalendarGridProps): ReactElement {
+  const { alert, confirm } = useAppDialog()
   const now = new Date()
   const canEdit = Boolean(user)
   const {
@@ -292,8 +293,13 @@ export function CalendarGrid({
     createCalendar,
     patchCalendar,
     deleteCalendar,
-    setTags,
+    clearCalendarEvents,
+    importEventsIntoCalendar,
+    createTag,
+    patchTag,
+    deleteTag,
     replaceStore,
+    importStore,
     listMembers,
     saveMembers,
     syncHolidays,
@@ -310,6 +316,7 @@ export function CalendarGrid({
   const [loginError, setLoginError] = useState<string | null>(null)
   const [modeBusy, setModeBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [webEditUrl, setWebEditUrl] = useState<string | null>(null)
   /** Bumps when light/dark flips so MDC event-bar themes recompute. */
   const [themeEpoch, setThemeEpoch] = useState(0)
   const [quickEdit, setQuickEdit] = useState<{
@@ -444,21 +451,31 @@ export function CalendarGrid({
       return
     }
 
+    // Infinite month buffer keeps ~100+ weeks in the DOM. Only publish cells that
+    // intersect the visible month-body — stale off-screen rects after scroll used to
+    // open quick-edit for wrong dates (e.g. June) when double-clicking empty chrome.
+    const body = monthBodyRef.current
+    const clip = body?.getBoundingClientRect()
+    if (!clip || clip.width < 8 || clip.height < 8) {
+      api.setDayCellHitZones([])
+      return
+    }
+
     const zones = Array.from(
       document.querySelectorAll<HTMLElement>('.neo-cal-shell .day-cell[data-date-key]')
     )
       .map((el) => {
         const rect = el.getBoundingClientRect()
         const dateKey = el.dataset.dateKey ?? ''
-        return {
-          x: rect.left,
-          y: rect.top,
-          width: rect.width,
-          height: rect.height,
-          dateKey
-        }
+        const left = Math.max(rect.left, clip.left)
+        const top = Math.max(rect.top, clip.top)
+        const right = Math.min(rect.right, clip.right)
+        const bottom = Math.min(rect.bottom, clip.bottom)
+        const width = right - left
+        const height = bottom - top
+        return { x: left, y: top, width, height, dateKey }
       })
-      .filter((z) => z.dateKey && z.width > 0 && z.height > 0)
+      .filter((z) => z.dateKey && z.width >= 8 && z.height >= 8)
 
     api.setDayCellHitZones(zones)
   }
@@ -476,9 +493,18 @@ export function CalendarGrid({
     const onResize = (): void => publishDesktopHitZones()
     window.addEventListener('resize', onResize)
     const id = window.setInterval(publishDesktopHitZones, 400)
+
+    const body = monthBodyRef.current
+    const onScroll = (): void => {
+      // Scroll does not always re-render — refresh day-cell zones immediately.
+      publishDayCellZones()
+    }
+    body?.addEventListener('scroll', onScroll, { passive: true })
+
     return () => {
       window.removeEventListener('resize', onResize)
       window.clearInterval(id)
+      body?.removeEventListener('scroll', onScroll)
       window.neoCalendar?.setWakeHitZones?.([])
       window.neoCalendar?.setClickForwardHitZones?.([])
       window.neoCalendar?.setDayCellHitZones?.([])
@@ -508,6 +534,9 @@ export function CalendarGrid({
   const hasInitialScrollRef = useRef(false)
   const prevViewMonthRef = useRef('')
   const prevWeeksInViewportRef = useRef(0)
+  const viewModeRef = useRef(viewMode)
+  viewModeRef.current = viewMode
+  const prevViewModeForAlignRef = useRef(viewMode)
 
   useLayoutEffect(() => {
     if (viewMode !== 'month') {
@@ -593,6 +622,8 @@ export function CalendarGrid({
     weeks: scrollWeeks,
     weeksInViewport: effectiveWeeksInViewport,
     onVisibleMonthChange: (nextYear: number, nextMonth1: number) => {
+      // Ignore trailing scroll reports from the previous mode's container (MDC viewModeRef).
+      if (viewModeRef.current !== 'month') return
       const next = new Date(nextYear, nextMonth1 - 1, 1)
       setViewDate(next)
     },
@@ -603,7 +634,16 @@ export function CalendarGrid({
   scrollToMonthRef.current = scrollToMonth
 
   useLayoutEffect(() => {
-    if (viewMode !== 'month') return
+    if (viewMode !== 'month') {
+      prevViewModeForAlignRef.current = viewMode
+      return
+    }
+
+    // Week/year unmount the infinite month body — remount starts at scrollTop 0
+    // (~buffer start, often a prior month). Same monthKey must still realign.
+    const enteredMonth = prevViewModeForAlignRef.current !== 'month'
+    prevViewModeForAlignRef.current = viewMode
+
     const monthKey = `${year}-${month}`
     const weeksCountChanged = prevWeeksInViewportRef.current !== effectiveWeeksInViewport
     prevWeeksInViewportRef.current = effectiveWeeksInViewport
@@ -615,8 +655,8 @@ export function CalendarGrid({
       return
     }
 
-    if (prevViewMonthRef.current !== monthKey || weeksCountChanged) {
-      if (weeksCountChanged) consumeSkipScroll()
+    if (enteredMonth || prevViewMonthRef.current !== monthKey || weeksCountChanged) {
+      if (weeksCountChanged || enteredMonth) consumeSkipScroll()
       prevViewMonthRef.current = monthKey
       scrollToMonthRef.current(year, month, weekStartsOn, 'auto')
     }
@@ -817,9 +857,30 @@ export function CalendarGrid({
 
   const goToday = (): void => {
     const d = new Date()
-    setViewDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()))
+    if (viewMode === 'month') {
+      // Day-1 of current month so header + infinite scroll stay on this month.
+      setViewDate(new Date(d.getFullYear(), d.getMonth(), 1))
+    } else {
+      setViewDate(new Date(d.getFullYear(), d.getMonth(), d.getDate()))
+    }
     setSelectedKey(toDateKey(d.getFullYear(), d.getMonth(), d.getDate()))
     setQuickEdit(null)
+    // Force month-body realign even when year/month did not change (same as MDC token).
+    if (viewMode === 'month') {
+      prevViewMonthRef.current = ''
+      scrollToMonthRef.current(d.getFullYear(), d.getMonth(), weekStartsOn, 'auto')
+    }
+  }
+
+  const handleViewModeChange = (nextMode: ViewMode): void => {
+    if (nextMode === 'month' || nextMode === 'year') {
+      setViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth(), 1))
+    } else if (nextMode === 'week') {
+      const fromSelected = selectedKey ? parseDateKeyLocal(selectedKey) : null
+      const anchor = fromSelected ?? viewDateRef.current
+      setViewDate(new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate()))
+    }
+    setViewMode(nextMode)
   }
 
   const rectFromTarget = (target: EventTarget | null): AnchorRect | null => {
@@ -874,30 +935,68 @@ export function CalendarGrid({
     )
   }
 
-  const openQuickEditByDateKey = (dateKey: string): void => {
-    const date = parseDateKey(dateKey)
+  const openQuickEditByDateKey = (
+    dateKey: string,
+    clientX?: number,
+    clientY?: number
+  ): void => {
+    let resolvedKey = dateKey
+    let el: HTMLElement | null = null
+
+    // Prefer the live cell under the cursor — hit-zones can lag behind month scroll.
+    if (typeof clientX === 'number' && typeof clientY === 'number') {
+      const under = document.elementFromPoint(clientX, clientY)
+      const cell =
+        under instanceof Element
+          ? under.closest<HTMLElement>('.neo-cal-shell .day-cell[data-date-key]')
+          : null
+      if (!cell?.dataset.dateKey) {
+        // Non-date chrome (weekdays / gaps / header): do not open a random buffer day.
+        return
+      }
+      resolvedKey = cell.dataset.dateKey
+      el = cell
+    } else {
+      el = document.querySelector<HTMLElement>(
+        `.neo-cal-shell .day-cell[data-date-key="${CSS.escape(dateKey)}"]`
+      )
+    }
+
+    const date = parseDateKey(resolvedKey)
     if (!date) return
-    const el = document.querySelector<HTMLElement>(
-      `.neo-cal-shell .day-cell[data-date-key="${dateKey}"]`
-    )
+
+    const body = monthBodyRef.current
+    const bodyRect = body?.getBoundingClientRect()
     const rect = el?.getBoundingClientRect()
+    if (el && bodyRect && rect) {
+      const visible =
+        rect.bottom > bodyRect.top + 2 &&
+        rect.top < bodyRect.bottom - 2 &&
+        rect.right > bodyRect.left + 2 &&
+        rect.left < bodyRect.right - 2
+      if (!visible) return
+    }
+
     setEventPopover(null)
     setDayList(null)
-    setSelectedKey(dateKey)
+    setSelectedKey(resolvedKey)
     setQuickEdit({
-      dateKey,
+      dateKey: resolvedKey,
       date,
-      anchorRect: rect
-        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-        : null
+      anchorRect:
+        typeof clientX === 'number' && typeof clientY === 'number'
+          ? { top: clientY, left: clientX, width: 0, height: 0 }
+          : rect
+            ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+            : null
     })
   }
 
   useEffect(() => {
     const api = window.neoCalendar
     if (!api?.onOpenDayQuickEdit) return
-    return api.onOpenDayQuickEdit(({ dateKey }) => {
-      openQuickEditByDateKey(dateKey)
+    return api.onOpenDayQuickEdit(({ dateKey, clientX, clientY }) => {
+      openQuickEditByDateKey(dateKey, clientX, clientY)
     })
   }, [])
 
@@ -948,8 +1047,32 @@ export function CalendarGrid({
     })
   }
 
-  const openSite = (): void => {
-    void openExternalUrl(SITE_URL)
+  useEffect(() => {
+    let cancelled = false
+    const poll = async (): Promise<void> => {
+      try {
+        const info = await window.neoCalendar.getSyncInfo?.()
+        if (cancelled) return
+        if (info?.running && info.port) {
+          setWebEditUrl(`http://127.0.0.1:${info.port}/`)
+        } else {
+          setWebEditUrl(null)
+        }
+      } catch {
+        if (!cancelled) setWebEditUrl(null)
+      }
+    }
+    void poll()
+    const timer = window.setInterval(() => void poll(), 4000)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [])
+
+  const handleOpenWebEditor = (): void => {
+    if (!webEditUrl) return
+    void openExternalUrl(webEditUrl)
   }
 
   const enterDesktop = async (): Promise<void> => {
@@ -994,6 +1117,7 @@ export function CalendarGrid({
         return
       }
       onUserChange(result.user)
+      await refresh()
       setLoginOpen(false)
     } finally {
       setLoginBusy(false)
@@ -1052,10 +1176,10 @@ export function CalendarGrid({
           })
         }
       } catch (error) {
-        window.alert(error instanceof Error ? error.message : '일정 순서를 저장하지 못했습니다.')
+        await alert(error instanceof Error ? error.message : '일정 순서를 저장하지 못했습니다.')
       }
     },
-    [canEdit, editEvent, store.events]
+    [alert, canEdit, editEvent, store.events]
   )
 
   const openEventEditor = (
@@ -1066,6 +1190,8 @@ export function CalendarGrid({
     }
   ): void => {
     if (!canEdit && event === null) return
+    // Holidays are read-only — never open the full editor (MDC).
+    if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
     setEventPopover(null)
     setDayList(null)
     setScopeDialog(null)
@@ -1075,6 +1201,7 @@ export function CalendarGrid({
 
     if (event) {
       const master = store.events.find((item) => item.id === event.id) ?? event
+      if (master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
       const occurrenceDate =
         getOccurrenceDate(event, opts?.defaultDate ?? selectedKey ?? event.occurrenceDate) ??
         master.startDate
@@ -1179,7 +1306,7 @@ export function CalendarGrid({
         setEditor(null)
       }
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
+      await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
     }
   }
 
@@ -1197,13 +1324,10 @@ export function CalendarGrid({
     const exportYear = viewDate.getFullYear()
     const exportMonth = viewDate.getMonth() + 1
     const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
-    if (
-      !window.confirm(
-        `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
-      )
-    ) {
-      return
-    }
+    const ok = await confirm(
+      `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
+    )
+    if (!ok) return
     setExporting(true)
     try {
       const result = await window.neoCalendar.exportCalendar({
@@ -1214,12 +1338,12 @@ export function CalendarGrid({
       })
       if (result.canceled) return
       if (!result.ok) {
-        window.alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
+        await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
         return
       }
-      window.alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
+      await alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
+      await alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
     } finally {
       setExporting(false)
     }
@@ -1260,6 +1384,7 @@ export function CalendarGrid({
           openEventDetail(event, { x: clientX, y: clientY }, { dayKey })
         }}
         onEventEdit={(event, dayKey) => {
+          if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
           setSelectedKey(dayKey)
           openEventEditor(event, { defaultDate: dayKey })
         }}
@@ -1409,7 +1534,7 @@ export function CalendarGrid({
                 aria-label={`${label} 보기`}
                 aria-pressed={viewMode === value}
                 title={`${label} 보기`}
-                onClick={() => setViewMode(value)}
+                onClick={() => handleViewModeChange(value)}
               >
                 <Icon />
               </InteractionUI>
@@ -1489,9 +1614,14 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={cn(desktopModeIconBtnClass, softBlueIconBtnClass)}
-              onClick={openSite}
-              aria-label="인터넷"
-              title="사이트 열기"
+              onClick={handleOpenWebEditor}
+              aria-label="브라우저에서 편집"
+              title={
+                webEditUrl
+                  ? `브라우저에서 편집 (${webEditUrl})`
+                  : '로컬 웹 서버가 꺼져 있습니다 (.env의 PORT 확인)'
+              }
+              disabled={!webEditUrl}
             >
               <WebBrowserIcon />
             </InteractionUI>
@@ -1649,8 +1779,13 @@ export function CalendarGrid({
         onCreateCalendar={createCalendar}
         onPatchCalendar={patchCalendar}
         onDeleteCalendar={deleteCalendar}
-        onSetTags={setTags}
+        onClearCalendarEvents={clearCalendarEvents}
+        onImportIntoCalendar={importEventsIntoCalendar}
+        onCreateTag={createTag}
+        onUpdateTag={patchTag}
+        onDeleteTag={deleteTag}
         onReplaceStore={replaceStore}
+        onImportStore={importStore}
         onAddEvent={addEvent}
         onListMembers={listMembers}
         onSaveMembers={saveMembers}
@@ -1703,14 +1838,38 @@ export function CalendarGrid({
             void editEvent(event.id, { markerShape })
           }
           onEventLinkChange={(event, links) => void editEvent(event.id, { links })}
-          onOpenMore={(event) =>
+          onOpenMore={(event) => {
+            if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event ?? null, {
               defaultDate: quickEdit.dateKey,
               returnQuickEdit: quickEdit
             })
-          }
+          }}
           onOpenEvent={(event) => openEventDetail(event, quickEdit.anchorRect)}
-          onEditEvent={(event) => openEventEditor(event)}
+          onEditEvent={(event) => {
+            if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            openEventEditor(event)
+          }}
+          onAttachFiles={async (event) => {
+            if (!canEdit) {
+              await alert('관리자 로그인 후 파일을 첨부할 수 있습니다.')
+              return
+            }
+            const master =
+              store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ?? event
+            if (!master?.id || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) {
+              await alert('저장된 일정에만 파일을 첨부할 수 있습니다.')
+              return
+            }
+            try {
+              await window.neoCalendar.addEventAttachments(master.id)
+              await refresh()
+            } catch (error) {
+              await alert(
+                error instanceof Error ? error.message : '파일을 첨부하지 못했습니다.'
+              )
+            }
+          }}
         />
       ) : null}
 
@@ -1727,6 +1886,7 @@ export function CalendarGrid({
           onClose={clearEventDetail}
           onEdit={(event) => {
             // MDC: detail pencil → full EventEditor (closes detail + day list).
+            if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event, { defaultDate: eventPopover.dayKey })
           }}
           onDelete={(event) => {
@@ -1794,6 +1954,7 @@ export function CalendarGrid({
             })
           }}
           onEventEdit={(event, dayKey) => {
+            if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             setDayList(null)
             openEventEditor(event, { defaultDate: dayKey })
           }}
@@ -1808,6 +1969,10 @@ export function CalendarGrid({
           defaultDate={editor.defaultDate}
           calendars={store.calendars}
           tags={store.tags}
+          onEventRefresh={(updated) => {
+            setEditor((prev) => (prev ? { ...prev, event: updated } : prev))
+            void refresh()
+          }}
           onClose={() => {
             const back = editor.returnQuickEdit
             setEditor(null)
@@ -1838,7 +2003,7 @@ export function CalendarGrid({
               dismissEditorAfterSave()
               await editEvent(editor.event.id, payload as Partial<CalendarEvent>)
             } catch (error) {
-              window.alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
+              await alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
             }
           }}
           onDelete={

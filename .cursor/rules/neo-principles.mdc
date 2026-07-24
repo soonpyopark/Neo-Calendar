@@ -1,0 +1,34 @@
+---
+description: Neo Calendar core product principles (desktop embed, click-through, modal dialogs, in-app overlays)
+alwaysApply: true
+---
+
+# Neo Calendar Principles
+
+## 원칙 1 — 바탕화면 고정 (WorkerW)
+Desktop mode attaches under desktop icons via WorkerW `SetParent`. Idle / default desktop state stays under icons.
+
+## 원칙 2 — 클릭스루
+Empty space passes clicks to the OS desktop (`setIgnoreMouseEvents` + forward). Interactive UI (`.interaction-ui`) captures mouse on hover; overlays that need clicks must use that surface.
+
+## 원칙 3 — 알림은 MDC형 모달 팝업
+In-app user messages must **not** use native `window.alert` / `window.confirm` / `window.prompt`.
+
+Use `useAppDialog()` from `AppDialogProvider`:
+
+```ts
+const { alert, confirm } = useAppDialog()
+await alert('메시지')
+const ok = await confirm('삭제할까요?', { variant: 'danger', confirmLabel: '삭제' })
+```
+
+- Always wrap the React tree with `<AppDialogProvider>` (see `main.tsx`).
+- Prefer `variant: 'danger'` for destructive confirms.
+- Exception: main-process crash before React mounts may use `dialog.showErrorBox`.
+
+## 원칙 4 — 모든 창은 프로그램 안에서만
+Popovers, dialogs, flyouts, and quick-edit panels must stay inside the app shell (`.neo-cal-shell`), not only the Electron window. They must not paint or open outside the main calendar chrome.
+
+Use `clampRectToViewport` / `clampFixedPosition` from `popoverPosition.ts`
+(bounds = `.neo-cal-shell` content box including rounded-corner padding, fallback = window).
+Remeasure after layout when height is content-dependent. Prefer `padding` ≥ 5px from that content edge.

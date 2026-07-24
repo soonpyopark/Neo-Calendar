@@ -1,8 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
+import { AppDialogProvider } from './components/AppDialogProvider'
+import { installBrowserNeoCalendar } from './lib/browserNeoCalendar'
 import { installTextInputFocusBridge } from './lib/textInputFocus'
 import './index.css'
+
+// Browser (HTTP) host: polyfill window.neoCalendar before React mounts.
+installBrowserNeoCalendar()
 
 const container = document.getElementById('root')
 
@@ -14,6 +19,8 @@ installTextInputFocusBridge()
 
 createRoot(container).render(
   <StrictMode>
-    <App />
+    <AppDialogProvider>
+      <App />
+    </AppDialogProvider>
   </StrictMode>
 )

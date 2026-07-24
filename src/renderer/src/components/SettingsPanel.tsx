@@ -3,13 +3,35 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactElement
+  type ChangeEvent,
+  type ReactElement,
+  type ReactNode
 } from 'react'
 import { InteractionUI } from './InteractionUI'
+import { ImportExportPanel } from './ImportExportPanel'
+import { HolidaysSyncPanel } from './HolidaysSyncPanel'
+import { MemberCalendarsPanel } from './MemberCalendarsPanel'
 import { MembersPanel } from './MembersPanel'
+import { SecurityPanel } from './SecurityPanel'
+import { TagsPanel } from './TagsPanel'
 import { CalendarColorPalette } from './CalendarColorPalette'
+import {
+  CalendarFileFormatButton,
+  getAllImportAcceptAttribute
+} from './CalendarFileFormatButton'
 import { getDefaultCalendarColor } from '../../../shared/calendarColorPalette'
-import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import { sortCalendarsByOrder } from '../../../shared/calendarOrder'
+import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import {
+  detectCalendarFileFormat,
+  downloadCalendarFile,
+  exportSingleCalendar,
+  extractEventsFromImportPayload,
+  parseImportPayload,
+  type CalendarFileFormat
+} from '../../../shared/calendarInterchange'
+import { getJsonExportTimestamp } from '../../../shared/exportTimestamp'
+import { eventToMutationPayload } from '../lib/eventMutation'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -32,6 +54,7 @@ import {
   normalizeColorScheme,
   type ColorScheme
 } from '../lib/colorScheme'
+import { useAppDialog } from './AppDialogProvider'
 
 type SettingsSection =
   | 'general'
@@ -42,7 +65,6 @@ type SettingsSection =
   | 'members'
   | 'member-calendars'
   | 'holidays'
-  | 'web-server'
   | 'calendar-settings'
 
 export type SettingsPanelProps = {
@@ -58,8 +80,19 @@ export type SettingsPanelProps = {
   ) => Promise<CalendarRecord>
   onPatchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
   onDeleteCalendar: (id: string) => Promise<void>
-  onSetTags: (tags: TagRecord[]) => Promise<TagRecord[]>
+  onClearCalendarEvents: (id: string) => Promise<void>
+  onImportIntoCalendar: (
+    id: string,
+    events: unknown[]
+  ) => Promise<{ ok: true; importedCount: number; calendarId: string }>
+  onCreateTag: (payload: { name: string; color: string }) => Promise<TagRecord>
+  onUpdateTag: (
+    id: string,
+    patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>
+  ) => Promise<TagRecord>
+  onDeleteTag: (id: string) => Promise<void>
   onReplaceStore: (next: CalendarStoreSnapshot) => Promise<void>
+  onImportStore: (payload: unknown) => Promise<void>
   onAddEvent: (input: EventInput) => Promise<CalendarEvent>
   onListMembers: () => Promise<MemberRecord[]>
   onSaveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
@@ -104,15 +137,6 @@ function isMyCalendar(calendar: CalendarRecord, currentLoginId: string): boolean
   return owner.length === 0 || owner.toLowerCase() === me.toLowerCase()
 }
 
-function isMemberCalendar(calendar: CalendarRecord, currentLoginId: string): boolean {
-  if (isSharedCalendar(calendar)) return false
-  const owner = String(calendar.ownerLoginId ?? '').trim()
-  if (!owner) return false
-  const me = currentLoginId.trim()
-  if (!me) return true
-  return owner.toLowerCase() !== me.toLowerCase()
-}
-
 function NavBtn({
   active,
   children,
@@ -126,8 +150,8 @@ function NavBtn({
     <button
       type="button"
       className={cn(
-        'w-full rounded-lg px-4 py-2.5 text-left text-sm font-medium transition-colors',
-        active ? 'bg-gcal-blue-soft text-gcal-blue-dark' : 'text-gcal-heading hover:bg-gcal-surface'
+        'settings-nav-btn transition-colors',
+        active ? 'is-active' : 'hover:bg-gcal-surface'
       )}
       onClick={onClick}
     >
@@ -139,11 +163,13 @@ function NavBtn({
 function ViewOptionsPanel({
   storeSettings,
   appSettings,
+  currentLoginId,
   onPatchStore,
   onSaveApp
 }: {
   storeSettings: StoreSettings
   appSettings: AppSettings | null
+  currentLoginId: string
   onPatchStore: (patch: Partial<StoreSettings>) => Promise<void>
   onSaveApp: (patch: Partial<AppSettings>) => void | Promise<void>
 }): ReactElement {
@@ -162,9 +188,8 @@ function ViewOptionsPanel({
   const [shellOpacity, setShellOpacity] = useState(
     appSettings?.shellOpacity ?? storeSettings.shellOpacity
   )
-  const [ownerName, setOwnerName] = useState(storeSettings.ownerName ?? '')
+  const ownerName = currentLoginId || storeSettings.ownerName || ''
   const [dataRoot, setDataRoot] = useState('')
-  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     setShowWeekNumbers(vo.showWeekNumbers !== false)
@@ -175,11 +200,16 @@ function ViewOptionsPanel({
     setRunAtStartup(Boolean(vo.runAtStartup))
     setHeaderOpacity(appSettings?.headerOpacity ?? storeSettings.headerOpacity)
     setShellOpacity(appSettings?.shellOpacity ?? storeSettings.shellOpacity)
-    setOwnerName(storeSettings.ownerName ?? '')
     void window.neoCalendar.getDataRoot().then(setDataRoot)
     applyColorScheme(getColorScheme(vo))
     applyAccentColor(normalizeAccentColor(vo.accentColor, '#1a73e8'))
   }, [vo, appSettings, storeSettings])
+
+  useEffect(() => {
+    if (!currentLoginId) return
+    if ((storeSettings.ownerName ?? '').trim() === currentLoginId) return
+    void onPatchStore({ ownerName: currentLoginId })
+  }, [currentLoginId, storeSettings.ownerName, onPatchStore])
 
   const persistView = async (patch: Partial<ViewOptions>): Promise<void> => {
     const next: ViewOptions = {
@@ -196,7 +226,6 @@ function ViewOptionsPanel({
     await onSaveApp({
       weekStartsOn: next.weekStartsOnSunday ? 0 : 1
     })
-    setSaved(true)
   }
 
   return (
@@ -305,12 +334,14 @@ function ViewOptionsPanel({
       <div className="mt-8">
         <h3 className="mb-4 text-[22px] font-normal text-gcal-heading">Neo 투명도</h3>
         <label className="mb-4 block text-sm text-gcal-body">
-          <span className="mb-1 block text-xs text-gcal-muted">소유자 이름</span>
+          <span className="mb-1 block text-xs text-gcal-muted">소유자 이름 (회원 ID)</span>
           <input
-            className="w-full rounded-lg border border-gcal-border bg-gcal-input px-4 py-3 text-gcal-heading outline-none"
+            className="w-full rounded-lg border border-gcal-border bg-gcal-input px-4 py-3 text-gcal-heading outline-none disabled:opacity-70"
             value={ownerName}
-            onChange={(e) => setOwnerName(e.target.value)}
-            onBlur={() => void onPatchStore({ ownerName })}
+            readOnly
+            disabled
+            title="로그인한 회원 ID로 자동 설정됩니다."
+            placeholder="로그인 후 회원 ID가 표시됩니다"
           />
         </label>
         <label className="mb-4 block text-sm text-gcal-body">
@@ -363,9 +394,25 @@ function ViewOptionsPanel({
         </label>
         <p className="text-sm text-gcal-muted">데이터 폴더: {dataRoot || '…'}</p>
       </div>
-
-      {saved ? <p className="mt-4 text-sm text-gcal-green">저장되었습니다.</p> : null}
     </div>
+  )
+}
+
+const fieldBoxClass =
+  'rounded-lg border border-gcal-border bg-gcal-input px-4 py-3 focus-within:border-gcal-blue focus-within:ring-2 focus-within:ring-gcal-blue/15'
+
+function FieldLabel({ children }: { children: ReactNode }): ReactElement {
+  return <span className="mb-1 block text-xs text-gcal-muted">{children}</span>
+}
+
+function CalendarDragHandleIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M9 5h2v2H9V5zm4 0h2v2h-2V5zM9 11h2v2H9v-2zm4 0h2v2h-2v-2zM9 17h2v2H9v-2zm4 0h2v2h-2v-2z"
+      />
+    </svg>
   )
 }
 
@@ -415,6 +462,541 @@ function CalendarNavRow({
   )
 }
 
+/** MDC MyCalendarsNavList — drag handle reorders via sortOrder patches. */
+function MyCalendarsNavList({
+  calendars,
+  currentLoginId,
+  activeCalendarId,
+  activeSection,
+  onOpenCalendarSettings,
+  onToggleCalendarVisibility,
+  onUpdateCalendar
+}: {
+  calendars: CalendarRecord[]
+  currentLoginId: string
+  activeCalendarId: string | null
+  activeSection: SettingsSection
+  onOpenCalendarSettings: (id: string) => void
+  onToggleCalendarVisibility: (id: string) => void
+  onUpdateCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+}): ReactElement | null {
+  const { alert } = useAppDialog()
+  const [orderIds, setOrderIds] = useState<string[] | null>(null)
+  const [dragId, setDragId] = useState<string | null>(null)
+  const [dropId, setDropId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const myCalendars = useMemo(
+    () => calendars.filter((calendar) => isMyCalendar(calendar, currentLoginId)),
+    [calendars, currentLoginId]
+  )
+
+  const sorted = useMemo(() => {
+    const base = sortCalendarsByOrder(myCalendars)
+    if (!orderIds?.length) return base
+    const byId = new Map(base.map((calendar) => [calendar.id, calendar]))
+    const ordered: CalendarRecord[] = []
+    for (const id of orderIds) {
+      const calendar = byId.get(id)
+      if (calendar) {
+        ordered.push(calendar)
+        byId.delete(id)
+      }
+    }
+    ordered.push(...Array.from(byId.values()))
+    return ordered
+  }, [myCalendars, orderIds])
+
+  useEffect(() => {
+    if (!orderIds?.length) return
+    const live = sortCalendarsByOrder(myCalendars)
+      .map((calendar) => calendar.id)
+      .join('\0')
+    if (live === orderIds.join('\0')) setOrderIds(null)
+  }, [myCalendars, orderIds])
+
+  if (myCalendars.length === 0) return null
+
+  const canDrag = !busy
+
+  const reorderCalendars = async (fromId: string | null, toId: string): Promise<void> => {
+    if (!canDrag || !fromId || !toId || fromId === toId) return
+    const fromIndex = sorted.findIndex((calendar) => calendar.id === fromId)
+    const toIndex = sorted.findIndex((calendar) => calendar.id === toId)
+    if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return
+
+    const next = [...sorted]
+    const [moved] = next.splice(fromIndex, 1)
+    next.splice(toIndex, 0, moved)
+    const nextIds = next.map((calendar) => calendar.id)
+    setOrderIds(nextIds)
+    setBusy(true)
+    try {
+      for (let i = 0; i < next.length; i += 1) {
+        const calendar = next[i]
+        if (calendar.sortOrder === i) continue
+        await onUpdateCalendar(calendar.id, { sortOrder: i })
+      }
+    } catch (err) {
+      setOrderIds(null)
+      await alert(err instanceof Error ? err.message : '캘린더 순서를 바꾸지 못했습니다.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="px-2 pt-1">
+      <ul className="m-0 list-none space-y-0.5 p-0">
+        {sorted.map((calendar) => {
+          const isVisible = calendar.visible !== false
+          const settingsActive =
+            activeSection === 'calendar-settings' && activeCalendarId === calendar.id
+          const isDragging = dragId === calendar.id
+          const isDropTarget = dropId === calendar.id && dragId && dragId !== calendar.id
+
+          return (
+            <li key={calendar.id}>
+              <div
+                className={cn(
+                  'flex items-center gap-0.5 rounded-lg py-2 pl-2 pr-2 text-sm transition-colors',
+                  settingsActive ? 'bg-gcal-blue-soft text-gcal-blue-dark' : 'text-gcal-heading',
+                  !isVisible && !settingsActive && 'opacity-60',
+                  isDragging && 'opacity-45',
+                  isDropTarget && 'ring-1 ring-inset ring-gcal-blue bg-gcal-blue-soft/40'
+                )}
+                onDragOver={(e) => {
+                  if (!canDrag || !dragId || dragId === calendar.id) return
+                  e.preventDefault()
+                  e.dataTransfer.dropEffect = 'move'
+                  if (dropId !== calendar.id) setDropId(calendar.id)
+                }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                    setDropId((current) => (current === calendar.id ? null : current))
+                  }
+                }}
+                onDrop={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const fromId = e.dataTransfer.getData('text/plain') || dragId
+                  setDragId(null)
+                  setDropId(null)
+                  void reorderCalendars(fromId, calendar.id)
+                }}
+              >
+                <button
+                  type="button"
+                  className={cn(
+                    'inline-flex h-8 w-5 shrink-0 items-center justify-center rounded text-gcal-muted',
+                    canDrag
+                      ? 'cursor-grab hover:bg-gcal-surface-2 hover:text-gcal-heading active:cursor-grabbing'
+                      : 'cursor-default opacity-40'
+                  )}
+                  draggable={canDrag}
+                  disabled={!canDrag}
+                  tabIndex={canDrag ? 0 : -1}
+                  title="끌어 순서 변경"
+                  aria-label={`${calendar.name} 순서 변경`}
+                  onDragStart={(e) => {
+                    if (!canDrag) {
+                      e.preventDefault()
+                      return
+                    }
+                    e.dataTransfer.effectAllowed = 'move'
+                    e.dataTransfer.setData('text/plain', calendar.id)
+                    setDragId(calendar.id)
+                  }}
+                  onDragEnd={() => {
+                    setDragId(null)
+                    setDropId(null)
+                  }}
+                >
+                  <CalendarDragHandleIcon />
+                </button>
+                <button
+                  type="button"
+                  className={cn(
+                    'flex min-w-0 flex-1 items-center gap-2 border-0 bg-transparent p-0 text-left transition-colors',
+                    settingsActive ? 'font-medium' : 'hover:text-gcal-blue'
+                  )}
+                  onClick={() => onOpenCalendarSettings(calendar.id)}
+                >
+                  <span
+                    className="h-3.5 w-3.5 shrink-0 rounded-full shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]"
+                    style={{ background: calendar.color ?? '#039be5' }}
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 flex-1 truncate">{calendar.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading"
+                  aria-label={isVisible ? '캘린더 숨기기' : '캘린더 보이기'}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    onToggleCalendarVisibility(calendar.id)
+                  }}
+                >
+                  <EyeIcon open={isVisible} />
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+function CalendarSettingsPanel({
+  calendarId,
+  calendars,
+  store,
+  currentLoginId,
+  onUpdateCalendar,
+  onCreateCalendar,
+  onAddEvent,
+  onClearCalendarEvents,
+  onDeleteCalendar,
+  onImportIntoCalendar,
+  onDeleted,
+  onDuplicated
+}: {
+  calendarId: string
+  calendars: CalendarRecord[]
+  store: CalendarStoreSnapshot
+  currentLoginId: string
+  onUpdateCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  onCreateCalendar: (
+    input: Partial<CalendarRecord> & { name: string; color: string }
+  ) => Promise<CalendarRecord>
+  onAddEvent: (input: EventInput) => Promise<CalendarEvent>
+  onClearCalendarEvents: (id: string) => Promise<void>
+  onDeleteCalendar: (id: string) => Promise<void>
+  onImportIntoCalendar: (
+    id: string,
+    events: unknown[]
+  ) => Promise<{ ok: true; importedCount: number; calendarId: string }>
+  onDeleted?: () => void
+  onDuplicated?: (created: CalendarRecord) => void
+}): ReactElement | null {
+  const { alert, confirm } = useAppDialog()
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+  const calendar = calendars.find((item) => item.id === calendarId)
+  const [name, setName] = useState(calendar?.name ?? '')
+  const [description, setDescription] = useState(calendar?.description ?? '')
+  const [color, setColor] = useState(calendar?.color ?? getDefaultCalendarColor(0))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [duplicating, setDuplicating] = useState(false)
+  const [importing, setImporting] = useState(false)
+
+  useEffect(() => {
+    setName(calendar?.name ?? '')
+    setDescription(calendar?.description ?? '')
+    setColor(calendar?.color ?? getDefaultCalendarColor(0))
+    setSaved(false)
+  }, [calendar?.id, calendar?.name, calendar?.description, calendar?.color])
+
+  if (!calendar) return null
+
+  const isHolidaysKr = calendar.id === HOLIDAYS_KR_CALENDAR_ID
+  const trimmedName = name.trim()
+  const trimmedDescription = description.trim()
+  const isDirty =
+    !isHolidaysKr &&
+    (trimmedName !== calendar.name ||
+      trimmedDescription !== (calendar.description ?? '') ||
+      color !== calendar.color)
+
+  const handleSave = async (): Promise<void> => {
+    if (!trimmedName) {
+      await alert('캘린더 이름을 입력해 주세요.')
+      return
+    }
+    if (!isDirty) return
+
+    const patch: Partial<CalendarRecord> = {}
+    if (trimmedName !== calendar.name) patch.name = trimmedName
+    if (trimmedDescription !== (calendar.description ?? '')) patch.description = trimmedDescription
+    if (color !== calendar.color) patch.color = color
+
+    setSaving(true)
+    setSaved(false)
+    try {
+      await onUpdateCalendar(calendar.id, patch)
+      setSaved(true)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더 설정을 저장하지 못했습니다.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDuplicate = async (): Promise<void> => {
+    setDuplicating(true)
+    try {
+      const existingNames = new Set(calendars.map((item) => item.name))
+      let suffix = 1
+      let duplicateName = `${calendar.name} (${suffix})`
+      while (existingNames.has(duplicateName)) {
+        suffix += 1
+        duplicateName = `${calendar.name} (${suffix})`
+      }
+
+      const created = await onCreateCalendar({
+        name: duplicateName,
+        description: calendar.description ?? '',
+        color: calendar.color,
+        ownerLoginId: currentLoginId || calendar.ownerLoginId,
+        ownerName: currentLoginId || calendar.ownerName,
+        custom: true
+      })
+
+      if (created?.id) {
+        const sourceEvents = (store.events ?? []).filter(
+          (event) => event.calendarId === calendar.id
+        )
+        for (const event of sourceEvents) {
+          await onAddEvent({ ...eventToMutationPayload(event), calendarId: created.id })
+        }
+      }
+
+      onDuplicated?.(created)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더를 복사하지 못했습니다.')
+    } finally {
+      setDuplicating(false)
+    }
+  }
+
+  const handleExportCalendar = async (format: CalendarFileFormat): Promise<void> => {
+    try {
+      const exportData = {
+        calendar,
+        events: (store.events ?? []).filter((event) => event.calendarId === calendar.id)
+      }
+      const { content, filename, mimeType } = exportSingleCalendar(
+        exportData,
+        format,
+        getJsonExportTimestamp()
+      )
+      downloadCalendarFile(content, filename, mimeType)
+      await alert(`「${calendar.name}」 캘린더를 ${format.toUpperCase()} 파일로 내보냈습니다.`, {
+        title: '내보내기 완료'
+      })
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더 내보내기에 실패했습니다.')
+    }
+  }
+
+  const handleImportCalendar = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const input = event.target
+    const file = input.files?.[0]
+    input.value = ''
+    if (!file) return
+
+    setImporting(true)
+    try {
+      const format = detectCalendarFileFormat(file.name)
+      if (!format) {
+        throw new Error('JSON, ICS, CSV 파일만 가져올 수 있습니다.')
+      }
+      const text = await file.text()
+      const parsed = parseImportPayload(text, format, file.name)
+      const events = extractEventsFromImportPayload(parsed)
+      if (!events.length) {
+        throw new Error('가져올 일정이 없습니다.')
+      }
+      const result = await onImportIntoCalendar(calendar.id, events)
+      const count = result?.importedCount ?? events.length
+      await alert(`「${calendar.name}」에 일정 ${count}건을 가져왔습니다.`, {
+        title: '가져오기 완료'
+      })
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더 가져오기에 실패했습니다.')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  const handleClearCalendarEvents = async (): Promise<void> => {
+    const ok = await confirm('이 캘린더의 모든 일정이 삭제됩니다.', {
+      variant: 'danger',
+      confirmLabel: '초기화'
+    })
+    if (!ok) return
+
+    setClearing(true)
+    try {
+      await onClearCalendarEvents(calendar.id)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더를 초기화하지 못했습니다.')
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  const handleDeleteCalendar = async (): Promise<void> => {
+    const ok = await confirm('이 캘린더의 모든 일정이 삭제됩니다.', {
+      variant: 'danger',
+      confirmLabel: '삭제'
+    })
+    if (!ok) return
+
+    setDeleting(true)
+    try {
+      await onDeleteCalendar(calendar.id)
+      onDeleted?.()
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '캘린더를 삭제하지 못했습니다.')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="w-full max-w-full text-left">
+      <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">캘린더 설정</h2>
+      {isHolidaysKr ? (
+        <p className="mb-5 text-sm text-gcal-muted">
+          이 캘린더의 일정은 설정 → 공휴일 동기화로만 갱신됩니다.
+        </p>
+      ) : null}
+      <div className="space-y-5">
+        <div>
+          <FieldLabel>일정 색상</FieldLabel>
+          <CalendarColorPalette
+            value={color}
+            onChange={(nextColor) => {
+              if (isHolidaysKr) return
+              setColor(nextColor)
+              setSaved(false)
+            }}
+          />
+        </div>
+
+        <div className={fieldBoxClass}>
+          <FieldLabel>이름</FieldLabel>
+          <input
+            className="w-full border-0 bg-transparent p-0 text-base text-gcal-heading outline-none disabled:opacity-70"
+            value={name}
+            disabled={isHolidaysKr}
+            onChange={(e) => {
+              setName(e.target.value)
+              setSaved(false)
+            }}
+          />
+        </div>
+
+        <div className={fieldBoxClass}>
+          <FieldLabel>설명</FieldLabel>
+          <textarea
+            className="min-h-[88px] w-full resize-y border-0 bg-transparent p-0 text-base text-gcal-heading outline-none disabled:opacity-70"
+            value={description}
+            disabled={isHolidaysKr}
+            onChange={(e) => {
+              setDescription(e.target.value)
+              setSaved(false)
+            }}
+            rows={3}
+          />
+        </div>
+      </div>
+
+      <div className="mt-8 space-y-3">
+        {isHolidaysKr ? (
+          <div className="flex flex-wrap gap-3">
+            <CalendarFileFormatButton
+              label="내보내기"
+              mode="export"
+              className="settings-btn-secondary px-6 py-2.5"
+              onSelectFormat={(format) => void handleExportCalendar(format)}
+            />
+          </div>
+        ) : (
+          <div className="cal-actions-container">
+            <div className="cal-settings-actions">
+              <button
+                type="button"
+                style={{ gridArea: 'save' }}
+                onClick={() => void handleSave()}
+                disabled={saving || !isDirty || !trimmedName}
+                className="settings-btn-primary rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
+              >
+                {saving ? '저장 중…' : '저장'}
+              </button>
+
+              <button
+                type="button"
+                style={{ gridArea: 'copy' }}
+                onClick={() => void handleDuplicate()}
+                disabled={duplicating || saving || clearing || deleting}
+                className="settings-btn-secondary rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
+              >
+                {duplicating ? '복사 중…' : '복사'}
+              </button>
+
+              <div className="min-w-0 w-full" style={{ gridArea: 'export' }}>
+                <CalendarFileFormatButton
+                  label="내보내기"
+                  mode="export"
+                  className="settings-btn-secondary w-full px-6 py-2.5"
+                  onSelectFormat={(format) => void handleExportCalendar(format)}
+                />
+              </div>
+
+              <button
+                type="button"
+                style={{ gridArea: 'import' }}
+                onClick={() => importInputRef.current?.click()}
+                disabled={importing || clearing || deleting || duplicating || saving}
+                className="settings-btn-secondary rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
+              >
+                {importing ? '가져오는 중…' : '가져오기'}
+              </button>
+              <input
+                ref={importInputRef}
+                type="file"
+                className="hidden"
+                accept={getAllImportAcceptAttribute()}
+                onChange={(ev) => void handleImportCalendar(ev)}
+              />
+
+              <button
+                type="button"
+                style={{ gridArea: 'clear' }}
+                onClick={() => void handleClearCalendarEvents()}
+                disabled={clearing || deleting || duplicating || importing}
+                className="settings-btn-danger rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
+              >
+                {clearing ? '초기화 중…' : '초기화'}
+              </button>
+
+              <button
+                type="button"
+                style={{ gridArea: 'delete' }}
+                onClick={() => void handleDeleteCalendar()}
+                disabled={clearing || deleting || duplicating || importing}
+                className="settings-btn-danger rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
+              >
+                {deleting ? '삭제 중…' : '삭제'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <p className="min-h-[1.25rem] text-sm text-gcal-muted">
+          {saved && !saving ? '저장되었습니다.' : ''}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 export function SettingsPanel({
   open,
   settings,
@@ -426,8 +1008,13 @@ export function SettingsPanel({
   onCreateCalendar,
   onPatchCalendar,
   onDeleteCalendar,
-  onSetTags,
+  onClearCalendarEvents,
+  onImportIntoCalendar,
+  onCreateTag,
+  onUpdateTag,
+  onDeleteTag,
   onReplaceStore,
+  onImportStore,
   onAddEvent,
   onListMembers,
   onSaveMembers,
@@ -436,69 +1023,29 @@ export function SettingsPanel({
 }: SettingsPanelProps): ReactElement | null {
   const [section, setSection] = useState<SettingsSection>('general')
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null)
-  const [message, setMessage] = useState('')
   const [newCalName, setNewCalName] = useState('')
   const [newCalDesc, setNewCalDesc] = useState('')
   const [newCalColor, setNewCalColor] = useState(() => getDefaultCalendarColor(0))
-  const [tagDrafts, setTagDrafts] = useState<TagRecord[]>([])
-  const [newTagName, setNewTagName] = useState('')
-  const [newTagColor, setNewTagColor] = useState('#039be5')
-  const [cidrText, setCidrText] = useState('')
-  const [cidrDesc, setCidrDesc] = useState('')
-  const [holidayKey, setHolidayKey] = useState('')
-  const [rememberHolidayKey, setRememberHolidayKey] = useState(false)
-  const [holidaySyncBusy, setHolidaySyncBusy] = useState(false)
-  const [calEdit, setCalEdit] = useState({ name: '', description: '', color: '#f6bf26' })
 
   const currentLoginId = user?.loginId ?? ''
   const isSuperAdmin = Boolean(user)
 
-  const myCalendars = useMemo(
-    () => store.calendars.filter((c) => isMyCalendar(c, currentLoginId)),
-    [store.calendars, currentLoginId]
-  )
   const sharedCalendars = useMemo(
-    () => store.calendars.filter((c) => isSharedCalendar(c)),
+    () => sortCalendarsByOrder(store.calendars.filter((c) => isSharedCalendar(c))),
     [store.calendars]
   )
-  const memberCalendars = useMemo(
-    () => store.calendars.filter((c) => isMemberCalendar(c, currentLoginId)),
-    [store.calendars, currentLoginId]
-  )
-
   useEffect(() => {
     if (!open) return
     setSection('general')
     setSelectedCalendarId(null)
-    setMessage('')
-    setTagDrafts(store.tags.map((t) => ({ ...t })))
-    setHolidayKey(store.settings.holidaysKr.serviceKey ?? '')
-    setRememberHolidayKey(Boolean(store.settings.holidaysKr.rememberKey))
     setNewCalColor(getDefaultCalendarColor(store.calendars.length))
   }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    setHolidayKey(store.settings.holidaysKr.serviceKey ?? '')
-    setRememberHolidayKey(Boolean(store.settings.holidaysKr.rememberKey))
-  }, [open, store.settings.holidaysKr.serviceKey, store.settings.holidaysKr.rememberKey])
 
   useEffect(() => {
     if (!isSuperAdmin && ['import-export', 'security', 'members', 'member-calendars', 'holidays'].includes(section)) {
       setSection('general')
     }
   }, [isSuperAdmin, section])
-
-  useEffect(() => {
-    if (section !== 'calendar-settings' || !selectedCalendarId) return
-    const cal = store.calendars.find((c) => c.id === selectedCalendarId)
-    if (!cal) return
-    setCalEdit({
-      name: cal.name,
-      description: cal.description ?? '',
-      color: cal.color
-    })
-  }, [section, selectedCalendarId, store.calendars])
 
   /** Keep settings below AppChrome; fill remaining window height (MDC). */
   const measureChromeOffset = (): number => {
@@ -557,42 +1104,6 @@ export function SettingsPanel({
   const openCalendarSettings = (id: string): void => {
     setSelectedCalendarId(id)
     setSection('calendar-settings')
-  }
-
-  const selectedCalendar = selectedCalendarId
-    ? store.calendars.find((c) => c.id === selectedCalendarId) ?? null
-    : null
-
-  const exportJson = (): void => {
-    const blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `neo-calendar-export-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-    setMessage('JSON을 내보냈습니다.')
-  }
-
-  const importJson = async (file: File): Promise<void> => {
-    try {
-      const parsed = JSON.parse(await file.text()) as CalendarStoreSnapshot
-      if (!parsed || !Array.isArray(parsed.events) || !Array.isArray(parsed.calendars)) {
-        setMessage('유효한 캘린더 JSON이 아닙니다.')
-        return
-      }
-      if (!window.confirm('가져오면 현재 데이터가 덮어씌워집니다. 계속할까요?')) return
-      await onReplaceStore({
-        ...store,
-        ...parsed,
-        settings: { ...store.settings, ...(parsed.settings ?? {}) },
-        updatedAt: new Date().toISOString()
-      })
-      setMessage('가져오기를 완료했습니다.')
-      await onRefresh()
-    } catch {
-      setMessage('JSON을 읽지 못했습니다.')
-    }
   }
 
   // Defer unmount so the same click cannot retarget to header Excel/PDF underneath (MDC).
@@ -675,28 +1186,27 @@ export function SettingsPanel({
                   <NavBtn active={section === 'holidays'} onClick={() => setSection('holidays')}>
                     대한민국의 휴일(공공데이터 API)
                   </NavBtn>
-                  <NavBtn active={section === 'web-server'} onClick={() => setSection('web-server')}>
-                    웹 서버
-                  </NavBtn>
                 </>
               ) : null}
 
               <div className="my-3" aria-hidden="true" />
 
-              <p className="px-4 text-sm font-medium text-gcal-heading">내 캘린더</p>
-              {myCalendars.map((cal) => (
-                <CalendarNavRow
-                  key={cal.id}
-                  calendar={cal}
-                  active={section === 'calendar-settings' && selectedCalendarId === cal.id}
-                  onOpen={() => openCalendarSettings(cal.id)}
-                  onToggleVisible={() =>
-                    void onPatchCalendar(cal.id, { visible: cal.visible === false })
-                  }
-                />
-              ))}
+              <p className="settings-aside-label">내 캘린더</p>
+              <MyCalendarsNavList
+                calendars={store.calendars}
+                currentLoginId={currentLoginId}
+                activeCalendarId={selectedCalendarId}
+                activeSection={section}
+                onOpenCalendarSettings={openCalendarSettings}
+                onToggleCalendarVisibility={(id) => {
+                  const cal = store.calendars.find((c) => c.id === id)
+                  if (!cal) return
+                  void onPatchCalendar(id, { visible: cal.visible === false })
+                }}
+                onUpdateCalendar={onPatchCalendar}
+              />
 
-              <p className="mt-4 px-4 text-sm font-medium text-gcal-heading">고정 캘린더</p>
+              <p className="settings-aside-label settings-aside-label--gap">고정 캘린더</p>
               {sharedCalendars.map((cal) => (
                 <CalendarNavRow
                   key={cal.id}
@@ -712,16 +1222,11 @@ export function SettingsPanel({
           </aside>
 
           <div className="settings-scroll min-h-0 min-w-0 flex-1 overflow-y-auto px-8 py-8 pr-14 text-left md:px-10 md:pr-14">
-            {message ? (
-              <p className="mb-4 rounded-lg bg-gcal-green-soft px-3 py-2 text-sm text-gcal-green">
-                {message}
-              </p>
-            ) : null}
-
           {section === 'general' && (
             <ViewOptionsPanel
               storeSettings={store.settings}
               appSettings={settings}
+              currentLoginId={currentLoginId}
               onPatchStore={onPatchStore}
               onSaveApp={onSave}
             />
@@ -757,14 +1262,15 @@ export function SettingsPanel({
               <button
                 type="button"
                 disabled={!newCalName.trim() || !user}
-                className="mt-8 rounded-full bg-gcal-blue px-6 py-2.5 text-sm font-medium text-white shadow-[0_1px_2px_rgba(26,115,232,0.35)] transition-colors hover:bg-[#1765cc] disabled:opacity-60"
+                className="settings-btn-primary mt-8 rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
                 onClick={() => {
                   void onCreateCalendar({
                     name: newCalName.trim(),
                     description: newCalDesc.trim(),
                     color: newCalColor,
                     custom: true,
-                    ownerLoginId: currentLoginId || undefined
+                    ownerLoginId: currentLoginId || undefined,
+                    ownerName: currentLoginId || undefined
                   }).then((created) => {
                     setNewCalName('')
                     setNewCalDesc('')
@@ -780,475 +1286,72 @@ export function SettingsPanel({
           )}
 
           {section === 'import-export' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">가져오기 / 내보내기</h2>
-              <p className="mb-4 text-sm text-gcal-muted">전체 스토어 JSON을 내보내거나 가져옵니다.</p>
-              <div className="panel-actions">
-                <button type="button" onClick={exportJson}>
-                  JSON 내보내기
-                </button>
-                <label className="settings-file-btn">
-                  JSON 가져오기
-                  <input
-                    type="file"
-                    accept="application/json,.json"
-                    hidden
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) void importJson(file)
-                      e.target.value = ''
-                    }}
-                  />
-                </label>
-              </div>
-            </div>
+            <ImportExportPanel
+              store={store}
+              onImport={onImportStore}
+              onRefresh={onRefresh}
+            />
           )}
 
           {section === 'tags' && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">태그 관리</h2>
-              <ul className="settings-tag-list">
-                {tagDrafts.map((tag, index) => (
-                  <li key={tag.id} className="settings-tag-row">
-                    <input
-                      value={tag.name}
-                      onChange={(e) => {
-                        const next = [...tagDrafts]
-                        next[index] = { ...tag, name: e.target.value }
-                        setTagDrafts(next)
-                      }}
-                    />
-                    <input
-                      type="color"
-                      value={tag.color}
-                      onChange={(e) => {
-                        const next = [...tagDrafts]
-                        next[index] = { ...tag, color: e.target.value }
-                        setTagDrafts(next)
-                      }}
-                    />
-                    <button
-                      type="button"
-                      className="is-danger"
-                      onClick={() => setTagDrafts(tagDrafts.filter((t) => t.id !== tag.id))}
-                    >
-                      삭제
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              <div className="settings-tag-create">
-                <input
-                  value={newTagName}
-                  placeholder="새 태그 이름"
-                  onChange={(e) => setNewTagName(e.target.value)}
-                />
-                <input
-                  type="color"
-                  value={newTagColor}
-                  onChange={(e) => setNewTagColor(e.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!newTagName.trim()) return
-                    setTagDrafts([
-                      ...tagDrafts,
-                      {
-                        id: `tag-${Date.now().toString(36)}`,
-                        name: newTagName.trim(),
-                        color: newTagColor,
-                        sortOrder: tagDrafts.length
-                      }
-                    ])
-                    setNewTagName('')
-                  }}
-                >
-                  추가
-                </button>
-              </div>
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  className="is-primary"
-                  disabled={!user}
-                  onClick={() => {
-                    void onSetTags(tagDrafts).then(() => setMessage('태그를 저장했습니다.'))
-                  }}
-                >
-                  저장
-                </button>
-              </div>
-            </div>
+            <TagsPanel
+              tags={store.tags}
+              onCreateTag={onCreateTag}
+              onUpdateTag={onUpdateTag}
+              onDeleteTag={onDeleteTag}
+            />
           )}
 
           {section === 'security' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">보안 관리</h2>
-              <p className="mb-4 text-sm text-gcal-muted">
-                허용 IP/CIDR은 MDC 스키마와 호환되도록 저장됩니다. Electron 빌드에서는 웹 ACL·방화벽으로
-                적용되지 않습니다.
-              </p>
-              <label className="settings-field">
-                <span>CIDR</span>
-                <input
-                  value={cidrText}
-                  onChange={(e) => setCidrText(e.target.value)}
-                  placeholder="192.168.0.0/24"
-                />
-              </label>
-              <label className="settings-field">
-                <span>설명</span>
-                <input value={cidrDesc} onChange={(e) => setCidrDesc(e.target.value)} />
-              </label>
-              <div className="panel-actions">
-                <button
-                  type="button"
-                  className="is-primary"
-                  onClick={() => {
-                    const cidr = cidrText.trim()
-                    if (!cidr) return
-                    void onPatchStore({
-                      allowedIpCidrs: [
-                        ...(store.settings.allowedIpCidrs ?? []),
-                        { cidr, description: cidrDesc.trim() }
-                      ]
-                    }).then(() => {
-                      setCidrText('')
-                      setCidrDesc('')
-                      setMessage('CIDR을 저장했습니다.')
-                    })
-                  }}
-                >
-                  추가
-                </button>
-              </div>
-              <ul className="settings-cidr-list">
-                {(store.settings.allowedIpCidrs ?? []).map((row, i) => (
-                  <li key={`${row.cidr}-${i}`}>
-                    <code>{row.cidr}</code>
-                    {row.description ? ` — ${row.description}` : ''}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        void onPatchStore({
-                          allowedIpCidrs: (store.settings.allowedIpCidrs ?? []).filter(
-                            (_, idx) => idx !== i
-                          )
-                        })
-                      }
-                    >
-                      삭제
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <SecurityPanel settings={store.settings} onSaveSettings={onPatchStore} />
           )}
 
           {section === 'members' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">회원 관리</h2>
-              <MembersPanel listMembers={onListMembers} saveMembers={onSaveMembers} />
-            </div>
+            <MembersPanel listMembers={onListMembers} saveMembers={onSaveMembers} />
           )}
 
           {section === 'member-calendars' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">회원 캘린더 관리</h2>
-              <p className="mb-4 text-sm text-gcal-muted">다른 회원이 소유한 개인 캘린더입니다.</p>
-              {memberCalendars.length === 0 ? (
-                <p className="settings-muted">표시할 회원 캘린더가 없습니다.</p>
-              ) : (
-                <ul className="settings-cal-list">
-                  {memberCalendars.map((cal) => (
-                    <li key={cal.id} className="settings-cal-row">
-                      <button type="button" className="settings-link-btn" onClick={() => openCalendarSettings(cal.id)}>
-                        <span className="settings-cal-swatch" style={{ background: cal.color }} />
-                        {cal.name}
-                        <span className="settings-muted"> · {cal.ownerLoginId}</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          void onPatchCalendar(cal.id, { visible: cal.visible === false })
-                        }
-                      >
-                        {cal.visible === false ? '숨김' : '표시'}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <MemberCalendarsPanel
+              calendars={store.calendars}
+              currentLoginId={currentLoginId}
+              onOpenCalendarSettings={openCalendarSettings}
+              onToggleCalendarVisibility={(id) => {
+                const cal = store.calendars.find((c) => c.id === id)
+                if (!cal) return
+                void onPatchCalendar(id, { visible: cal.visible === false })
+              }}
+            />
           )}
 
           {section === 'holidays' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">
-                대한민국의 휴일(공공데이터 API)
-              </h2>
-              <p className="mb-4 text-sm text-gcal-body">
-                공공데이터포털 특일 정보 API 인증키를 입력하세요. `.env`의{' '}
-                <code>DATA_GO_KR_SERVICE_KEY</code>가 있으면 시작 시 자동으로 불러옵니다.
-              </p>
-              <label className="settings-field">
-                <span>공공데이터포털 서비스 키</span>
-                <input
-                  value={holidayKey}
-                  onChange={(e) => setHolidayKey(e.target.value)}
-                  placeholder="DATA_GO_KR_SERVICE_KEY"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </label>
-              <label className="mb-4 flex items-center gap-2.5 text-sm text-gcal-body">
-                <input
-                  type="checkbox"
-                  checked={rememberHolidayKey}
-                  onChange={(e) => setRememberHolidayKey(e.target.checked)}
-                />
-                인증키 저장
-              </label>
-              <p className="settings-muted mb-4">
-                상태: {store.settings.holidaysKr.message || '미동기화'}
-                {store.settings.holidaysKr.count
-                  ? ` / ${store.settings.holidaysKr.count}건`
-                  : ''}
-                {store.settings.holidaysKr.lastSyncedAt
-                  ? ` · ${new Date(store.settings.holidaysKr.lastSyncedAt).toLocaleString()}`
-                  : ''}
-              </p>
-              <div className="panel-actions flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() =>
-                    void onPatchStore({
-                      holidaysKr: {
-                        ...store.settings.holidaysKr,
-                        serviceKey: rememberHolidayKey ? holidayKey.trim() : '',
-                        rememberKey: rememberHolidayKey && Boolean(holidayKey.trim())
-                      }
-                    }).then(() => setMessage('공휴일 API 키를 저장했습니다.'))
-                  }
-                >
-                  키 저장
-                </button>
-                <button
-                  type="button"
-                  className="is-primary"
-                  disabled={holidaySyncBusy || !holidayKey.trim()}
-                  onClick={() => {
-                    const trimmed = holidayKey.trim()
-                    if (!trimmed) {
-                      setMessage('API 키를 입력하세요.')
-                      return
-                    }
-                    if (!navigator.onLine) {
-                      setMessage('오프라인 상태입니다. 네트워크 연결 후 다시 시도하세요.')
-                      return
-                    }
-                    setHolidaySyncBusy(true)
-                    void onSyncHolidays({
-                      serviceKey: trimmed,
-                      rememberKey: rememberHolidayKey
-                    })
-                      .then((result) => {
-                        setMessage(
-                          result.message
-                            || `공휴일 ${result.count}건을 동기화했습니다. (${result.source})`
-                        )
-                      })
-                      .catch((error: unknown) => {
-                        setMessage(
-                          error instanceof Error
-                            ? error.message
-                            : '공휴일 동기화에 실패했습니다.'
-                        )
-                      })
-                      .finally(() => setHolidaySyncBusy(false))
-                  }}
-                >
-                  {holidaySyncBusy ? '동기화 중…' : '지금 동기화'}
-                </button>
-              </div>
-            </div>
+            <HolidaysSyncPanel
+              settings={store.settings}
+              onSyncHolidays={onSyncHolidays}
+              onSaveSettings={onPatchStore}
+            />
           )}
 
-          {section === 'web-server' && isSuperAdmin && (
-            <div className="w-full max-w-full text-left opacity-85">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">웹 서버</h2>
-              <p className="mb-4 text-sm text-gcal-body">
-                Electron 빌드에서는 웹 서버(Start Server / HOSTNAME)를 지원하지 않습니다.
-              </p>
-              <label className="settings-field">
-                <span>HOSTNAME</span>
-                <input disabled value="localhost" />
-              </label>
-              <button type="button" disabled>
-                Start Server
-              </button>
-              <p className="settings-muted">URL ACL·방화벽 UI도 Electron에서는 비활성입니다.</p>
-            </div>
-          )}
-
-          {section === 'calendar-settings' && selectedCalendar && (
-            <div className="w-full max-w-full text-left">
-              <h2 className="mb-8 text-[22px] font-normal text-gcal-heading">캘린더 설정</h2>
-              {selectedCalendar.id === HOLIDAYS_KR_CALENDAR_ID ? (
-                <p className="mb-5 text-sm text-gcal-muted">
-                  이 캘린더의 일정은 설정 → 공휴일 동기화로만 갱신됩니다.
-                </p>
-              ) : null}
-              <div className="space-y-5">
-                <div>
-                  <span className="mb-1 block text-xs text-gcal-muted">일정 색상</span>
-                  <CalendarColorPalette
-                    value={calEdit.color}
-                    disabled={selectedCalendar.id === HOLIDAYS_KR_CALENDAR_ID}
-                    onChange={(color) => setCalEdit((s) => ({ ...s, color }))}
-                  />
-                </div>
-                <div className="rounded-lg border border-gcal-border bg-gcal-input px-4 py-3">
-                  <span className="mb-1 block text-xs text-gcal-muted">이름</span>
-                  <input
-                    className="w-full border-0 bg-transparent p-0 text-base text-gcal-heading outline-none disabled:opacity-70"
-                    value={calEdit.name}
-                    disabled={selectedCalendar.id === HOLIDAYS_KR_CALENDAR_ID}
-                    onChange={(e) => setCalEdit((s) => ({ ...s, name: e.target.value }))}
-                  />
-                </div>
-                <div className="rounded-lg border border-gcal-border bg-gcal-input px-4 py-3">
-                  <span className="mb-1 block text-xs text-gcal-muted">설명</span>
-                  <textarea
-                    className="min-h-[88px] w-full resize-y border-0 bg-transparent p-0 text-base text-gcal-heading outline-none disabled:opacity-70"
-                    rows={3}
-                    value={calEdit.description}
-                    disabled={selectedCalendar.id === HOLIDAYS_KR_CALENDAR_ID}
-                    onChange={(e) => setCalEdit((s) => ({ ...s, description: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <div className="cal-actions-container mt-8">
-                <div className="cal-settings-actions">
-                  {selectedCalendar.id !== HOLIDAYS_KR_CALENDAR_ID ? (
-                    <button
-                      type="button"
-                      style={{ gridArea: 'save' }}
-                      disabled={!calEdit.name.trim() || !user}
-                      className="rounded-full bg-gcal-blue px-6 py-2.5 text-sm font-medium text-white shadow-[0_1px_2px_rgba(26,115,232,0.35)] transition-colors hover:bg-[#1765cc] disabled:opacity-60"
-                      onClick={() =>
-                        void onPatchCalendar(selectedCalendar.id, {
-                          name: calEdit.name.trim(),
-                          description: calEdit.description.trim(),
-                          color: calEdit.color
-                        }).then(() => setMessage('캘린더를 저장했습니다.'))
-                      }
-                    >
-                      저장
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    style={{ gridArea: 'copy' }}
-                    disabled={!user}
-                    className="rounded-full border border-gcal-border bg-gcal-page px-6 py-2.5 text-sm font-medium text-gcal-heading transition-colors hover:bg-gcal-surface-2 disabled:opacity-60"
-                    onClick={() => {
-                      void (async () => {
-                        const created = await onCreateCalendar({
-                          name: `${selectedCalendar.name} 복사본`,
-                          color: selectedCalendar.color,
-                          description: selectedCalendar.description,
-                          custom: true,
-                          ownerLoginId: currentLoginId || undefined
-                        })
-                        const events = store.events.filter(
-                          (e) => e.calendarId === selectedCalendar.id
-                        )
-                        for (const ev of events) {
-                          const { id: _id, calendarId: _c, ...rest } = ev
-                          await onAddEvent({
-                            ...rest,
-                            title: ev.title,
-                            calendarId: created.id,
-                            startDate: ev.startDate,
-                            endDate: ev.endDate
-                          })
-                        }
-                        openCalendarSettings(created.id)
-                        setMessage('캘린더를 복사했습니다.')
-                      })()
-                    }}
-                  >
-                    복사
-                  </button>
-                  <button
-                    type="button"
-                    style={{ gridArea: 'export' }}
-                    className="rounded-full border border-gcal-border bg-gcal-page px-6 py-2.5 text-sm font-medium text-gcal-blue transition-colors hover:bg-gcal-surface-2"
-                    onClick={() => {
-                      const payload = {
-                        calendar: selectedCalendar,
-                        events: store.events.filter((e) => e.calendarId === selectedCalendar.id)
-                      }
-                      const blob = new Blob([JSON.stringify(payload, null, 2)], {
-                        type: 'application/json'
-                      })
-                      const url = URL.createObjectURL(blob)
-                      const a = document.createElement('a')
-                      a.href = url
-                      a.download = `${selectedCalendar.dataKey || selectedCalendar.id}.json`
-                      a.click()
-                      URL.revokeObjectURL(url)
-                    }}
-                  >
-                    내보내기
-                  </button>
-                  {selectedCalendar.id !== HOLIDAYS_KR_CALENDAR_ID ? (
-                    <button
-                      type="button"
-                      style={{ gridArea: 'clear' }}
-                      disabled={!user}
-                      className="rounded-full border border-[#f6c5c4] bg-gcal-page px-6 py-2.5 text-sm font-medium text-[#c5221f] transition-colors hover:bg-gcal-red-soft disabled:opacity-60"
-                      onClick={() => {
-                        if (!window.confirm('이 캘린더의 모든 일정이 삭제됩니다. 초기화할까요?'))
-                          return
-                        void onReplaceStore({
-                          ...store,
-                          events: store.events.filter(
-                            (e) => e.calendarId !== selectedCalendar.id
-                          ),
-                          updatedAt: new Date().toISOString()
-                        }).then(() => setMessage('일정을 초기화했습니다.'))
-                      }}
-                    >
-                      초기화
-                    </button>
-                  ) : null}
-                  {selectedCalendar.id !== HOLIDAYS_KR_CALENDAR_ID &&
-                  selectedCalendar.id !== PRIMARY_CALENDAR_ID ? (
-                    <button
-                      type="button"
-                      style={{ gridArea: 'delete' }}
-                      disabled={!user}
-                      className="rounded-full border border-[#f6c5c4] bg-gcal-page px-6 py-2.5 text-sm font-medium text-[#c5221f] transition-colors hover:bg-gcal-red-soft disabled:opacity-60"
-                      onClick={() => {
-                        if (!window.confirm('이 캘린더의 모든 일정이 삭제됩니다. 삭제할까요?'))
-                          return
-                        void onDeleteCalendar(selectedCalendar.id).then(() => {
-                          setSection('general')
-                          setSelectedCalendarId(null)
-                          setMessage('캘린더를 삭제했습니다.')
-                        })
-                      }}
-                    >
-                      삭제
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          )}
+          {section === 'calendar-settings' && selectedCalendarId ? (
+            <CalendarSettingsPanel
+              calendarId={selectedCalendarId}
+              calendars={store.calendars}
+              store={store}
+              currentLoginId={currentLoginId}
+              onUpdateCalendar={onPatchCalendar}
+              onCreateCalendar={onCreateCalendar}
+              onAddEvent={onAddEvent}
+              onClearCalendarEvents={onClearCalendarEvents}
+              onDeleteCalendar={onDeleteCalendar}
+              onImportIntoCalendar={onImportIntoCalendar}
+              onDeleted={() => {
+                setSelectedCalendarId(null)
+                setSection('general')
+              }}
+              onDuplicated={(created) => {
+                if (created?.id) openCalendarSettings(created.id)
+              }}
+            />
+          ) : null}
           </div>
         </InteractionUI>
       </div>

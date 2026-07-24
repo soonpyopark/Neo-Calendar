@@ -31,9 +31,21 @@ export type UseCalendarStoreResult = {
   ) => Promise<CalendarRecord>
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
   deleteCalendar: (id: string) => Promise<void>
+  clearCalendarEvents: (id: string) => Promise<void>
+  importEventsIntoCalendar: (
+    id: string,
+    events: unknown[]
+  ) => Promise<{ ok: true; importedCount: number; calendarId: string }>
   setTags: (tags: TagRecord[]) => Promise<TagRecord[]>
+  createTag: (input: { name: string; color: string; sortOrder?: number }) => Promise<TagRecord>
+  patchTag: (
+    id: string,
+    patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>
+  ) => Promise<TagRecord>
+  deleteTag: (id: string) => Promise<void>
   patchStoreSettings: (patch: Partial<StoreSettings>) => Promise<void>
   replaceStore: (next: CalendarStoreSnapshot) => Promise<void>
+  importStore: (payload: unknown) => Promise<void>
   listMembers: () => Promise<MemberRecord[]>
   saveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
   syncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>
@@ -55,6 +67,15 @@ export function useCalendarStore(): UseCalendarStoreResult {
 
   useEffect(() => {
     void refresh()
+  }, [refresh])
+
+  // Browser WebSocket / cross-tab store updates from the local HTTP server.
+  useEffect(() => {
+    const onChanged = (): void => {
+      void refresh()
+    }
+    window.addEventListener('neo-store-changed', onChanged)
+    return () => window.removeEventListener('neo-store-changed', onChanged)
   }, [refresh])
 
   // Apply MDC light/dark + accent as soon as store settings load (not only Settings panel).
@@ -128,11 +149,54 @@ export function useCalendarStore(): UseCalendarStoreResult {
     [refresh]
   )
 
+  const clearCalendarEvents = useCallback(
+    async (id: string) => {
+      await window.neoCalendar.clearCalendarEvents(id)
+      await refresh()
+    },
+    [refresh]
+  )
+
+  const importEventsIntoCalendar = useCallback(
+    async (id: string, events: unknown[]) => {
+      const result = await window.neoCalendar.importEventsIntoCalendar(id, events)
+      await refresh()
+      return result
+    },
+    [refresh]
+  )
+
   const setTags = useCallback(
     async (tags: TagRecord[]) => {
       const next = await window.neoCalendar.setTags(tags)
       await refresh()
       return next
+    },
+    [refresh]
+  )
+
+  const createTag = useCallback(
+    async (input: { name: string; color: string; sortOrder?: number }) => {
+      const created = await window.neoCalendar.createTag(input)
+      await refresh()
+      return created
+    },
+    [refresh]
+  )
+
+  const patchTag = useCallback(
+    async (id: string, patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>) => {
+      const updated = await window.neoCalendar.patchTag(id, patch)
+      await refresh()
+      return updated
+    },
+    [refresh]
+  )
+
+  const deleteTag = useCallback(
+    async (id: string) => {
+      await window.neoCalendar.deleteTag(id)
+      await refresh()
     },
     [refresh]
   )
@@ -153,10 +217,23 @@ export function useCalendarStore(): UseCalendarStoreResult {
     [refresh]
   )
 
+  const importStore = useCallback(
+    async (payload: unknown) => {
+      await window.neoCalendar.importCalendarStore(payload)
+      await refresh()
+    },
+    [refresh]
+  )
+
   const listMembers = useCallback(() => window.neoCalendar.listMembers(), [])
-  const saveMembers = useCallback(async (members: MemberSaveInput[]) => {
-    return window.neoCalendar.saveMembers(members)
-  }, [])
+  const saveMembers = useCallback(
+    async (members: MemberSaveInput[]) => {
+      const next = await window.neoCalendar.saveMembers(members)
+      await refresh()
+      return next
+    },
+    [refresh]
+  )
 
   const syncHolidays = useCallback(
     async (input?: SyncHolidaysInput) => {
@@ -193,9 +270,15 @@ export function useCalendarStore(): UseCalendarStoreResult {
     createCalendar,
     patchCalendar,
     deleteCalendar,
+    clearCalendarEvents,
+    importEventsIntoCalendar,
     setTags,
+    createTag,
+    patchTag,
+    deleteTag,
     patchStoreSettings,
     replaceStore,
+    importStore,
     listMembers,
     saveMembers,
     syncHolidays,

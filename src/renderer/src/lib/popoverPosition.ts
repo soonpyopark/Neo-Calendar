@@ -13,6 +13,32 @@ function getViewportSize() {
 }
 
 /**
+ * Principle #4 — overlays stay inside the app shell content box (not just the
+ * Electron window). Uses the shell's padding edge so rounded-corner inset
+ * chrome is respected. Falls back to the window when `.neo-cal-shell` is missing.
+ */
+function getOverlayBoundsRect() {
+  const shell = document.querySelector('.neo-cal-shell');
+  if (shell) {
+    const r = shell.getBoundingClientRect();
+    if (r.width >= 32 && r.height >= 32) {
+      const cs = window.getComputedStyle(shell);
+      const padL = Number.parseFloat(cs.paddingLeft) || 0;
+      const padT = Number.parseFloat(cs.paddingTop) || 0;
+      const padR = Number.parseFloat(cs.paddingRight) || 0;
+      const padB = Number.parseFloat(cs.paddingBottom) || 0;
+      return {
+        left: r.left + padL,
+        top: r.top + padT,
+        width: Math.max(0, r.width - padL - padR),
+        height: Math.max(0, r.height - padT - padB),
+      };
+    }
+  }
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+}
+
+/**
  * @param {number} clientX
  * @param {number} clientY
  */
@@ -53,17 +79,30 @@ function isPointerAnchor(anchorRect, anchorMode) {
 /**
  * @param {{ top: number; left: number; width: number; height: number; padding?: number }} rect
  */
-export function clampRectToViewport({ top, left, width, height, padding = 8 }) {
-  const { width: viewportWidth, height: viewportHeight } = getViewportSize();
-  const safeWidth = Math.min(width, viewportWidth - padding * 2);
-  const safeHeight = Math.min(height, viewportHeight - padding * 2);
+export function clampRectToViewport({ top, left, width, height, padding = 5 }) {
+  const bounds = getOverlayBoundsRect();
+  const safeWidth = Math.min(width, Math.max(0, bounds.width - padding * 2));
+  const safeHeight = Math.min(height, Math.max(0, bounds.height - padding * 2));
+  const minLeft = bounds.left + padding;
+  const minTop = bounds.top + padding;
+  const maxLeft = bounds.left + bounds.width - padding - safeWidth;
+  const maxTop = bounds.top + bounds.height - padding - safeHeight;
 
   return {
-    top: clamp(top, padding, Math.max(padding, viewportHeight - safeHeight - padding)),
-    left: clamp(left, padding, Math.max(padding, viewportWidth - safeWidth - padding)),
+    top: clamp(top, minTop, Math.max(minTop, maxTop)),
+    left: clamp(left, minLeft, Math.max(minLeft, maxLeft)),
     width: safeWidth,
     maxHeight: safeHeight,
   };
+}
+
+/**
+ * Principle #4 — keep fixed overlays (quick-edit flyouts, etc.) inside the app shell.
+ * @param {{ left: number; top: number; width: number; height: number; padding?: number }} rect
+ */
+export function clampFixedPosition({ left, top, width, height, padding = 5 }) {
+  const clamped = clampRectToViewport({ top, left, width, height, padding });
+  return { left: clamped.left, top: clamped.top, width: clamped.width, height: clamped.maxHeight };
 }
 
 /**
