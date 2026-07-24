@@ -1,4 +1,4 @@
-# Neo Calendar v1.0.0
+# Neo Calendar v1.0.1
 
 Lightweight Electron desktop wallpaper calendar with dynamic click-through.
 

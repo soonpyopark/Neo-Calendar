@@ -10,6 +10,48 @@ export const HOLIDAYS_KR_CALENDAR_ID = 'holidays-kr'
 export const PRIMARY_CALENDAR_ID = 'primary'
 export const PRIMARY_CALENDAR_COLOR = '#f6bf26'
 
+/** First-run / factory Neo chrome opacity (settings sliders + CSS vars). */
+export const DEFAULT_HEADER_OPACITY = 0.95
+export const DEFAULT_SHELL_OPACITY = 0.95
+
+/** Older factory pairs that should be upgraded to the current defaults. */
+const LEGACY_FACTORY_OPACITY_PAIRS: ReadonlyArray<{ header: number; shell: number }> = [
+  { header: 0.62, shell: 0.35 },
+  { header: 0.65, shell: 0.35 }
+]
+
+function approxOpacity(a: number, b: number): boolean {
+  return Math.abs(Number(a) - b) < 0.005
+}
+
+/**
+ * If settings still carry a known pre-1.0 factory opacity pair, bump to current defaults.
+ * User-chosen values (anything else) are left alone.
+ */
+export function upgradeLegacyFactoryOpacity<T extends {
+  headerOpacity?: number
+  shellOpacity?: number
+}>(settings: T): T {
+  const header = Number(settings.headerOpacity)
+  const shell = Number(settings.shellOpacity)
+  if (!Number.isFinite(header) || !Number.isFinite(shell)) {
+    return {
+      ...settings,
+      headerOpacity: DEFAULT_HEADER_OPACITY,
+      shellOpacity: DEFAULT_SHELL_OPACITY
+    }
+  }
+  const isLegacyFactory = LEGACY_FACTORY_OPACITY_PAIRS.some(
+    (pair) => approxOpacity(header, pair.header) && approxOpacity(shell, pair.shell)
+  )
+  if (!isLegacyFactory) return settings
+  return {
+    ...settings,
+    headerOpacity: DEFAULT_HEADER_OPACITY,
+    shellOpacity: DEFAULT_SHELL_OPACITY
+  }
+}
+
 export const DEFAULT_TAGS: TagRecord[] = [
   { id: 'tag-admin', name: '행정', color: '#039be5', sortOrder: 0 },
   { id: 'tag-work', name: '작업', color: '#ffe252', sortOrder: 1 },
@@ -84,8 +126,8 @@ export function createDefaultSettings(): StoreSettings {
     dayColorsByLoginId: {},
     hiddenCalendarIdsByLoginId: {},
     allowedIpCidrs: [],
-    headerOpacity: 0.95,
-    shellOpacity: 0.95
+    headerOpacity: DEFAULT_HEADER_OPACITY,
+    shellOpacity: DEFAULT_SHELL_OPACITY
   }
 }
 

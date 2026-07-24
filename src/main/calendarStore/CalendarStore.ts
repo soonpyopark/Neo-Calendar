@@ -14,10 +14,13 @@ import {
   createDefaultSettings,
   createEmptySnapshot,
   DEFAULT_CALENDARS,
+  DEFAULT_HEADER_OPACITY,
+  DEFAULT_SHELL_OPACITY,
   DEFAULT_TAGS,
   HOLIDAYS_KR_CALENDAR_ID,
   PRIMARY_CALENDAR_COLOR,
-  PRIMARY_CALENDAR_ID
+  PRIMARY_CALENDAR_ID,
+  upgradeLegacyFactoryOpacity
 } from '../../shared/calendarDefaults'
 import type {
   CalendarEvent,
@@ -1226,8 +1229,10 @@ export class CalendarStore {
       }
       const defaults = createDefaultSettings()
       if (raw.settings) {
-        defaults.headerOpacity = raw.settings.headerOpacity ?? defaults.headerOpacity
-        defaults.shellOpacity = raw.settings.shellOpacity ?? defaults.shellOpacity
+        // Keep current factory opacity (0.95/0.95) — do not inherit old Neo chrome defaults
+        // like 0.62/0.35 from a previous userData seed.
+        defaults.headerOpacity = DEFAULT_HEADER_OPACITY
+        defaults.shellOpacity = DEFAULT_SHELL_OPACITY
         if (raw.settings.weekStartsOn === 1) defaults.viewOptions.weekStartsOnSunday = false
         if (raw.settings.widget?.bounds) defaults.widget.bounds = { ...raw.settings.widget.bounds }
         if (raw.settings.widget?.launchMode) {
@@ -1480,12 +1485,15 @@ export class CalendarStore {
     }
 
     const hadSurfaceMap = Boolean(settings.viewOptionsBySurface)
+    const beforeOpacity = `${settings.headerOpacity},${settings.shellOpacity}`
     settings = ensureViewOptionsBySurfaceMigrated(settings)
-    if (existsSync(this.settingsPath) && !hadSurfaceMap) {
+    settings = upgradeLegacyFactoryOpacity(settings)
+    const opacityUpgraded = `${settings.headerOpacity},${settings.shellOpacity}` !== beforeOpacity
+    if (existsSync(this.settingsPath) && (!hadSurfaceMap || opacityUpgraded)) {
       try {
         this.writeSettingsFile(settings, tags)
       } catch (error) {
-        console.warn('[calendar-store] viewOptionsBySurface migrate write failed', error)
+        console.warn('[calendar-store] settings migrate write failed', error)
       }
     }
 
