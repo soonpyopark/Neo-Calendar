@@ -23,11 +23,18 @@ import type {
   CalendarEvent,
   CalendarRecord,
   CalendarStoreSnapshot,
+  ClientSurface,
   EventInput,
   StoreSettings,
   TagRecord
 } from '../../shared/calendarTypes'
 import type { AppSettings, LaunchMode, WidgetBounds } from '../../shared/ipc'
+import {
+  applyViewOptionsPatch,
+  ensureViewOptionsBySurfaceMigrated,
+  normalizeClientSurface,
+  projectViewOptionsForClient
+} from '../../shared/viewOptionsBySurface'
 import { resolveAdminCredentials } from '../dotEnv'
 import { resolveDataRoot, sanitizeDataKey } from './paths'
 
@@ -49,11 +56,29 @@ type CalendarFile = {
 }
 
 function deepMergeSettings(base: StoreSettings, patch: Partial<StoreSettings>): StoreSettings {
+  const bySurface = {
+    ...(base.viewOptionsBySurface ?? {}),
+    ...(patch.viewOptionsBySurface ?? {})
+  }
+  if (patch.viewOptionsBySurface?.native) {
+    bySurface.native = {
+      ...(base.viewOptionsBySurface?.native ?? {}),
+      ...patch.viewOptionsBySurface.native
+    }
+  }
+  if (patch.viewOptionsBySurface?.browser) {
+    bySurface.browser = {
+      ...(base.viewOptionsBySurface?.browser ?? {}),
+      ...patch.viewOptionsBySurface.browser
+    }
+  }
   return {
     ...base,
     ...patch,
     notifications: { ...base.notifications, ...(patch.notifications ?? {}) },
     viewOptions: { ...base.viewOptions, ...(patch.viewOptions ?? {}) },
+    viewOptionsBySurface:
+      Object.keys(bySurface).length > 0 ? bySurface : base.viewOptionsBySurface,
     holidaysKr: { ...base.holidaysKr, ...(patch.holidaysKr ?? {}) },
     widget: {
       ...base.widget,
@@ -114,10 +139,16 @@ export class CalendarStore {
    * - Guest (no login): empty calendars/events/tags
    * - Super admin: full store + per-login eye-toggle projection
    * - Member: personal calendars/events + holidays-kr only
+   * - viewOptions projected for native vs browser surface
    * Disk records stay untouched.
    */
-  getSnapshotForLogin(loginId: string | null | undefined): CalendarStoreSnapshot {
+  getSnapshotForLogin(
+    loginId: string | null | undefined,
+    surface: ClientSurface = 'native'
+  ): CalendarStoreSnapshot {
     const snap = this.getSnapshot()
+    const clientSurface = normalizeClientSurface(surface)
+    snap.settings = projectViewOptionsForClient(snap.settings, clientSurface)
     const owner = String(loginId ?? '').trim()
 
     if (!owner) {
@@ -243,9 +274,9 @@ export class CalendarStore {
     this.setCalendarHiddenForLogin(admin, calendar.id, true)
   }
 
-  /** Neo AppSettings projection for desktopMode / App.tsx */
+  /** Neo AppSettings projection for desktopMode / App.tsx (native surface). */
   getAppSettings(): AppSettings {
-    const s = this.getSnapshot().settings
+    const s = projectViewOptionsForClient(this.getSnapshot().settings, 'native')
     return {
       widget: {
         launchMode: s.widget.launchMode === 'desktop' ? 'desktop' : 'window',
@@ -259,22 +290,23 @@ export class CalendarStore {
 
   patchAppSettings(patch: Partial<AppSettings>): AppSettings {
     const cur = this.getSnapshot()
-    const nextSettings = deepMergeSettings(cur.settings, {
+    let nextSettings = deepMergeSettings(cur.settings, {
       headerOpacity: patch.headerOpacity ?? cur.settings.headerOpacity,
       shellOpacity: patch.shellOpacity ?? cur.settings.shellOpacity,
-      viewOptions: {
-        ...cur.settings.viewOptions,
-        weekStartsOnSunday:
-          patch.weekStartsOn === undefined
-            ? cur.settings.viewOptions.weekStartsOnSunday
-            : patch.weekStartsOn === 0
-      },
       widget: {
         ...cur.settings.widget,
         launchMode: patch.widget?.launchMode ?? cur.settings.widget.launchMode,
         bounds: patch.widget?.bounds ?? cur.settings.widget.bounds
       }
     })
+    if (patch.weekStartsOn !== undefined) {
+      nextSettings = applyViewOptionsPatch(
+        nextSettings,
+        { weekStartsOnSunday: patch.weekStartsOn === 0 },
+        'native'
+      )
+    }
+    nextSettings = ensureViewOptionsBySurfaceMigrated(nextSettings)
     this.writeSettingsFile(nextSettings, cur.tags)
     this.cache = null
     return this.getAppSettings()
@@ -297,14 +329,21 @@ export class CalendarStore {
    * Merge settings. When `dayColors` is patched with `dayColorsOwnerLoginId`,
    * store under `dayColorsByLoginId[login]` (MDC) so getSnapshotForLogin projection
    * does not discard the change after refresh.
+   * `viewOptions` patches are routed into viewOptionsBySurface[surface] (MDC).
    */
   patchStoreSettings(
     patch: Partial<StoreSettings>,
-    dayColorsOwnerLoginId?: string | null
+    dayColorsOwnerLoginId?: string | null,
+    surface: ClientSurface = 'native'
   ): CalendarStoreSnapshot {
     const cur = this.getSnapshot()
     const owner = String(dayColorsOwnerLoginId ?? '').trim()
+    const clientSurface = normalizeClientSurface(surface)
     const nextPatch: Partial<StoreSettings> = { ...patch }
+    // Clients must not rewrite the per-surface map directly.
+    delete nextPatch.viewOptionsBySurface
+    const viewOptionsPatch = nextPatch.viewOptions
+    delete nextPatch.viewOptions
 
     if (Object.prototype.hasOwnProperty.call(patch, 'dayColors') && owner) {
       const byLogin = { ...(cur.settings.dayColorsByLoginId ?? {}) }
@@ -316,7 +355,11 @@ export class CalendarStore {
       nextPatch.dayColors = { ...(patch.dayColors ?? {}) }
     }
 
-    const next = deepMergeSettings(cur.settings, nextPatch)
+    let next = deepMergeSettings(cur.settings, nextPatch)
+    next = ensureViewOptionsBySurfaceMigrated(next)
+    if (viewOptionsPatch) {
+      next = applyViewOptionsPatch(next, viewOptionsPatch, clientSurface)
+    }
     this.writeSettingsFile(next, cur.tags)
     this.cache = null
     return this.getSnapshot()
@@ -1436,6 +1479,16 @@ export class CalendarStore {
       }
     }
 
+    const hadSurfaceMap = Boolean(settings.viewOptionsBySurface)
+    settings = ensureViewOptionsBySurfaceMigrated(settings)
+    if (existsSync(this.settingsPath) && !hadSurfaceMap) {
+      try {
+        this.writeSettingsFile(settings, tags)
+      } catch (error) {
+        console.warn('[calendar-store] viewOptionsBySurface migrate write failed', error)
+      }
+    }
+
     type LoadedCal = {
       calendar: CalendarRecord
       events: CalendarEvent[]
@@ -1508,7 +1561,7 @@ export class CalendarStore {
     mkdirSync(dirname(this.settingsPath), { recursive: true })
     const payload: SettingsFile = {
       version: 2,
-      settings,
+      settings: ensureViewOptionsBySurfaceMigrated(settings),
       tags,
       updatedAt: new Date().toISOString()
     }

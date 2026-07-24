@@ -32,6 +32,7 @@ import {
 } from '../../../shared/calendarInterchange'
 import { getJsonExportTimestamp } from '../../../shared/exportTimestamp'
 import { eventToMutationPayload } from '../lib/eventMutation'
+import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -174,6 +175,7 @@ function ViewOptionsPanel({
   onPatchStore: (patch: Partial<StoreSettings>) => Promise<void>
   onSaveApp: (patch: Partial<AppSettings>) => void | Promise<void>
 }): ReactElement {
+  const browserHost = isBrowserNeoCalendarHost()
   const vo = storeSettings.viewOptions
   const [showWeekNumbers, setShowWeekNumbers] = useState(vo.showWeekNumbers !== false)
   const [weekStartsOnSunday, setWeekStartsOnSunday] = useState(vo.weekStartsOnSunday !== false)
@@ -317,20 +319,22 @@ function ViewOptionsPanel({
         />
       </fieldset>
 
-      <div className="mt-8">
-        <h3 className="mb-8 text-[22px] font-normal text-gcal-heading">프로그램 시작시 실행 모드</h3>
-        <label className="flex items-center gap-2.5 text-sm text-gcal-body">
-          <input
-            type="checkbox"
-            checked={runAtStartup}
-            onChange={(e) => {
-              setRunAtStartup(e.target.checked)
-              void persistView({ runAtStartup: e.target.checked })
-            }}
-          />
-          컴퓨터 시작시 자동 실행
-        </label>
-      </div>
+      {!browserHost ? (
+        <div className="mt-8">
+          <h3 className="mb-8 text-[22px] font-normal text-gcal-heading">프로그램 시작시 실행 모드</h3>
+          <label className="flex items-center gap-2.5 text-sm text-gcal-body">
+            <input
+              type="checkbox"
+              checked={runAtStartup}
+              onChange={(e) => {
+                setRunAtStartup(e.target.checked)
+                void persistView({ runAtStartup: e.target.checked })
+              }}
+            />
+            컴퓨터 시작시 자동 실행
+          </label>
+        </div>
+      ) : null}
 
       <div className="mt-8">
         <h3 className="mb-4 text-[22px] font-normal text-gcal-heading">Neo 투명도</h3>

@@ -381,7 +381,9 @@ export function addExdate(master, occurrenceDate) {
  */
 export function truncateSeriesBefore(master, fromDate) {
   const until = addDaysToDateKey(fromDate, -1);
-  if (until < (master.startDate ?? until)) {
+  // Prefer seriesStartDate — display occurrences overwrite startDate to the occurrence day.
+  const seriesStart = master.seriesStartDate ?? master.startDate ?? until;
+  if (until < seriesStart) {
     return { ...master, repeat: 'none', repeatUntil: null, repeatCount: null };
   }
   return {

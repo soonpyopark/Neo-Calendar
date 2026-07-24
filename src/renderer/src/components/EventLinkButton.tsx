@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import type { EventLink } from '../../../shared/calendarTypes'
-import { appendEventLink, normalizeEventLinkUrl, normalizeEventLinksArray } from '../lib/eventLinks'
+import {
+  appendEventLink,
+  normalizeEventLinkUrl,
+  normalizeEventLinksArray
+} from '../lib/eventLinks'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { InteractionUI } from './InteractionUI'
 
@@ -64,8 +68,24 @@ export function EventLinkButton({
 
   const addDraft = (e?: FormEvent): void => {
     e?.preventDefault()
+    const form = e?.currentTarget
+    const input =
+      form instanceof HTMLFormElement
+        ? form.elements.namedItem('event-link-url')
+        : null
+    if (input instanceof HTMLInputElement && !input.checkValidity()) {
+      input.reportValidity()
+      return
+    }
     const url = normalizeEventLinkUrl(draft)
-    if (!url) return
+    if (!url) {
+      if (input instanceof HTMLInputElement) {
+        input.setCustomValidity('올바른 URL을 입력하세요. 예: https://example.com')
+        input.reportValidity()
+        input.setCustomValidity('')
+      }
+      return
+    }
     onChange(appendEventLink(resolved, url))
     setDraft('')
   }
@@ -104,13 +124,17 @@ export function EventLinkButton({
               <form className="event-link-flyout-form" onSubmit={addDraft}>
                 <input
                   type="url"
+                  name="event-link-url"
                   className="event-link-flyout-input"
                   placeholder="https://"
                   value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
+                  onChange={(e) => {
+                    e.target.setCustomValidity('')
+                    setDraft(e.target.value)
+                  }}
                   autoFocus
                 />
-                <button type="submit" className="event-link-flyout-add">
+                <button type="submit" className="event-link-flyout-add" disabled={!draft.trim()}>
                   추가
                 </button>
               </form>

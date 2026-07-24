@@ -4,12 +4,35 @@ function makeId(): string {
   return `link-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
+/** True when the string is a usable http(s) event shortcut URL. */
+export function isValidEventLinkUrl(raw: string): boolean {
+  return Boolean(normalizeEventLinkUrl(raw))
+}
+
+/**
+ * Normalize an event link URL for storage.
+ * Accepts absolute http(s) URLs, or bare hostnames like `example.com` (https assumed).
+ * Rejects empty / non-http(s) / malformed values.
+ */
 export function normalizeEventLinkUrl(raw: string): string {
-  const trimmed = raw.trim()
+  const trimmed = String(raw ?? '').trim()
   if (!trimmed) return ''
-  if (/^https?:\/\//i.test(trimmed)) return trimmed
-  if (/^[\w.-]+\.[\w.-]+/.test(trimmed)) return `https://${trimmed}`
-  return trimmed
+
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : /^[\w.-]+\.[\w.-]+/.test(trimmed)
+      ? `https://${trimmed}`
+      : ''
+  if (!candidate) return ''
+
+  try {
+    const parsed = new URL(candidate)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return ''
+    if (!parsed.hostname) return ''
+    return candidate
+  } catch {
+    return ''
+  }
 }
 
 export function normalizeEventLinksArray(links?: EventLink[] | null): EventLink[] {

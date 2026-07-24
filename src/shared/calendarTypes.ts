@@ -129,16 +129,24 @@ export type SyncHolidaysResult = {
   error?: string
 }
 
-export type ViewOptions = {
+/** Electron shell vs LAN/browser editor (MDC ClientSurface). */
+export type ClientSurface = 'native' | 'browser'
+
+/** Presentation prefs stored per surface (theme, week start, hide flags, …). */
+export type SurfaceViewOptions = {
   showWeekNumbers: boolean
   weekStartsOnSunday: boolean
   /** Neo chrome: rounded shell/header/footer. Default on for new installs. */
   roundedCorners: boolean
   colorScheme: 'light' | 'dark' | 'system'
   accentColor: string
-  runAtStartup: boolean
   eventsHidden: boolean
   completedHidden: boolean
+}
+
+export type ViewOptions = SurfaceViewOptions & {
+  /** Shell-only: Windows login item (native surface may patch; browser must not). */
+  runAtStartup: boolean
 }
 
 export type StoreSettings = {
@@ -151,7 +159,13 @@ export type StoreSettings = {
     playSound: boolean
     onlyYesOrMaybe: boolean
   }
+  /**
+   * Client-facing flattened view options (shell ∪ surface).
+   * On disk after migration: shell keys only; presentation lives in viewOptionsBySurface.
+   */
   viewOptions: ViewOptions
+  /** Per-surface presentation prefs (native Electron vs browser editor). */
+  viewOptionsBySurface?: Partial<Record<ClientSurface, Partial<SurfaceViewOptions>>>
   holidaysKr: HolidaysKrSettings
   widget: {
     launchMode: LaunchMode

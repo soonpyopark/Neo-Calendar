@@ -3,6 +3,7 @@ import type { AuthService } from '../auth'
 import type { CalendarStore } from '../calendarStore/CalendarStore'
 import type { MembersStore } from '../calendarStore/membersStore'
 import type { EventInput, MemberSaveInput, SyncHolidaysInput, TagRecord } from '../../shared/calendarTypes'
+import { stripBrowserShellSettingsPatch } from '../../shared/viewOptionsBySurface'
 import { syncKoreanHolidays } from '../calendarStore/holidaySync'
 import { resolveAdminCredentials } from '../dotEnv'
 
@@ -80,22 +81,22 @@ export async function handleApiRequest(
   const loginId = gate.user.loginId
 
   if (p === '/api/store' && m === 'GET') {
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId) }
+    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
   }
 
   if (p === '/api/settings' && m === 'PATCH') {
-    const patch = (body ?? {}) as Record<string, unknown>
-    // Reject desktop-only nested fields if any — store merge is safe.
+    const patch = stripBrowserShellSettingsPatch((body ?? {}) as never)
     // dayColors are stored per login (dayColorsByLoginId), matching Electron IPC.
-    calendarStore.patchStoreSettings(patch as never, loginId)
+    // Presentation prefs go to viewOptionsBySurface.browser — not native.
+    calendarStore.patchStoreSettings(patch as never, loginId, 'browser')
     onStoreMutated()
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId) }
+    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
   }
 
   if (p === '/api/store/import' && m === 'POST') {
     calendarStore.importStore(body)
     onStoreMutated()
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId) }
+    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
   }
 
   if (p === '/api/events' && m === 'POST') {
@@ -145,9 +146,21 @@ export async function handleApiRequest(
     calendarStore.hideNewMemberCalendarForAdmin(created, adminId)
     onStoreMutated()
     const projected = calendarStore
-      .getSnapshotForLogin(loginId)
+      .getSnapshotForLogin(loginId, 'browser')
       .calendars.find((c) => c.id === created.id)
     return { status: 200, body: projected ?? created }
+  }
+
+  // Must be before /api/calendars/:id — otherwise "reorder" is treated as an id.
+  if (p === '/api/calendars/reorder' && m === 'PUT') {
+    const payload = (body ?? {}) as { orderedIds?: unknown }
+    const orderedIds = Array.isArray(payload.orderedIds)
+      ? payload.orderedIds.map((id) => String(id ?? '').trim()).filter(Boolean)
+      : []
+    if (orderedIds.length === 0) return jsonError(400, 'orderedIds가 필요합니다.')
+    const calendars = calendarStore.reorderCalendars(orderedIds)
+    onStoreMutated()
+    return { status: 200, body: { ok: true, calendars } }
   }
 
   const calMatch = p.match(/^\/api\/calendars\/([^/]+)(?:\/(events|import))?$/)
@@ -168,7 +181,7 @@ export async function handleApiRequest(
       if (!updated) return jsonError(404, '캘린더를 찾을 수 없습니다.')
       onStoreMutated()
       const projected = calendarStore
-        .getSnapshotForLogin(loginId)
+        .getSnapshotForLogin(loginId, 'browser')
         .calendars.find((c) => c.id === id)
       return { status: 200, body: projected ?? updated }
     }
@@ -271,17 +284,6 @@ export async function handleApiRequest(
       const message = err instanceof Error ? err.message : '휴일 동기화에 실패했습니다.'
       return jsonError(400, message)
     }
-  }
-
-  if (p === '/api/calendars/reorder' && m === 'PUT') {
-    const payload = (body ?? {}) as { orderedIds?: unknown }
-    const orderedIds = Array.isArray(payload.orderedIds)
-      ? payload.orderedIds.map((id) => String(id ?? '').trim()).filter(Boolean)
-      : []
-    if (orderedIds.length === 0) return jsonError(400, 'orderedIds가 필요합니다.')
-    const calendars = calendarStore.reorderCalendars(orderedIds)
-    onStoreMutated()
-    return { status: 200, body: { ok: true, calendars } }
   }
 
   if (p.startsWith('/api/desktop') || p.startsWith('/api/window') || p.startsWith('/api/widget')) {

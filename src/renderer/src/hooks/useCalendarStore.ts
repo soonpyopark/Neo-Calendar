@@ -18,7 +18,16 @@ import {
   getColorScheme,
   normalizeAccentColor
 } from '../lib/colorScheme'
+import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 import { calendarToPatch, eventToMutationPayload } from '../lib/eventMutation'
+import {
+  clearOfflineQueue,
+  drainOfflineQueue,
+  enqueueOfflineAction,
+  isOfflineRequestError,
+  loadOfflineSnapshot,
+  saveOfflineSnapshot
+} from '../lib/offlineStore'
 import { useHistoryStack } from './useHistoryStack'
 
 export type UseCalendarStoreResult = {
@@ -69,17 +78,89 @@ export function useCalendarStore(): UseCalendarStoreResult {
   const storeRef = useRef(store)
   storeRef.current = store
 
+  const applyStore = useCallback(async (next: CalendarStoreSnapshot) => {
+    storeRef.current = next
+    setStore(next)
+    if (isBrowserNeoCalendarHost()) {
+      void saveOfflineSnapshot(next).catch(() => {
+        /* best-effort cache */
+      })
+    }
+  }, [])
+
   const refresh = useCallback(async () => {
     const api = window.neoCalendar
     if (!api?.getCalendarStore) return
-    const next = await api.getCalendarStore()
-    setStore(next)
-    setLoading(false)
-  }, [])
+    try {
+      const next = await api.getCalendarStore()
+      await applyStore(next)
+    } catch (err) {
+      if (isBrowserNeoCalendarHost()) {
+        const cached = await loadOfflineSnapshot<CalendarStoreSnapshot>()
+        if (cached) {
+          storeRef.current = cached
+          setStore(cached)
+        }
+      } else {
+        throw err
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [applyStore])
+
+  const flushOfflineQueue = useCallback(async () => {
+    if (!isBrowserNeoCalendarHost()) return
+    const queue = await drainOfflineQueue()
+    if (!queue.length) return
+    const api = window.neoCalendar
+    for (const item of queue) {
+      try {
+        if (item.type === 'create-event') {
+          await api.addEvent(item.payload as EventInput)
+        } else if (item.type === 'update-event') {
+          await api.editEvent(String(item.id), item.payload as Partial<CalendarEvent>)
+        } else if (item.type === 'delete-event') {
+          await api.removeEvent(String(item.id))
+        } else if (item.type === 'patch-calendar') {
+          await api.patchCalendar(String(item.id), item.payload as Partial<CalendarRecord>)
+        } else if (item.type === 'delete-calendar') {
+          await api.deleteCalendar(String(item.id))
+        } else if (item.type === 'clear-calendar-events') {
+          await api.clearCalendarEvents(String(item.id))
+        } else if (item.type === 'create-calendar') {
+          await api.createCalendar(
+            item.payload as Partial<CalendarRecord> & { name: string; color: string }
+          )
+        } else if (item.type === 'import-store') {
+          await api.importCalendarStore(item.payload)
+        } else if (item.type === 'patch-settings') {
+          await api.patchStoreSettings(item.payload as Partial<StoreSettings>)
+        }
+      } catch (err) {
+        console.warn('[offline-queue] replay failed', item.type, err)
+        // Keep remaining items for a later online event.
+        return
+      }
+    }
+    await clearOfflineQueue()
+    await refresh()
+  }, [refresh])
 
   useEffect(() => {
     void refresh()
   }, [refresh])
+
+  // Browser: flush queued mutations when the OS reports connectivity again.
+  useEffect(() => {
+    if (!isBrowserNeoCalendarHost()) return
+    const onOnline = (): void => {
+      void flushOfflineQueue()
+    }
+    window.addEventListener('online', onOnline)
+    void flushOfflineQueue()
+    return () => window.removeEventListener('online', onOnline)
+  }, [flushOfflineQueue])
 
   // Live refresh: browser WS (`neo-store-changed`) and Electron IPC (`onStoreChanged`).
   // Debounce so rapid patches (reorder) do not clobber local optimistic order.
@@ -103,6 +184,90 @@ export function useCalendarStore(): UseCalendarStoreResult {
       if (timer) clearTimeout(timer)
     }
   }, [refresh])
+
+  const runOrQueue = useCallback(
+    async <T>(
+      type: string,
+      fn: () => Promise<T>,
+      queuePayload: Record<string, unknown>,
+      mergeStore?: (current: CalendarStoreSnapshot, result: T) => CalendarStoreSnapshot
+    ): Promise<T> => {
+      if (!isBrowserNeoCalendarHost()) {
+        const result = await fn()
+        if (mergeStore && storeRef.current) {
+          await applyStore(mergeStore(storeRef.current, result))
+        } else {
+          await refresh()
+        }
+        return result
+      }
+
+      let succeeded = false
+      let result!: T
+      try {
+        result = await fn()
+        succeeded = true
+        if (mergeStore && storeRef.current) {
+          await applyStore(mergeStore(storeRef.current, result))
+        } else {
+          try {
+            await refresh()
+          } catch {
+            /* mutation ok; refresh can wait */
+          }
+        }
+        return result
+      } catch (err) {
+        if (succeeded) return result
+        if (!isOfflineRequestError(err, true)) {
+          throw err instanceof Error ? err : new Error(String(err ?? '요청에 실패했습니다.'))
+        }
+
+        await enqueueOfflineAction({ type, ...queuePayload })
+        const current = storeRef.current
+        if (current && type === 'create-event') {
+          const payload = (queuePayload.payload ?? {}) as EventInput
+          const calendars = current.calendars ?? []
+          const requestedId = payload.calendarId
+          const calendarId =
+            calendars.find((calendar) => calendar.id === requestedId)?.id ??
+            calendars.find((calendar) => calendar.visible !== false)?.id ??
+            calendars[0]?.id ??
+            requestedId ??
+            'primary'
+          const optimistic = {
+            ...payload,
+            calendarId,
+            id: `offline-${Date.now()}`,
+            updatedAt: new Date().toISOString()
+          } as CalendarEvent
+          await applyStore({ ...current, events: [...current.events, optimistic] })
+          return optimistic as T
+        }
+        if (current && type === 'create-calendar') {
+          const payload = (queuePayload.payload ?? {}) as Partial<CalendarRecord> & {
+            name: string
+            color: string
+          }
+          const optimistic = {
+            ...payload,
+            id: `offline-${Date.now()}`,
+            dataKey: `offline-${Date.now()}`,
+            visible: payload.visible ?? true,
+            custom: payload.custom ?? true,
+            owner: payload.owner ?? 'local'
+          } as CalendarRecord
+          await applyStore({
+            ...current,
+            calendars: [...current.calendars, optimistic]
+          })
+          return optimistic as T
+        }
+        throw new Error('오프라인 상태입니다. 변경 사항은 연결 후 동기화됩니다.')
+      }
+    },
+    [applyStore, refresh]
+  )
 
   // Apply MDC light/dark + accent as soon as store settings load (not only Settings panel).
   useEffect(() => {
@@ -140,38 +305,63 @@ export function useCalendarStore(): UseCalendarStoreResult {
   )
 
   const performCreateEvent = useCallback(
-    async (input: EventInput) => {
-      const created = await window.neoCalendar.addEvent(input)
-      await refresh()
-      return created
-    },
-    [refresh]
+    async (input: EventInput) =>
+      runOrQueue(
+        'create-event',
+        () => window.neoCalendar.addEvent(input),
+        { payload: input },
+        (current, created) => ({
+          ...current,
+          events: [...current.events.filter((e) => e.id !== created.id), created]
+        })
+      ),
+    [runOrQueue]
   )
 
   const performUpdateEvent = useCallback(
-    async (id: string, patch: Partial<CalendarEvent>) => {
-      const updated = await window.neoCalendar.editEvent(id, patch)
-      await refresh()
-      return updated
-    },
-    [refresh]
+    async (id: string, patch: Partial<CalendarEvent>) =>
+      runOrQueue(
+        'update-event',
+        () => window.neoCalendar.editEvent(id, patch),
+        { id, payload: patch },
+        (current, updated) => ({
+          ...current,
+          events: current.events.map((e) => (e.id === id ? updated : e))
+        })
+      ),
+    [runOrQueue]
   )
 
   const performDeleteEvent = useCallback(
     async (id: string) => {
-      await window.neoCalendar.removeEvent(id)
-      await refresh()
+      await runOrQueue(
+        'delete-event',
+        async () => {
+          await window.neoCalendar.removeEvent(id)
+          return id
+        },
+        { id },
+        (current, deletedId) => ({
+          ...current,
+          events: current.events.filter((e) => e.id !== deletedId)
+        })
+      )
     },
-    [refresh]
+    [runOrQueue]
   )
 
   const performPatchCalendar = useCallback(
-    async (id: string, patch: Partial<CalendarRecord>) => {
-      const updated = await window.neoCalendar.patchCalendar(id, patch)
-      await refresh()
-      return updated
-    },
-    [refresh]
+    async (id: string, patch: Partial<CalendarRecord>) =>
+      runOrQueue(
+        'patch-calendar',
+        () => window.neoCalendar.patchCalendar(id, patch),
+        { id, payload: patch },
+        (current, updated) => ({
+          ...current,
+          calendars: current.calendars.map((c) => (c.id === id ? updated : c))
+        })
+      ),
+    [runOrQueue]
   )
 
   const addEvent = useCallback(
@@ -241,12 +431,17 @@ export function useCalendarStore(): UseCalendarStoreResult {
   )
 
   const createCalendar = useCallback(
-    async (input: Partial<CalendarRecord> & { name: string; color: string }) => {
-      const created = await window.neoCalendar.createCalendar(input)
-      await refresh()
-      return created
-    },
-    [refresh]
+    async (input: Partial<CalendarRecord> & { name: string; color: string }) =>
+      runOrQueue(
+        'create-calendar',
+        () => window.neoCalendar.createCalendar(input),
+        { payload: input },
+        (current, created) => ({
+          ...current,
+          calendars: [...current.calendars.filter((c) => c.id !== created.id), created]
+        })
+      ),
+    [runOrQueue]
   )
 
   const patchCalendar = useCallback(
@@ -292,18 +487,39 @@ export function useCalendarStore(): UseCalendarStoreResult {
 
   const deleteCalendar = useCallback(
     async (id: string) => {
-      await window.neoCalendar.deleteCalendar(id)
-      await refresh()
+      await runOrQueue(
+        'delete-calendar',
+        async () => {
+          await window.neoCalendar.deleteCalendar(id)
+          return id
+        },
+        { id },
+        (current, deletedId) => ({
+          ...current,
+          calendars: current.calendars.filter((c) => c.id !== deletedId),
+          events: current.events.filter((e) => e.calendarId !== deletedId)
+        })
+      )
     },
-    [refresh]
+    [runOrQueue]
   )
 
   const clearCalendarEvents = useCallback(
     async (id: string) => {
-      await window.neoCalendar.clearCalendarEvents(id)
-      await refresh()
+      await runOrQueue(
+        'clear-calendar-events',
+        async () => {
+          await window.neoCalendar.clearCalendarEvents(id)
+          return id
+        },
+        { id },
+        (current, calendarId) => ({
+          ...current,
+          events: current.events.filter((e) => e.calendarId !== calendarId)
+        })
+      )
     },
-    [refresh]
+    [runOrQueue]
   )
 
   const importEventsIntoCalendar = useCallback(
@@ -355,18 +571,24 @@ export function useCalendarStore(): UseCalendarStoreResult {
       // Optimistic: day cell colors should paint before IPC/refresh round-trip
       // (desktop mode store-changed used to briefly revert the tint).
       if (patch.dayColors) {
-        setStore((prev) => ({
-          ...prev,
-          settings: {
-            ...prev.settings,
-            dayColors: { ...patch.dayColors }
+        setStore((prev) => {
+          const next = {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              dayColors: { ...patch.dayColors }
+            }
           }
-        }))
+          storeRef.current = next
+          return next
+        })
       }
-      await window.neoCalendar.patchStoreSettings(patch)
-      await refresh()
+      // Refresh after success so surface-projected viewOptions stay correct.
+      await runOrQueue('patch-settings', () => window.neoCalendar.patchStoreSettings(patch), {
+        payload: patch
+      })
     },
-    [refresh]
+    [runOrQueue]
   )
 
   const replaceStore = useCallback(
@@ -380,11 +602,17 @@ export function useCalendarStore(): UseCalendarStoreResult {
 
   const importStore = useCallback(
     async (payload: unknown) => {
-      await window.neoCalendar.importCalendarStore(payload)
-      await refresh()
+      await runOrQueue(
+        'import-store',
+        async () => {
+          await window.neoCalendar.importCalendarStore(payload)
+          return payload
+        },
+        { payload }
+      )
       history.clear()
     },
-    [history, refresh]
+    [history, runOrQueue]
   )
 
   const listMembers = useCallback(() => window.neoCalendar.listMembers(), [])

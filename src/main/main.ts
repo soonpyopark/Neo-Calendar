@@ -13,6 +13,7 @@ import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
 import { DayCellDblClickBridge, type DayCellClientZone } from './dayCellDblClickBridge'
 import { DesktopInputBridge } from './desktopInputBridge'
+import { hwndFromNativeHandle } from './desktopHitTest'
 import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
 import { WindowModeHitZone } from './windowModeHitZone'
 import { HeaderClickBridge } from './headerClickBridge'
@@ -33,6 +34,25 @@ import type {
   TagRecord
 } from '../shared/calendarTypes'
 import type { AppSettings, ClientHitRect, DayCellHitZone, ModeStatus } from '../shared/ipc'
+import {
+  getShellRunAtStartup,
+  projectViewOptionsForClient
+} from '../shared/viewOptionsBySurface'
+
+/**
+ * Align Windows login-item with store (MDC StartupRegistrationService.Sync).
+ * Skipped in unpackaged/dev builds so electron-vite does not register itself.
+ */
+function syncLoginItemFromStore(store: CalendarStore): void {
+  if (!app.isPackaged) return
+  const enabled = getShellRunAtStartup(store.getSnapshot().settings)
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled })
+    console.log('[startup] login item synced:', enabled)
+  } catch (err) {
+    console.warn('[startup] setLoginItemSettings failed', err)
+  }
+}
 
 let mainWindow: WallpaperBrowserWindow | null = null
 let calendarStore: CalendarStore
@@ -336,16 +356,12 @@ function registerIpc(): void {
   ipcMain.handle('calendar:get-data-root', () => calendarStore.dataRoot)
   ipcMain.handle('calendar:patch-settings', (_event, patch: Partial<StoreSettings>) => {
     const loginId = auth.getUser()?.loginId
-    calendarStore.patchStoreSettings(patch ?? {}, loginId)
+    calendarStore.patchStoreSettings(patch ?? {}, loginId, 'native')
     if (patch?.viewOptions && typeof patch.viewOptions.runAtStartup === 'boolean') {
-      try {
-        app.setLoginItemSettings({ openAtLogin: patch.viewOptions.runAtStartup })
-      } catch (err) {
-        console.warn('[settings] setLoginItemSettings failed', err)
-      }
+      syncLoginItemFromStore(calendarStore)
     }
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(loginId)
+    return calendarStore.getSnapshotForLogin(loginId, 'native')
   })
   ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) => {
     const next = calendarStore.replaceStore(store)
@@ -539,7 +555,11 @@ function registerIpc(): void {
       _event,
       input: { format: 'excel' | 'pdf'; year: number; month: number; asAdmin?: boolean }
     ) => {
-      const store = calendarStore.getSnapshot()
+      const raw = calendarStore.getSnapshot()
+      const store: CalendarStoreSnapshot = {
+        ...raw,
+        settings: projectViewOptionsForClient(raw.settings, 'native')
+      }
       return exportCalendarMonth(
         {
           store,
@@ -592,6 +612,7 @@ function bootApp(): void {
   if (sessionUser?.loginId) {
     syncOwnerNameFromLoginId(sessionUser.loginId)
   }
+  syncLoginItemFromStore(calendarStore)
   console.log('[calendar-store] Data root:', calendarStore.dataRoot)
   desktopMode = new DesktopModeController({
     getWindow: () => mainWindow,
@@ -683,6 +704,15 @@ function bootApp(): void {
       (desktopMode.isWorkerEmbedded() ||
         (desktopMode.isInteractionSuspended() && interactionBusy)),
     getScreenOrigin: () => desktopMode.getLockedBounds(),
+    getOurHwnd: () => {
+      const win = mainWindow
+      if (!win || win.isDestroyed()) return null
+      try {
+        return hwndFromNativeHandle(win.getNativeWindowHandle())
+      } catch {
+        return null
+      }
+    },
     getZones: () => dayCellClientZones,
     onDoubleClick: ({ dateKey, clientX, clientY }) => {
       const win = mainWindow

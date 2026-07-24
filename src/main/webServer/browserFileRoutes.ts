@@ -112,7 +112,7 @@ export async function tryHandleBrowserFileRequest(options: {
         ok: true,
         cancelled: false,
         attachmentFiles: result.attachmentFiles ?? 0,
-        store: calendarStore.getSnapshotForLogin(user.loginId)
+        store: calendarStore.getSnapshotForLogin(user.loginId, 'browser')
       })
       return true
     }
@@ -129,7 +129,7 @@ export async function tryHandleBrowserFileRequest(options: {
         return true
       }
       const built = await buildCalendarExportBuffer({
-        store: calendarStore.getSnapshotForLogin(user.loginId),
+        store: calendarStore.getSnapshotForLogin(user.loginId, 'browser'),
         year,
         month,
         format,

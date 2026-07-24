@@ -1,5 +1,6 @@
 import { screen } from 'electron'
 import koffi from 'koffi'
+import { isPointOverDesktopOrOurWindow } from './desktopHitTest'
 import type { WidgetBounds } from '../shared/ipc'
 
 const VK_LBUTTON = 0x01
@@ -21,6 +22,8 @@ type Point = { x: number; y: number }
 type BridgeOptions = {
   isArmed: () => boolean
   getScreenOrigin: () => { x: number; y: number } | null
+  /** Native HWND of the calendar window (for undocked / raised hits). */
+  getOurHwnd: () => bigint | null
   getZones: () => DayCellClientZone[]
   onDoubleClick: (payload: { dateKey: string; clientX: number; clientY: number }) => void
 }
@@ -73,6 +76,12 @@ export class DayCellDblClickBridge {
         if (!pressed) return
 
         const pt = screen.getCursorScreenPoint()
+        // GetAsyncKeyState is global — ignore presses owned by windows above the desktop.
+        if (!isPointOverDesktopOrOurWindow(pt, this.options.getOurHwnd())) {
+          this.lastPress = null
+          return
+        }
+
         const hit = zones.find((z) =>
           contains(
             {

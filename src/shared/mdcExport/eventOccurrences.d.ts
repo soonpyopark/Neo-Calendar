@@ -14,6 +14,7 @@ export function addExdate<T extends { exdates?: string[] | null }>(
 
 export function truncateSeriesBefore<T extends {
   startDate?: string | null
+  seriesStartDate?: string | null
   repeat?: string | null
   repeatUntil?: string | null
   repeatCount?: number | null

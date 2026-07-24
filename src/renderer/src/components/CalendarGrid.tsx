@@ -1102,6 +1102,18 @@ export function CalendarGrid({
     })
   }
 
+  /** Resolve a display occurrence (`id::date`) back to the stored series master. */
+  const findMasterEvent = useCallback(
+    (eventOrId: CalendarEvent | string | null | undefined): CalendarEvent | null => {
+      if (!eventOrId) return null
+      const seriesId =
+        typeof eventOrId === 'string' ? eventOrId : getSeriesId(eventOrId) || eventOrId.id
+      if (!seriesId) return null
+      return store.events.find((item) => item.id === seriesId) ?? null
+    },
+    [store.events]
+  )
+
   useEffect(() => {
     let cancelled = false
     const poll = async (): Promise<void> => {
@@ -1257,7 +1269,11 @@ export function CalendarGrid({
     else setQuickEdit(null)
 
     if (event) {
-      const master = store.events.find((item) => item.id === event.id) ?? event
+      const master = findMasterEvent(event)
+      if (!master) {
+        void alert('일정을 찾을 수 없습니다.')
+        return
+      }
       if (master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
       const occurrenceDate =
         getOccurrenceDate(event, opts?.defaultDate ?? selectedKey ?? event.occurrenceDate) ??
@@ -1819,7 +1835,8 @@ export function CalendarGrid({
 
       <SearchPanel
         open={searchOpen}
-        events={visibleEvents}
+        // Match grid/quick-edit: all-hidden → nothing; completed-hidden via visibleEvents.
+        events={eventsHidden ? [] : visibleEvents}
         calendars={store.calendars}
         tags={store.tags}
         onClose={() => setSearchOpen(false)}
@@ -1863,10 +1880,12 @@ export function CalendarGrid({
         <DayQuickEditPopover
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
-          events={eventsByDate.get(quickEdit.dateKey) ?? []}
+          // Match month grid: eye-hide clears bars (+ day tint); completed-hide
+          // is already applied via visibleEvents → eventsByDate.
+          events={eventsHidden ? [] : (eventsByDate.get(quickEdit.dateKey) ?? [])}
           calendars={store.calendars}
           tags={store.tags}
-          dayColor={dayColors[quickEdit.dateKey] ?? null}
+          dayColor={eventsHidden ? null : (dayColors[quickEdit.dateKey] ?? null)}
           anchorRect={quickEdit.anchorRect}
           canEdit={canEdit}
           expandBody={viewMode === 'month'}
@@ -1949,9 +1968,11 @@ export function CalendarGrid({
             openEventEditor(event, { defaultDate: eventPopover.dayKey })
           }}
           onDelete={(event) => {
-            const master =
-              store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ??
-              event
+            const master = findMasterEvent(event)
+            if (!master) {
+              void alert('일정을 찾을 수 없습니다.')
+              return
+            }
             if (!isRecurringEvent(master)) {
               void removeEvent(master.id).then(() => clearEventDetail())
               return
@@ -1963,10 +1984,8 @@ export function CalendarGrid({
           }}
           onToggleCompleted={(event, completed) => {
             if (!canEdit) return
-            const master =
-              store.events.find((item) => item.id === (getSeriesId(event) || event.id)) ??
-              event
-            if (master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const master = findMasterEvent(event)
+            if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             const nextCompleted = Boolean(completed)
             if (!isRecurringEvent(master)) {
               void editEvent(master.id, { completed: nextCompleted }).then(() =>
@@ -2060,7 +2079,8 @@ export function CalendarGrid({
               }
 
               dismissEditorAfterSave()
-              await editEvent(editor.event.id, payload as Partial<CalendarEvent>)
+              const masterId = findMasterEvent(editor.event)?.id ?? editor.event.id
+              await editEvent(masterId, payload as Partial<CalendarEvent>)
             } catch (error) {
               await alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
             }
@@ -2068,8 +2088,11 @@ export function CalendarGrid({
           onDelete={
             editor.event
               ? async () => {
-                  const master =
-                    store.events.find((item) => item.id === editor.event!.id) ?? editor.event!
+                  const master = findMasterEvent(editor.event)
+                  if (!master) {
+                    await alert('일정을 찾을 수 없습니다.')
+                    return
+                  }
                   if (!isRecurringEvent(master)) {
                     await removeEvent(master.id)
                     setEditor(null)
@@ -2078,7 +2101,7 @@ export function CalendarGrid({
                   }
                   const occurrenceDate =
                     editor.occurrenceDate ||
-                    getOccurrenceDate(master, selectedKey) ||
+                    getOccurrenceDate(editor.event, selectedKey) ||
                     master.startDate
                   setPendingDelete({ master, occurrenceDate })
                   setScopeDialog({ mode: 'delete' })

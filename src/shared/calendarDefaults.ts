@@ -59,7 +59,7 @@ export function createDefaultSettings(): StoreSettings {
       roundedCorners: true,
       colorScheme: 'light',
       accentColor: '#039be5',
-      runAtStartup: false,
+      runAtStartup: true,
       eventsHidden: false,
       completedHidden: false
     },
