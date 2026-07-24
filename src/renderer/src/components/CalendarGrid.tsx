@@ -62,6 +62,7 @@ import {
   YearViewIcon
 } from './CalendarHeaderIcons'
 import { useCalendarStore } from '../hooks/useCalendarStore'
+import { useUndoRedoShortcuts } from '../hooks/useUndoRedoShortcuts'
 import {
   desktopModeIconBtnClass,
   footerShellClass,
@@ -303,7 +304,11 @@ export function CalendarGrid({
     listMembers,
     saveMembers,
     syncHolidays,
-    refresh
+    refresh,
+    undo,
+    redo,
+    canUndo,
+    canRedo
   } = useCalendarStore()
 
   const [viewMode, setViewMode] = useState<ViewMode>('month')
@@ -365,6 +370,36 @@ export function CalendarGrid({
     detailFromSearchRef.current = false
     setEventPopover(null)
   }, [])
+
+  const handleUndo = useCallback(async () => {
+    if (!canEdit || !canUndo) return
+    try {
+      await undo()
+      clearEventDetail()
+      setQuickEdit(null)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '실행 취소에 실패했습니다.')
+    }
+  }, [alert, canEdit, canUndo, clearEventDetail, undo])
+
+  const handleRedo = useCallback(async () => {
+    if (!canEdit || !canRedo) return
+    try {
+      await redo()
+      clearEventDetail()
+      setQuickEdit(null)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '다시 실행에 실패했습니다.')
+    }
+  }, [alert, canEdit, canRedo, clearEventDetail, redo])
+
+  useUndoRedoShortcuts({
+    canUndo: canEdit && canUndo,
+    canRedo: canEdit && canRedo,
+    onUndo: handleUndo,
+    onRedo: handleRedo,
+    enabled: canEdit
+  })
 
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)

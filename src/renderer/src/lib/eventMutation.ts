@@ -1,10 +1,20 @@
 import { normalizeTagIds } from '../../../shared/mdcExport/eventTags.js'
-import type { CalendarEvent, EventInput } from '../../../shared/calendarTypes'
+import type { CalendarEvent, CalendarRecord, EventInput } from '../../../shared/calendarTypes'
 import {
   getEventLinks,
   getPrimaryEventLinkUrl,
   normalizeEventLinksArray
 } from './eventLinks'
+
+/** Fields restored by undo/redo for calendar patches (MDC calendarToPatch). */
+export function calendarToPatch(calendar: CalendarRecord): Partial<CalendarRecord> {
+  return {
+    name: calendar.name,
+    description: calendar.description ?? '',
+    color: calendar.color,
+    visible: calendar.visible
+  }
+}
 
 /** Strip identity fields for create/duplicate (MDC eventToMutationPayload). */
 export function eventToMutationPayload(event: CalendarEvent): EventInput {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -18,6 +18,8 @@ import {
   getColorScheme,
   normalizeAccentColor
 } from '../lib/colorScheme'
+import { calendarToPatch, eventToMutationPayload } from '../lib/eventMutation'
+import { useHistoryStack } from './useHistoryStack'
 
 export type UseCalendarStoreResult = {
   store: CalendarStoreSnapshot
@@ -51,11 +53,20 @@ export type UseCalendarStoreResult = {
   syncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>
   calendarsById: Map<string, CalendarRecord>
   visibleEvents: CalendarEvent[]
+  undo: () => Promise<boolean>
+  redo: () => Promise<boolean>
+  canUndo: boolean
+  canRedo: boolean
+  clearHistory: () => void
 }
 
 export function useCalendarStore(): UseCalendarStoreResult {
   const [store, setStore] = useState<CalendarStoreSnapshot>(() => createEmptySnapshot())
   const [loading, setLoading] = useState(true)
+  const history = useHistoryStack()
+  const suppressHistoryRef = useRef(false)
+  const storeRef = useRef(store)
+  storeRef.current = store
 
   const refresh = useCallback(async () => {
     const api = window.neoCalendar
@@ -97,7 +108,23 @@ export function useCalendarStore(): UseCalendarStoreResult {
     return () => mq.removeEventListener('change', onChange)
   }, [loading, store.settings.viewOptions.colorScheme])
 
-  const addEvent = useCallback(
+  const withoutHistory = useCallback(async <T>(fn: () => Promise<T>): Promise<T> => {
+    suppressHistoryRef.current = true
+    try {
+      return await fn()
+    } finally {
+      suppressHistoryRef.current = false
+    }
+  }, [])
+
+  const recordHistory = useCallback(
+    (entry: { undo: () => void | Promise<void>; redo: () => void | Promise<void> }) => {
+      if (!suppressHistoryRef.current) history.push(entry)
+    },
+    [history]
+  )
+
+  const performCreateEvent = useCallback(
     async (input: EventInput) => {
       const created = await window.neoCalendar.addEvent(input)
       await refresh()
@@ -106,7 +133,7 @@ export function useCalendarStore(): UseCalendarStoreResult {
     [refresh]
   )
 
-  const editEvent = useCallback(
+  const performUpdateEvent = useCallback(
     async (id: string, patch: Partial<CalendarEvent>) => {
       const updated = await window.neoCalendar.editEvent(id, patch)
       await refresh()
@@ -115,12 +142,87 @@ export function useCalendarStore(): UseCalendarStoreResult {
     [refresh]
   )
 
-  const removeEvent = useCallback(
+  const performDeleteEvent = useCallback(
     async (id: string) => {
       await window.neoCalendar.removeEvent(id)
       await refresh()
     },
     [refresh]
+  )
+
+  const performPatchCalendar = useCallback(
+    async (id: string, patch: Partial<CalendarRecord>) => {
+      const updated = await window.neoCalendar.patchCalendar(id, patch)
+      await refresh()
+      return updated
+    },
+    [refresh]
+  )
+
+  const addEvent = useCallback(
+    async (input: EventInput) => {
+      const created = await performCreateEvent(input)
+      if (!created?.id) return created
+
+      const createPayload = eventToMutationPayload(created)
+      const state = { eventId: created.id }
+
+      recordHistory({
+        undo: async () => {
+          await withoutHistory(() => performDeleteEvent(state.eventId))
+        },
+        redo: async () => {
+          const next = await withoutHistory(() => performCreateEvent(createPayload))
+          if (next?.id) state.eventId = next.id
+        }
+      })
+
+      return created
+    },
+    [performCreateEvent, performDeleteEvent, recordHistory, withoutHistory]
+  )
+
+  const editEvent = useCallback(
+    async (id: string, patch: Partial<CalendarEvent>) => {
+      const previous = storeRef.current.events.find((event) => event.id === id)
+      const result = await performUpdateEvent(id, patch)
+      if (!previous) return result
+
+      const beforePatch = eventToMutationPayload(previous)
+      recordHistory({
+        undo: async () => {
+          await withoutHistory(() => performUpdateEvent(id, beforePatch))
+        },
+        redo: async () => {
+          await withoutHistory(() => performUpdateEvent(id, patch))
+        }
+      })
+
+      return result
+    },
+    [performUpdateEvent, recordHistory, withoutHistory]
+  )
+
+  const removeEvent = useCallback(
+    async (id: string) => {
+      const previous = storeRef.current.events.find((event) => event.id === id)
+      await performDeleteEvent(id)
+      if (!previous) return
+
+      const createPayload = eventToMutationPayload(previous)
+      const state = { eventId: id }
+
+      recordHistory({
+        undo: async () => {
+          const restored = await withoutHistory(() => performCreateEvent(createPayload))
+          if (restored?.id) state.eventId = restored.id
+        },
+        redo: async () => {
+          await withoutHistory(() => performDeleteEvent(state.eventId))
+        }
+      })
+    },
+    [performCreateEvent, performDeleteEvent, recordHistory, withoutHistory]
   )
 
   const createCalendar = useCallback(
@@ -134,11 +236,28 @@ export function useCalendarStore(): UseCalendarStoreResult {
 
   const patchCalendar = useCallback(
     async (id: string, patch: Partial<CalendarRecord>) => {
-      const updated = await window.neoCalendar.patchCalendar(id, patch)
-      await refresh()
-      return updated
+      const previous = storeRef.current.calendars.find((calendar) => calendar.id === id)
+      const result = await performPatchCalendar(id, patch)
+      if (!previous) return result
+
+      // MDC records editCalendar (settings) but not eye-only toggleCalendar.
+      const keys = Object.keys(patch)
+      const visibilityOnly = keys.length === 1 && keys[0] === 'visible'
+      if (!visibilityOnly) {
+        const beforePatch = calendarToPatch(previous)
+        recordHistory({
+          undo: async () => {
+            await withoutHistory(() => performPatchCalendar(id, beforePatch))
+          },
+          redo: async () => {
+            await withoutHistory(() => performPatchCalendar(id, patch))
+          }
+        })
+      }
+
+      return result
     },
-    [refresh]
+    [performPatchCalendar, recordHistory, withoutHistory]
   )
 
   const deleteCalendar = useCallback(
@@ -213,16 +332,18 @@ export function useCalendarStore(): UseCalendarStoreResult {
     async (next: CalendarStoreSnapshot) => {
       await window.neoCalendar.replaceCalendarStore(next)
       await refresh()
+      history.clear()
     },
-    [refresh]
+    [history, refresh]
   )
 
   const importStore = useCallback(
     async (payload: unknown) => {
       await window.neoCalendar.importCalendarStore(payload)
       await refresh()
+      history.clear()
     },
-    [refresh]
+    [history, refresh]
   )
 
   const listMembers = useCallback(() => window.neoCalendar.listMembers(), [])
@@ -283,6 +404,11 @@ export function useCalendarStore(): UseCalendarStoreResult {
     saveMembers,
     syncHolidays,
     calendarsById,
-    visibleEvents
+    visibleEvents,
+    undo: history.undo,
+    redo: history.redo,
+    canUndo: history.canUndo,
+    canRedo: history.canRedo,
+    clearHistory: history.clear
   }
 }
