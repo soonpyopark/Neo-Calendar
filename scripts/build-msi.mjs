@@ -320,6 +320,8 @@ function buildMsi() {
     workDir,
     '-ext',
     'WixToolset.UI.wixext',
+    '-ext',
+    'WixToolset.Util.wixext',
     '-o',
     workOutput
   ]

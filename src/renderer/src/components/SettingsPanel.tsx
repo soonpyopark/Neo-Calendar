@@ -79,6 +79,7 @@ export type SettingsPanelProps = {
     input: Partial<CalendarRecord> & { name: string; color: string }
   ) => Promise<CalendarRecord>
   onPatchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  onReorderCalendars?: (orderedIds: string[]) => Promise<void>
   onDeleteCalendar: (id: string) => Promise<void>
   onClearCalendarEvents: (id: string) => Promise<void>
   onImportIntoCalendar: (
@@ -470,7 +471,8 @@ function MyCalendarsNavList({
   activeSection,
   onOpenCalendarSettings,
   onToggleCalendarVisibility,
-  onUpdateCalendar
+  onUpdateCalendar,
+  onReorderCalendars
 }: {
   calendars: CalendarRecord[]
   currentLoginId: string
@@ -479,6 +481,7 @@ function MyCalendarsNavList({
   onOpenCalendarSettings: (id: string) => void
   onToggleCalendarVisibility: (id: string) => void
   onUpdateCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  onReorderCalendars?: (orderedIds: string[]) => Promise<void>
 }): ReactElement | null {
   const { alert } = useAppDialog()
   const [orderIds, setOrderIds] = useState<string[] | null>(null)
@@ -532,10 +535,14 @@ function MyCalendarsNavList({
     setOrderIds(nextIds)
     setBusy(true)
     try {
-      for (let i = 0; i < next.length; i += 1) {
-        const calendar = next[i]
-        if (calendar.sortOrder === i) continue
-        await onUpdateCalendar(calendar.id, { sortOrder: i })
+      if (onReorderCalendars) {
+        await onReorderCalendars(nextIds)
+      } else {
+        for (let i = 0; i < next.length; i += 1) {
+          const calendar = next[i]
+          if (calendar.sortOrder === i) continue
+          await onUpdateCalendar(calendar.id, { sortOrder: i })
+        }
       }
     } catch (err) {
       setOrderIds(null)
@@ -1007,6 +1014,7 @@ export function SettingsPanel({
   onPatchStore,
   onCreateCalendar,
   onPatchCalendar,
+  onReorderCalendars,
   onDeleteCalendar,
   onClearCalendarEvents,
   onImportIntoCalendar,
@@ -1204,6 +1212,7 @@ export function SettingsPanel({
                   void onPatchCalendar(id, { visible: cal.visible === false })
                 }}
                 onUpdateCalendar={onPatchCalendar}
+                onReorderCalendars={onReorderCalendars}
               />
 
               <p className="settings-aside-label settings-aside-label--gap">고정 캘린더</p>

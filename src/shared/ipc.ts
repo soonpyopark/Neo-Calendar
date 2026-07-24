@@ -100,6 +100,8 @@ export type NeoCalendarApi = {
   focusForTextInput: () => void
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
+  /** Fired when calendar store mutates (web API or another client). */
+  onStoreChanged: (listener: () => void) => () => void
   getAuth: () => Promise<AuthUser | null>
   /** Local/LAN HTTP editor status (MDC /api/sync-info). */
   getSyncInfo: () => Promise<{
@@ -108,6 +110,8 @@ export type NeoCalendarApi = {
     hostname: string | null
     lanMode: boolean
     addresses: string[]
+    /** Browser editor URL (Vite in dev, local server when packaged). */
+    editorUrl: string | null
   }>
   login: (loginId: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => Promise<void>
@@ -144,6 +148,8 @@ export type NeoCalendarApi = {
     input: Partial<CalendarRecord> & { name: string; color: string }
   ) => Promise<CalendarRecord>
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  /** Persist DnD order in one round-trip (browser-safe; avoids WS refresh races). */
+  reorderCalendars: (orderedIds: string[]) => Promise<CalendarRecord[]>
   deleteCalendar: (id: string) => Promise<void>
   clearCalendarEvents: (id: string) => Promise<void>
   importEventsIntoCalendar: (

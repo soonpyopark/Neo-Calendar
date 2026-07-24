@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import type { CalendarRecord } from '../../../shared/calendarTypes'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { InteractionUI } from './InteractionUI'
 
 export type QuickEditCalendarButtonProps = {
   calendars: CalendarRecord[]
@@ -37,6 +39,7 @@ export function QuickEditCalendarButton({
 
   useEffect(() => {
     if (!open) return
+    setIgnoreMouseEvents(false)
     const place = (): void => {
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
@@ -97,7 +100,13 @@ export function QuickEditCalendarButton({
       </button>
       {open && !disabled
         ? createPortal(
-            <div className="quick-edit-calendar-flyout" style={style} role="listbox">
+            <InteractionUI
+              className="quick-edit-calendar-flyout"
+              style={style}
+              role="listbox"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               {editable.map((c) => (
                 <button
                   key={c.id}
@@ -112,7 +121,7 @@ export function QuickEditCalendarButton({
                   <span className="quick-edit-calendar-name">{c.name}</span>
                 </button>
               ))}
-            </div>,
+            </InteractionUI>,
             document.body
           )
         : null}

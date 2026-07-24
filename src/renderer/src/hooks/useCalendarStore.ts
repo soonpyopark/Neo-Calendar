@@ -32,6 +32,7 @@ export type UseCalendarStoreResult = {
     input: Partial<CalendarRecord> & { name: string; color: string }
   ) => Promise<CalendarRecord>
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) => Promise<CalendarRecord>
+  reorderCalendars: (orderedIds: string[]) => Promise<void>
   deleteCalendar: (id: string) => Promise<void>
   clearCalendarEvents: (id: string) => Promise<void>
   importEventsIntoCalendar: (
@@ -80,13 +81,27 @@ export function useCalendarStore(): UseCalendarStoreResult {
     void refresh()
   }, [refresh])
 
-  // Browser WebSocket / cross-tab store updates from the local HTTP server.
+  // Live refresh: browser WS (`neo-store-changed`) and Electron IPC (`onStoreChanged`).
+  // Debounce so rapid patches (reorder) do not clobber local optimistic order.
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
     const onChanged = (): void => {
-      void refresh()
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => {
+        timer = null
+        void refresh()
+      }, 200)
     }
     window.addEventListener('neo-store-changed', onChanged)
-    return () => window.removeEventListener('neo-store-changed', onChanged)
+    const unsubIpc =
+      typeof window.neoCalendar?.onStoreChanged === 'function'
+        ? window.neoCalendar.onStoreChanged(onChanged)
+        : undefined
+    return () => {
+      window.removeEventListener('neo-store-changed', onChanged)
+      unsubIpc?.()
+      if (timer) clearTimeout(timer)
+    }
   }, [refresh])
 
   // Apply MDC light/dark + accent as soon as store settings load (not only Settings panel).
@@ -260,6 +275,21 @@ export function useCalendarStore(): UseCalendarStoreResult {
     [performPatchCalendar, recordHistory, withoutHistory]
   )
 
+  const reorderCalendars = useCallback(
+    async (orderedIds: string[]) => {
+      const api = window.neoCalendar
+      if (typeof api.reorderCalendars === 'function') {
+        await api.reorderCalendars(orderedIds)
+      } else {
+        for (let i = 0; i < orderedIds.length; i += 1) {
+          await api.patchCalendar(orderedIds[i], { sortOrder: i })
+        }
+      }
+      await refresh()
+    },
+    [refresh]
+  )
+
   const deleteCalendar = useCallback(
     async (id: string) => {
       await window.neoCalendar.deleteCalendar(id)
@@ -322,6 +352,17 @@ export function useCalendarStore(): UseCalendarStoreResult {
 
   const patchStoreSettings = useCallback(
     async (patch: Partial<StoreSettings>) => {
+      // Optimistic: day cell colors should paint before IPC/refresh round-trip
+      // (desktop mode store-changed used to briefly revert the tint).
+      if (patch.dayColors) {
+        setStore((prev) => ({
+          ...prev,
+          settings: {
+            ...prev.settings,
+            dayColors: { ...patch.dayColors }
+          }
+        }))
+      }
       await window.neoCalendar.patchStoreSettings(patch)
       await refresh()
     },
@@ -390,6 +431,7 @@ export function useCalendarStore(): UseCalendarStoreResult {
     removeEvent,
     createCalendar,
     patchCalendar,
+    reorderCalendars,
     deleteCalendar,
     clearCalendarEvents,
     importEventsIntoCalendar,

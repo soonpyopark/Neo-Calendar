@@ -71,6 +71,15 @@ const api: NeoCalendarApi = {
       ipcRenderer.removeListener('open-day-quick-edit', handler)
     }
   },
+  onStoreChanged: (listener: () => void) => {
+    const handler = (): void => {
+      listener()
+    }
+    ipcRenderer.on('store-changed', handler)
+    return () => {
+      ipcRenderer.removeListener('store-changed', handler)
+    }
+  },
   getAuth: () => ipcRenderer.invoke('get-auth'),
   getSyncInfo: () =>
     ipcRenderer.invoke('get-sync-info') as Promise<{
@@ -79,6 +88,7 @@ const api: NeoCalendarApi = {
       hostname: string | null
       lanMode: boolean
       addresses: string[]
+      editorUrl: string | null
     }>,
   login: (loginId: string, password: string, remember?: boolean) =>
     ipcRenderer.invoke('login', loginId, password, remember) as Promise<LoginResult>,
@@ -121,6 +131,8 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('calendar:create-calendar', input) as Promise<CalendarRecord>,
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) =>
     ipcRenderer.invoke('calendar:patch-calendar', id, patch) as Promise<CalendarRecord>,
+  reorderCalendars: (orderedIds: string[]) =>
+    ipcRenderer.invoke('calendar:reorder-calendars', orderedIds) as Promise<CalendarRecord[]>,
   deleteCalendar: (id: string) =>
     ipcRenderer.invoke('calendar:delete-calendar', id) as Promise<void>,
   clearCalendarEvents: (id: string) =>

@@ -262,6 +262,8 @@ export type CalendarGridProps = {
   mode: LaunchMode
   switchReady?: boolean
   user: AuthUser | null
+  /** False until first getAuth() resolves — avoids flashing login before remembered session. */
+  authReady?: boolean
   settings: AppSettings | null
   onUserChange: (user: AuthUser | null) => void
   onModeChange: (mode: LaunchMode) => void
@@ -275,6 +277,7 @@ export function CalendarGrid({
   mode,
   switchReady = true,
   user,
+  authReady = true,
   settings,
   onUserChange,
   onModeChange,
@@ -285,6 +288,7 @@ export function CalendarGrid({
   const canEdit = Boolean(user)
   const {
     store,
+    loading,
     visibleEvents,
     calendarsById,
     addEvent,
@@ -293,6 +297,7 @@ export function CalendarGrid({
     patchStoreSettings,
     createCalendar,
     patchCalendar,
+    reorderCalendars,
     deleteCalendar,
     clearCalendarEvents,
     importEventsIntoCalendar,
@@ -400,6 +405,20 @@ export function CalendarGrid({
     onRedo: handleRedo,
     enabled: canEdit
   })
+
+  // MDC login wall: first launch / cold start without session → window + login dialog.
+  const autoLoginPromptedRef = useRef(false)
+  useEffect(() => {
+    if (autoLoginPromptedRef.current || loading || !authReady || user) return
+    autoLoginPromptedRef.current = true
+    setLoginError(null)
+    setLoginOpen(true)
+    if (mode === 'desktop') {
+      void window.neoCalendar.enterWindow().then((status) => {
+        onModeChange(status.mode)
+      })
+    }
+  }, [authReady, loading, mode, onModeChange, user])
 
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
@@ -1015,15 +1034,16 @@ export function CalendarGrid({
     setEventPopover(null)
     setDayList(null)
     setSelectedKey(resolvedKey)
+    // Prefer the live day-cell rect for sizing. Pointer coords (WorkerW IPC) are only
+    // for hit-testing — a 0×0 anchor collapses the popover to the minimum height.
     setQuickEdit({
       dateKey: resolvedKey,
       date,
-      anchorRect:
-        typeof clientX === 'number' && typeof clientY === 'number'
+      anchorRect: rect
+        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
+        : typeof clientX === 'number' && typeof clientY === 'number'
           ? { top: clientY, left: clientX, width: 0, height: 0 }
-          : rect
-            ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-            : null
+          : null
     })
   }
 
@@ -1088,8 +1108,8 @@ export function CalendarGrid({
       try {
         const info = await window.neoCalendar.getSyncInfo?.()
         if (cancelled) return
-        if (info?.running && info.port) {
-          setWebEditUrl(`http://127.0.0.1:${info.port}/`)
+        if (info?.running && (info.editorUrl || info.port)) {
+          setWebEditUrl(info.editorUrl || `http://127.0.0.1:${info.port}/`)
         } else {
           setWebEditUrl(null)
         }
@@ -1132,9 +1152,11 @@ export function CalendarGrid({
 
   const handleAuthToggle = (): void => {
     if (user) {
-      void window.neoCalendar.logout().then(() => {
+      void window.neoCalendar.logout().then(async () => {
         onUserChange(null)
         setSettingsOpen(false)
+        // Reload guest (empty) snapshot — never keep the previous member's events on screen.
+        await refresh()
       })
       return
     }
@@ -1813,6 +1835,7 @@ export function CalendarGrid({
         onPatchStore={patchStoreSettings}
         onCreateCalendar={createCalendar}
         onPatchCalendar={patchCalendar}
+        onReorderCalendars={reorderCalendars}
         onDeleteCalendar={deleteCalendar}
         onClearCalendarEvents={clearCalendarEvents}
         onImportIntoCalendar={importEventsIntoCalendar}
@@ -1831,6 +1854,7 @@ export function CalendarGrid({
         open={loginOpen}
         busy={loginBusy}
         error={loginError}
+        dismissible
         onClose={() => setLoginOpen(false)}
         onSubmit={handleLogin}
       />

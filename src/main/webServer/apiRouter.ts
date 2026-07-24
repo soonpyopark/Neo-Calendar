@@ -86,7 +86,8 @@ export async function handleApiRequest(
   if (p === '/api/settings' && m === 'PATCH') {
     const patch = (body ?? {}) as Record<string, unknown>
     // Reject desktop-only nested fields if any — store merge is safe.
-    calendarStore.patchStoreSettings(patch as never)
+    // dayColors are stored per login (dayColorsByLoginId), matching Electron IPC.
+    calendarStore.patchStoreSettings(patch as never, loginId)
     onStoreMutated()
     return { status: 200, body: calendarStore.getSnapshotForLogin(loginId) }
   }
@@ -259,9 +260,28 @@ export async function handleApiRequest(
   }
 
   if (p === '/api/holidays/sync' && m === 'POST') {
-    const result = syncKoreanHolidays(calendarStore, (body ?? {}) as SyncHolidaysInput)
+    try {
+      const result = await syncKoreanHolidays(
+        calendarStore,
+        (body ?? {}) as SyncHolidaysInput
+      )
+      onStoreMutated()
+      return { status: 200, body: result }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '휴일 동기화에 실패했습니다.'
+      return jsonError(400, message)
+    }
+  }
+
+  if (p === '/api/calendars/reorder' && m === 'PUT') {
+    const payload = (body ?? {}) as { orderedIds?: unknown }
+    const orderedIds = Array.isArray(payload.orderedIds)
+      ? payload.orderedIds.map((id) => String(id ?? '').trim()).filter(Boolean)
+      : []
+    if (orderedIds.length === 0) return jsonError(400, 'orderedIds가 필요합니다.')
+    const calendars = calendarStore.reorderCalendars(orderedIds)
     onStoreMutated()
-    return { status: 200, body: result }
+    return { status: 200, body: { ok: true, calendars } }
   }
 
   if (p.startsWith('/api/desktop') || p.startsWith('/api/window') || p.startsWith('/api/widget')) {

@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { WallpaperContainer } from './components/WallpaperContainer'
 import { CalendarGrid } from './components/CalendarGrid'
 import { WindowResizeHandles } from './components/WindowResizeHandles'
+import { isBrowserNeoCalendarHost } from './lib/browserNeoCalendar'
 import type { AppSettings, AuthUser, LaunchMode, ModeStatus } from '../../shared/ipc'
 
 function applyOpacitySettings(settings: AppSettings): void {
@@ -14,17 +15,28 @@ export default function App(): ReactElement {
   const [mode, setMode] = useState<LaunchMode>('window')
   const [switchReady, setSwitchReady] = useState(true)
   const [user, setUser] = useState<AuthUser | null>(null)
+  const [authReady, setAuthReady] = useState(false)
   const [settings, setSettings] = useState<AppSettings | null>(null)
 
   useEffect(() => {
+    // Match first-run defaults before settings IPC returns.
+    document.documentElement.style.setProperty('--neo-header-opacity', '0.95')
+    document.documentElement.style.setProperty('--neo-shell-opacity', '0.95')
+
     const api = window.neoCalendar
-    if (!api) return
+    if (!api) {
+      setAuthReady(true)
+      return
+    }
 
     void api.getModeStatus().then((status: ModeStatus) => {
       setMode(status.mode)
       setSwitchReady(status.switchReady !== false)
     })
-    void api.getAuth().then(setUser)
+    void api.getAuth().then((next) => {
+      setUser(next)
+      setAuthReady(true)
+    })
     void api.getSettings().then((next) => {
       setSettings(next)
       applyOpacitySettings(next)
@@ -48,12 +60,13 @@ export default function App(): ReactElement {
         mode={mode}
         switchReady={switchReady}
         user={user}
+        authReady={authReady}
         settings={settings}
         onUserChange={setUser}
         onModeChange={setMode}
         onSettingsSaved={handleSettingsSaved}
       />
-      {mode === 'window' ? <WindowResizeHandles /> : null}
+      {mode === 'window' && !isBrowserNeoCalendarHost() ? <WindowResizeHandles /> : null}
     </WallpaperContainer>
   )
 }

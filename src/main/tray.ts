@@ -64,6 +64,7 @@ export function createAppTray(options: {
   requestQuit: () => void
   webServer?: {
     isRunning: boolean
+    lanMode: boolean
     tryStart: (opts?: {
       mode?: 'local' | 'lan' | 'env'
       requirePortInEnv?: boolean
@@ -215,10 +216,13 @@ export function createAppTray(options: {
     const mode = options.desktopMode.getLaunchMode()
     const web = options.webServer
     const running = Boolean(web?.isRunning)
+    // MDC RefreshTrayServerMenu: Local ↔ Web mutually exclusive; active mode checked.
+    const lanMode = running && Boolean(web?.lanMode)
     const menu = Menu.buildFromTemplate([
       {
-        label: running ? '✓ Start Server (local)' : 'Start Server (local)',
-        enabled: Boolean(web) && !running,
+        label: running && !lanMode ? '✓ Start Server (local)' : 'Start Server (local)',
+        enabled: Boolean(web) && (!running || lanMode),
+        toolTip: '로컬(127.0.0.1)만 — Web과 동시에 실행되지 않습니다',
         click: () => {
           if (!web) return
           void web.tryStart({ mode: 'local', requirePortInEnv: false }).then((result) => {
@@ -228,9 +232,9 @@ export function createAppTray(options: {
         }
       },
       {
-        label: running ? '✓ Start Server (Web)' : 'Start Server (Web)',
-        enabled: Boolean(web) && !running,
-        toolTip: 'LAN: HOSTNAME=0.0.0.0 (URL ACL·방화벽 필요할 수 있음)',
+        label: lanMode ? '✓ Start Server (Web)' : 'Start Server (Web)',
+        enabled: Boolean(web) && (!running || !lanMode),
+        toolTip: 'LAN(0.0.0.0) — Local과 동시에 실행되지 않습니다 (URL ACL·방화벽 필요할 수 있음)',
         click: () => {
           if (!web) return
           void web.tryStart({ mode: 'lan', requirePortInEnv: false }).then((result) => {

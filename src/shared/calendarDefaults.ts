@@ -84,8 +84,8 @@ export function createDefaultSettings(): StoreSettings {
     dayColorsByLoginId: {},
     hiddenCalendarIdsByLoginId: {},
     allowedIpCidrs: [],
-    headerOpacity: 0.9,
-    shellOpacity: 0.9
+    headerOpacity: 0.95,
+    shellOpacity: 0.95
   }
 }
 

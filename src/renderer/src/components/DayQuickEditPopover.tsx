@@ -24,7 +24,7 @@ import { EventLinkIcon } from './EventLinkIcon'
 import { getEventLinks } from '../lib/eventLinks'
 import { insertTextAtCursor } from '../lib/insertAtCursor'
 import { formatDayHeaderTitle } from '../lib/dayHeaderFormat'
-import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { setClickThroughEnabled, setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { clampFixedPosition, clampRectToViewport } from '../lib/popoverPosition'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
@@ -80,7 +80,11 @@ function buildQuickEditStyle(
   options?: { bodyExtra?: number }
 ): CSSProperties | undefined {
   const bodyExtra = options?.bodyExtra ?? 0
-  if (!anchorRect) {
+  // Pointer-only anchors (0×0) must not drive cell-relative sizing — use the
+  // centered fallback panel instead of collapsing to the minimum height.
+  const usableAnchor =
+    anchorRect && anchorRect.width > 0 && anchorRect.height > 0 ? anchorRect : null
+  if (!usableAnchor) {
     const width = 320
     const height = 280
     const clamped = clampRectToViewport({
@@ -102,14 +106,14 @@ function buildQuickEditStyle(
   }
 
   const padX = 12
-  const width = Math.max(anchorRect.width + padX * 2, 300)
+  const width = Math.max(usableAnchor.width + padX * 2, 300)
   const desiredBody = Math.max(
-    Math.round(anchorRect.height) + bodyExtra,
+    Math.round(usableAnchor.height) + bodyExtra,
     bodyExtra > 0 ? 160 : MIN_BODY_HEIGHT
   )
   const height = desiredBody + QUICK_EDIT_CHROME_HEIGHT
-  const left = anchorRect.left + anchorRect.width / 2 - width / 2
-  const top = anchorRect.top + anchorRect.height / 2 - height / 2
+  const left = usableAnchor.left + usableAnchor.width / 2 - width / 2
+  const top = usableAnchor.top + usableAnchor.height / 2 - height / 2
   const clamped = clampRectToViewport({
     top,
     left,
@@ -181,6 +185,16 @@ export function DayQuickEditPopover({
   const [style, setStyle] = useState<CSSProperties | undefined>(() =>
     buildQuickEditStyle(anchorRect, { bodyExtra })
   )
+
+  // Portaled flyouts (calendar/tag/emoji/…) sit outside this InteractionUI box.
+  // While open, keep click-through off so desktop mode still delivers clicks to them.
+  useEffect(() => {
+    setClickThroughEnabled(false)
+    setIgnoreMouseEvents(false)
+    return () => {
+      setClickThroughEnabled(true)
+    }
+  }, [])
 
   // Principle #4: remeasure after layout / resize so the panel never leaves the window.
   useLayoutEffect(() => {
@@ -755,7 +769,7 @@ export function DayQuickEditPopover({
 
       {paletteOpen && canEdit
         ? createPortal(
-            <div
+            <InteractionUI
               className="day-quick-edit-palette-flyout"
               style={paletteStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
               onClick={(e) => e.stopPropagation()}
@@ -770,7 +784,7 @@ export function DayQuickEditPopover({
                 }}
                 onRequestClose={() => setPaletteOpen(false)}
               />
-            </div>,
+            </InteractionUI>,
             document.body
           )
         : null}

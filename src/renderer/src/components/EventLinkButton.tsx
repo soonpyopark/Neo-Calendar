@@ -2,6 +2,8 @@ import { useEffect, useRef, useState, type FormEvent, type ReactElement } from '
 import { createPortal } from 'react-dom'
 import type { EventLink } from '../../../shared/calendarTypes'
 import { appendEventLink, normalizeEventLinkUrl, normalizeEventLinksArray } from '../lib/eventLinks'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { InteractionUI } from './InteractionUI'
 
 export type EventLinkButtonProps = {
   links?: EventLink[]
@@ -33,6 +35,7 @@ export function EventLinkButton({
 
   useEffect(() => {
     if (!open) return
+    setIgnoreMouseEvents(false)
     const place = (): void => {
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
@@ -92,7 +95,12 @@ export function EventLinkButton({
       </button>
       {open && !disabled
         ? createPortal(
-            <div className="event-link-flyout" style={style} onClick={(e) => e.stopPropagation()}>
+            <InteractionUI
+              className="event-link-flyout"
+              style={style}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <form className="event-link-flyout-form" onSubmit={addDraft}>
                 <input
                   type="url"
@@ -127,7 +135,7 @@ export function EventLinkButton({
                   ))
                 )}
               </ul>
-            </div>,
+            </InteractionUI>,
             document.body
           )
         : null}

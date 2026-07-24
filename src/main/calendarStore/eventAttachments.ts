@@ -6,7 +6,8 @@ import {
   readdirSync,
   rmSync,
   statSync,
-  unlinkSync
+  unlinkSync,
+  writeFileSync
 } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { shell } from 'electron'
@@ -113,6 +114,39 @@ export class EventAttachmentService {
     return this.store.editEvent(eventId, { attachments })
   }
 
+  /** Browser / HTTP multipart uploads (buffers already in memory). */
+  addFromBuffers(
+    eventId: string,
+    uploads: Array<{ name: string; data: Buffer; mime?: string }>
+  ): CalendarEvent {
+    const current = this.requireEditableEvent(eventId)
+    const attachments = [...(current.attachments ?? [])]
+    if (attachments.length >= MAX_ATTACHMENTS_PER_EVENT) {
+      throw new Error(`첨부 파일은 일정당 최대 ${MAX_ATTACHMENTS_PER_EVENT}개까지 가능합니다.`)
+    }
+
+    const dir = this.eventDir(eventId)
+    mkdirSync(dir, { recursive: true })
+    const remaining = MAX_ATTACHMENTS_PER_EVENT - attachments.length
+    for (const upload of uploads.slice(0, remaining)) {
+      this.addOneBuffer(attachments, dir, upload)
+    }
+    return this.store.editEvent(eventId, { attachments })
+  }
+
+  resolveFilePath(
+    eventId: string,
+    attachmentId: string
+  ): { path: string; meta: EventAttachment } {
+    const current = this.requireEditableEvent(eventId)
+    const meta = (current.attachments ?? []).find((item) => item.id === attachmentId)
+    if (!meta) throw new Error('첨부 파일을 찾을 수 없습니다.')
+    if (!meta.storedName?.trim()) throw new Error('첨부 파일 경로가 올바르지 않습니다.')
+    const path = join(this.eventDir(eventId), basename(meta.storedName))
+    if (!existsSync(path)) throw new Error('첨부 파일이 디스크에서 찾을 수 없습니다.')
+    return { path, meta }
+  }
+
   remove(eventId: string, attachmentId: string): CalendarEvent {
     const current = this.requireEditableEvent(eventId)
     const attachments = [...(current.attachments ?? [])]
@@ -127,12 +161,7 @@ export class EventAttachmentService {
   }
 
   async open(eventId: string, attachmentId: string): Promise<void> {
-    const current = this.requireEditableEvent(eventId)
-    const meta = (current.attachments ?? []).find((item) => item.id === attachmentId)
-    if (!meta) throw new Error('첨부 파일을 찾을 수 없습니다.')
-    if (!meta.storedName?.trim()) throw new Error('첨부 파일 경로가 올바르지 않습니다.')
-    const path = join(this.eventDir(eventId), basename(meta.storedName))
-    if (!existsSync(path)) throw new Error('첨부 파일이 디스크에서 찾을 수 없습니다.')
+    const { path } = this.resolveFilePath(eventId, attachmentId)
     const result = await shell.openPath(path)
     if (result) throw new Error(result)
   }
@@ -149,19 +178,10 @@ export class EventAttachmentService {
 
   private addOneFile(attachments: EventAttachment[], dir: string, sourcePath: string): void {
     if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) return
-
     const originalName = basename(sourcePath)
-    const ext = extname(originalName)
-    if (BLOCKED_EXTENSIONS.has(ext.toLowerCase())) {
-      throw new Error(`보안상 첨부할 수 없는 파일 형식입니다: ${ext}`)
-    }
-
     const size = statSync(sourcePath).size
-    if (size > MAX_ATTACHMENT_BYTES) {
-      throw new Error(
-        `파일 크기는 ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB 이하여야 합니다: ${originalName}`
-      )
-    }
+    const ext = extname(originalName)
+    this.assertUploadAllowed(originalName, ext, size)
 
     const id = randomUUID().replace(/-/g, '')
     const storedName = `${id}${ext ? ext.toLowerCase() : ''}`
@@ -176,6 +196,45 @@ export class EventAttachmentService {
       size,
       addedAt: new Date().toISOString()
     })
+  }
+
+  private addOneBuffer(
+    attachments: EventAttachment[],
+    dir: string,
+    upload: { name: string; data: Buffer; mime?: string }
+  ): void {
+    const originalName = basename(String(upload.name ?? '').trim() || 'file')
+    const ext = extname(originalName)
+    const size = upload.data?.length ?? 0
+    this.assertUploadAllowed(originalName, ext, size)
+
+    const id = randomUUID().replace(/-/g, '')
+    const storedName = `${id}${ext ? ext.toLowerCase() : ''}`
+    const dest = join(dir, storedName)
+    writeFileSync(dest, upload.data)
+
+    attachments.push({
+      id,
+      name: originalName,
+      storedName,
+      mime: upload.mime?.trim() || guessMime(ext),
+      size,
+      addedAt: new Date().toISOString()
+    })
+  }
+
+  private assertUploadAllowed(originalName: string, ext: string, size: number): void {
+    if (BLOCKED_EXTENSIONS.has(ext.toLowerCase())) {
+      throw new Error(`보안상 첨부할 수 없는 파일 형식입니다: ${ext}`)
+    }
+    if (size <= 0) {
+      throw new Error(`빈 파일은 첨부할 수 없습니다: ${originalName}`)
+    }
+    if (size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(
+        `파일 크기는 ${MAX_ATTACHMENT_BYTES / (1024 * 1024)}MB 이하여야 합니다: ${originalName}`
+      )
+    }
   }
 
   private requireEditableEvent(eventId: string): CalendarEvent {

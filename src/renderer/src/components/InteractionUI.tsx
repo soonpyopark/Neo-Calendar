@@ -31,6 +31,20 @@ type SpanProps = CommonProps &
 
 export type InteractionUIProps = DivProps | ButtonProps | SpanProps
 
+/** Portaled menus that live outside their parent InteractionUI box. */
+const PORTAL_FLYOUT_SELECTOR = [
+  '.quick-edit-calendar-flyout',
+  '.day-quick-edit-palette-flyout',
+  '.emoji-picker-panel',
+  '.event-link-flyout',
+  '.marker-shape-flyout-panel',
+  '.custom-color-panel'
+].join(', ')
+
+function isPortalFlyoutTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest(PORTAL_FLYOUT_SELECTOR))
+}
+
 function bindInteractionHandlers<T extends HTMLElement>(
   onMouseEnter?: (event: ReactMouseEvent<T>) => void,
   onMouseLeave?: (event: ReactMouseEvent<T>) => void,
@@ -48,7 +62,11 @@ function bindInteractionHandlers<T extends HTMLElement>(
     },
     onMouseLeave: (event: ReactMouseEvent<T>) => {
       event.stopPropagation()
-      setIgnoreMouseEvents(true, { forwardToOverlay: true })
+      // Moving into a portaled flyout must not re-enable desktop click-through,
+      // or the flyout never receives the enter/click (ignore already on).
+      if (!isPortalFlyoutTarget(event.relatedTarget)) {
+        setIgnoreMouseEvents(true, { forwardToOverlay: true })
+      }
       onMouseLeave?.(event)
     },
     onClick: (event: ReactMouseEvent<T>) => {

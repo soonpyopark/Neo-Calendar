@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { createPortal } from 'react-dom'
 import type { TagRecord } from '../../../shared/calendarTypes'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { InteractionUI } from './InteractionUI'
 
 export type QuickEditTagButtonProps = {
   tags: TagRecord[]
@@ -51,6 +53,7 @@ export function QuickEditTagButton({
 
   useEffect(() => {
     if (!open) return
+    setIgnoreMouseEvents(false)
     const place = (): void => {
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
@@ -121,7 +124,14 @@ export function QuickEditTagButton({
       </button>
       {open && !disabled
         ? createPortal(
-            <div className="quick-edit-calendar-flyout" style={style} role="listbox" aria-multiselectable>
+            <InteractionUI
+              className="quick-edit-calendar-flyout"
+              style={style}
+              role="listbox"
+              aria-multiselectable
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
               <button
                 type="button"
                 className={`quick-edit-calendar-option${selectedCount === 0 ? ' is-active' : ''}`}
@@ -163,7 +173,7 @@ export function QuickEditTagButton({
                   </button>
                 )
               })}
-            </div>,
+            </InteractionUI>,
             document.body
           )
         : null}

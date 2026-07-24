@@ -11,6 +11,8 @@ import {
 import { createPortal } from 'react-dom'
 import { EMOJI_CATEGORIES } from '../lib/emojiData'
 import { addRecentEmoji, getRecentEmojis } from '../lib/recentEmojis'
+import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { InteractionUI } from './InteractionUI'
 
 const PANEL_PAD = 8
 const PANEL_FALLBACK_WIDTH = 280
@@ -82,6 +84,7 @@ export function EmojiPickerButton({
 
   useEffect(() => {
     if (!open) return
+    setIgnoreMouseEvents(false)
     setRecent(getRecentEmojis())
   }, [open])
 
@@ -196,46 +199,52 @@ export function EmojiPickerButton({
     <div
       ref={panelRef}
       id={panelId}
-      className="emoji-picker-panel"
-      role="dialog"
-      aria-label="이모지 선택"
       style={panelStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
-      onClick={(e) => e.stopPropagation()}
-      onMouseDown={(e) => e.stopPropagation()}
     >
-      <div className="emoji-picker-tabs" role="tablist">
-        {categories.map((cat) => (
-          <button
-            key={cat.id}
-            type="button"
-            role="tab"
-            aria-selected={cat.id === activeCategory}
-            className={cn('emoji-picker-tab', cat.id === activeCategory && 'active')}
-            title={cat.label}
-            aria-label={cat.label}
-            onClick={() => setActiveCategory(cat.id)}
-          >
-            {cat.icon}
-          </button>
-        ))}
-      </div>
-      <div className="emoji-picker-grid">
-        {current?.emojis.length ? (
-          current.emojis.map((emoji, idx) => (
+      <InteractionUI
+        className="emoji-picker-panel"
+        role="dialog"
+        aria-label="이모지 선택"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          setIgnoreMouseEvents(false)
+        }}
+      >
+        <div className="emoji-picker-tabs" role="tablist">
+          {categories.map((cat) => (
             <button
-              key={`${emoji}-${idx}`}
+              key={cat.id}
               type="button"
-              className="emoji-picker-item"
-              title={emoji}
-              onClick={() => pick(emoji)}
+              role="tab"
+              aria-selected={cat.id === activeCategory}
+              className={cn('emoji-picker-tab', cat.id === activeCategory && 'active')}
+              title={cat.label}
+              aria-label={cat.label}
+              onClick={() => setActiveCategory(cat.id)}
             >
-              {emoji}
+              {cat.icon}
             </button>
-          ))
-        ) : (
-          <p className="emoji-picker-empty">최근 사용한 이모지가 없습니다</p>
-        )}
-      </div>
+          ))}
+        </div>
+        <div className="emoji-picker-grid">
+          {current?.emojis.length ? (
+            current.emojis.map((emoji, idx) => (
+              <button
+                key={`${emoji}-${idx}`}
+                type="button"
+                className="emoji-picker-item"
+                title={emoji}
+                onClick={() => pick(emoji)}
+              >
+                {emoji}
+              </button>
+            ))
+          ) : (
+            <p className="emoji-picker-empty">최근 사용한 이모지가 없습니다</p>
+          )}
+        </div>
+      </InteractionUI>
     </div>
   ) : null
 

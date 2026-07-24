@@ -106,45 +106,117 @@ function replaceAttachmentsFrom(
   return fileCount
 }
 
-function writeBackupZip(store: CalendarStore, zipPath: string): { fileCount: number; eventCount: number } {
+function stageBackupZip(store: CalendarStore): {
+  staging: string
+  fileCount: number
+  eventCount: number
+} {
   const staging = mkdtempSync(join(tmpdir(), 'neo-backup-'))
-  try {
-    const snapshot = store.getSnapshot()
-    writeFileSync(join(staging, 'store.json'), `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')
+  const snapshot = store.getSnapshot()
+  writeFileSync(join(staging, 'store.json'), `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8')
 
-    const attachStaging = join(staging, 'attachments')
-    mkdirSync(attachStaging, { recursive: true })
-    const attachmentsRoot = join(store.dataRoot, 'attachments')
+  const attachStaging = join(staging, 'attachments')
+  mkdirSync(attachStaging, { recursive: true })
+  const attachmentsRoot = join(store.dataRoot, 'attachments')
 
-    let fileCount = 0
-    let eventCount = 0
-    for (const evt of snapshot.events) {
-      const safeId = trySanitizeId(evt.id)
-      if (!safeId) continue
-      const attachments = evt.attachments ?? []
-      if (attachments.length === 0) continue
+  let fileCount = 0
+  let eventCount = 0
+  for (const evt of snapshot.events) {
+    const safeId = trySanitizeId(evt.id)
+    if (!safeId) continue
+    const attachments = evt.attachments ?? []
+    if (attachments.length === 0) continue
 
-      let copiedForEvent = 0
-      const eventDir = join(attachStaging, safeId)
-      for (const att of attachments) {
-        const fileName = basename(String(att.storedName ?? ''))
-        if (!fileName) continue
-        const source = join(attachmentsRoot, safeId, fileName)
-        if (!existsSync(source)) continue
-        mkdirSync(eventDir, { recursive: true })
-        copyFileSync(source, join(eventDir, fileName))
-        fileCount += 1
-        copiedForEvent += 1
-      }
-      if (copiedForEvent > 0) eventCount += 1
+    let copiedForEvent = 0
+    const eventDir = join(attachStaging, safeId)
+    for (const att of attachments) {
+      const fileName = basename(String(att.storedName ?? ''))
+      if (!fileName) continue
+      const source = join(attachmentsRoot, safeId, fileName)
+      if (!existsSync(source)) continue
+      mkdirSync(eventDir, { recursive: true })
+      copyFileSync(source, join(eventDir, fileName))
+      fileCount += 1
+      copiedForEvent += 1
     }
+    if (copiedForEvent > 0) eventCount += 1
+  }
+  return { staging, fileCount, eventCount }
+}
 
+function writeBackupZip(store: CalendarStore, zipPath: string): { fileCount: number; eventCount: number } {
+  const { staging, fileCount, eventCount } = stageBackupZip(store)
+  try {
     const zip = new AdmZip()
     zip.addLocalFolder(staging)
     zip.writeZip(zipPath)
     return { fileCount, eventCount }
   } finally {
     tryDeleteDir(staging)
+  }
+}
+
+/** Browser / HTTP: build ZIP bytes without a Save dialog. */
+export function createBackupZipBuffer(store: CalendarStore): {
+  buffer: Buffer
+  fileCount: number
+  eventCount: number
+  filename: string
+} {
+  const { staging, fileCount, eventCount } = stageBackupZip(store)
+  try {
+    const zip = new AdmZip()
+    zip.addLocalFolder(staging)
+    return {
+      buffer: zip.toBuffer(),
+      fileCount,
+      eventCount,
+      filename: `my-calendar-backup-${stampForZip()}.zip`
+    }
+  } finally {
+    tryDeleteDir(staging)
+  }
+}
+
+function restoreFromExtractedDir(store: CalendarStore, extractDir: string): BackupZipResult {
+  const storePath = findStoreJson(extractDir)
+  if (!storePath) {
+    throw new Error('ZIP에 store.json이 없습니다. 이 앱의 백업 ZIP인지 확인해 주세요.')
+  }
+
+  let payload: unknown
+  try {
+    payload = JSON.parse(readFileSync(storePath, 'utf8'))
+  } catch (error) {
+    throw new Error(
+      `store.json을 읽지 못했습니다: ${error instanceof Error ? error.message : String(error)}`
+    )
+  }
+
+  const imported = store.importStore(payload)
+  const zipAttachments = join(dirname(storePath), 'attachments')
+  const fileCount = replaceAttachmentsFrom(join(store.dataRoot, 'attachments'), zipAttachments)
+
+  return {
+    ok: true,
+    cancelled: false,
+    attachmentFiles: fileCount,
+    store: imported
+  }
+}
+
+/** Browser / HTTP: restore from uploaded ZIP bytes. */
+export function restoreBackupZipBuffer(store: CalendarStore, zipBuffer: Buffer): BackupZipResult {
+  const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
+  try {
+    const zipPath = join(extractDir, 'upload.zip')
+    writeFileSync(zipPath, zipBuffer)
+    const unpackDir = join(extractDir, 'unpacked')
+    mkdirSync(unpackDir, { recursive: true })
+    extractZipSafe(zipPath, unpackDir)
+    return restoreFromExtractedDir(store, unpackDir)
+  } finally {
+    tryDeleteDir(extractDir)
   }
 }
 
@@ -197,31 +269,8 @@ export async function importBackupZip(
   const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
   try {
     extractZipSafe(zipPath, extractDir)
-    const storePath = findStoreJson(extractDir)
-    if (!storePath) {
-      throw new Error('ZIP에 store.json이 없습니다. 이 앱의 백업 ZIP인지 확인해 주세요.')
-    }
-
-    let payload: unknown
-    try {
-      payload = JSON.parse(readFileSync(storePath, 'utf8'))
-    } catch (error) {
-      throw new Error(
-        `store.json을 읽지 못했습니다: ${error instanceof Error ? error.message : String(error)}`
-      )
-    }
-
-    const imported = store.importStore(payload)
-    const zipAttachments = join(dirname(storePath), 'attachments')
-    const fileCount = replaceAttachmentsFrom(join(store.dataRoot, 'attachments'), zipAttachments)
-
-    return {
-      ok: true,
-      cancelled: false,
-      path: zipPath,
-      attachmentFiles: fileCount,
-      store: imported
-    }
+    const restored = restoreFromExtractedDir(store, extractDir)
+    return { ...restored, path: zipPath }
   } finally {
     tryDeleteDir(extractDir)
   }

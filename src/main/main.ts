@@ -50,6 +50,14 @@ function notifyStoreChanged(): void {
   } catch {
     /* ignore */
   }
+  // Push to Electron renderer so browser edits appear without restart.
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('store-changed')
+    }
+  } catch {
+    /* ignore */
+  }
   try {
     tray?.rebuildMenu?.()
   } catch {
@@ -299,7 +307,8 @@ function registerIpc(): void {
     port: null,
     hostname: null,
     lanMode: false,
-    addresses: []
+    addresses: [],
+    editorUrl: null
   })
   ipcMain.handle(
     'login',
@@ -326,7 +335,8 @@ function registerIpc(): void {
   })
   ipcMain.handle('calendar:get-data-root', () => calendarStore.dataRoot)
   ipcMain.handle('calendar:patch-settings', (_event, patch: Partial<StoreSettings>) => {
-    calendarStore.patchStoreSettings(patch ?? {})
+    const loginId = auth.getUser()?.loginId
+    calendarStore.patchStoreSettings(patch ?? {}, loginId)
     if (patch?.viewOptions && typeof patch.viewOptions.runAtStartup === 'boolean') {
       try {
         app.setLoginItemSettings({ openAtLogin: patch.viewOptions.runAtStartup })
@@ -334,7 +344,8 @@ function registerIpc(): void {
         console.warn('[settings] setLoginItemSettings failed', err)
       }
     }
-    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
+    notifyStoreChanged()
+    return calendarStore.getSnapshotForLogin(loginId)
   })
   ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) => {
     const next = calendarStore.replaceStore(store)
@@ -384,12 +395,17 @@ function registerIpc(): void {
       if (!current) throw new Error('일정을 찾을 수 없습니다.')
       return current
     }
-    return attachmentService.addFromPaths(eventId, result.filePaths)
+    const updated = attachmentService.addFromPaths(eventId, result.filePaths)
+    notifyStoreChanged()
+    return updated
   })
   ipcMain.handle(
     'calendar:remove-attachment',
-    (_event, eventId: string, attachmentId: string) =>
-      attachmentService.remove(eventId, attachmentId)
+    (_event, eventId: string, attachmentId: string) => {
+      const updated = attachmentService.remove(eventId, attachmentId)
+      notifyStoreChanged()
+      return updated
+    }
   )
   ipcMain.handle(
     'calendar:open-attachment',
@@ -433,6 +449,14 @@ function registerIpc(): void {
       return projected ?? updated
     }
   )
+  ipcMain.handle('calendar:reorder-calendars', (_event, orderedIds: string[]) => {
+    const ids = Array.isArray(orderedIds)
+      ? orderedIds.map((id) => String(id ?? '').trim()).filter(Boolean)
+      : []
+    calendarStore.reorderCalendars(ids)
+    notifyStoreChanged()
+    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId).calendars
+  })
   ipcMain.handle('calendar:delete-calendar', (_event, id: string) => {
     calendarStore.deleteCalendar(id)
     notifyStoreChanged()
@@ -454,21 +478,30 @@ function registerIpc(): void {
       return result
     }
   )
-  ipcMain.handle('calendar:set-tags', (_event, tags: TagRecord[]) =>
-    calendarStore.setTags(Array.isArray(tags) ? tags : [])
-  )
+  ipcMain.handle('calendar:set-tags', (_event, tags: TagRecord[]) => {
+    const next = calendarStore.setTags(Array.isArray(tags) ? tags : [])
+    notifyStoreChanged()
+    return next
+  })
   ipcMain.handle(
     'calendar:create-tag',
-    (_event, input: { name: string; color: string; sortOrder?: number }) =>
-      calendarStore.createTag(input ?? { name: '', color: '' })
+    (_event, input: { name: string; color: string; sortOrder?: number }) => {
+      const created = calendarStore.createTag(input ?? { name: '', color: '' })
+      notifyStoreChanged()
+      return created
+    }
   )
   ipcMain.handle(
     'calendar:patch-tag',
-    (_event, id: string, patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>) =>
-      calendarStore.patchTag(id, patch ?? {})
+    (_event, id: string, patch: Partial<Pick<TagRecord, 'name' | 'color' | 'sortOrder'>>) => {
+      const updated = calendarStore.patchTag(id, patch ?? {})
+      notifyStoreChanged()
+      return updated
+    }
   )
   ipcMain.handle('calendar:delete-tag', (_event, id: string) => {
     calendarStore.deleteTag(id)
+    notifyStoreChanged()
   })
   ipcMain.handle('calendar:list-members', () => membersStore.listPublic())
   ipcMain.handle('calendar:save-members', (_event, members: MemberSaveInput[]) => {
@@ -495,8 +528,8 @@ function registerIpc(): void {
     notifyStoreChanged()
     return result.members
   })
-  ipcMain.handle('calendar:sync-holidays', (_event, body: SyncHolidaysInput) => {
-    const result = syncKoreanHolidays(calendarStore, body ?? {})
+  ipcMain.handle('calendar:sync-holidays', async (_event, body: SyncHolidaysInput) => {
+    const result = await syncKoreanHolidays(calendarStore, body ?? {})
     notifyStoreChanged()
     return result
   })
@@ -572,9 +605,21 @@ function bootApp(): void {
     auth,
     calendarStore,
     membersStore,
+    attachments: attachmentService,
     getWwwroot: () => join(__dirname, '../renderer'),
-    getViteOrigin: () => process.env.ELECTRON_RENDERER_URL?.trim() || null
+    getViteOrigin: () => process.env.ELECTRON_RENDERER_URL?.trim() || null,
+    onStoreMutated: () => notifyStoreChanged()
   })
+  // Tray first so a later window/bridge failure still leaves a visible shell icon.
+  tray = createAppTray({
+    getWindow: () => mainWindow,
+    desktopMode,
+    getDataRoot: () => calendarStore.dataRoot,
+    requestQuit,
+    webServer
+  })
+
+  // MDC StartWebServerOnLaunch — default Local; refresh tray checkmarks after listen.
   void (async () => {
     try {
       const mode = resolveLaunchServerMode()
@@ -584,17 +629,15 @@ function bootApp(): void {
       }
     } catch (err) {
       console.warn('[web-server] auto-start failed', err)
+    } finally {
+      try {
+        tray?.rebuildMenu?.()
+      } catch {
+        /* ignore */
+      }
     }
   })()
 
-  // Tray first so a later window/bridge failure still leaves a visible shell icon.
-  tray = createAppTray({
-    getWindow: () => mainWindow,
-    desktopMode,
-    getDataRoot: () => calendarStore.dataRoot,
-    requestQuit,
-    webServer
-  })
   createWindow()
 
   // Fully embedded: window-mode button still works via hit-zone.

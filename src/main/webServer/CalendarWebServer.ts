@@ -7,13 +7,14 @@ import {
 import { networkInterfaces } from 'node:os'
 import { createReadStream, existsSync, statSync } from 'node:fs'
 import { extname, join, normalize, sep } from 'node:path'
-import { request as httpRequest } from 'node:http'
-import { request as httpsRequest } from 'node:https'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { getEnvValue } from '../dotEnv'
 import { AuthService } from '../auth'
 import type { CalendarStore } from '../calendarStore/CalendarStore'
+import type { EventAttachmentService } from '../calendarStore/eventAttachments'
 import type { MembersStore } from '../calendarStore/membersStore'
+import { tryHandleAttachmentRequest } from './attachmentRoutes'
+import { tryHandleBrowserFileRequest } from './browserFileRoutes'
 import { handleApiRequest } from './apiRouter'
 import {
   isClientIpAllowed,
@@ -44,16 +45,28 @@ export type WebServerSyncInfo = {
   hostname: string | null
   lanMode: boolean
   addresses: string[]
+  /**
+   * Preferred URL for the browser editor.
+   * Dev: Vite origin (127.0.0.1) so UI is not double-proxied.
+   * Packaged: http://127.0.0.1:{port}/
+   */
+  editorUrl: string | null
 }
 
 export type CalendarWebServerOptions = {
   auth: AuthService
   calendarStore: CalendarStore
   membersStore: MembersStore
+  attachments: EventAttachmentService
   /** Production static root (`out/renderer`). */
   getWwwroot: () => string
   /** Dev Vite origin, e.g. http://localhost:5173 */
   getViteOrigin: () => string | null
+  /**
+   * Called after any HTTP API mutation. Prefer main's notifyStoreChanged so
+   * Electron renderer + WebSocket browsers both refresh (avoid WS-only).
+   */
+  onStoreMutated?: () => void
 }
 
 export class CalendarWebServer {
@@ -73,25 +86,33 @@ export class CalendarWebServer {
   }
 
   getSyncInfo(): WebServerSyncInfo {
+    const running = this.isRunning
+    const port = running ? this.port : null
+    const vite = preferLoopbackOrigin(this.options.getViteOrigin())
+    const local = port ? `http://127.0.0.1:${port}/` : null
     return {
-      running: this.isRunning,
-      port: this.isRunning ? this.port : null,
-      hostname: this.isRunning ? this.hostname : null,
-      lanMode: this.isRunning ? this.lanMode : false,
-      addresses: this.isRunning ? [...this.addresses] : []
+      running,
+      port,
+      hostname: running ? this.hostname : null,
+      lanMode: running ? this.lanMode : false,
+      addresses: running ? [...this.addresses] : [],
+      // Prefer Vite in dev — opening :3010 proxied every module and felt "stuck".
+      editorUrl: running ? vite ?? local : null
     }
   }
 
   /**
    * MDC StartWebServerOnLaunch / tray Start Server.
-   * @param mode local = loopback hosts; lan = 0.0.0.0 + ALLOWED_HOSTS=*
+   * Local and Web are mutually exclusive: any existing listener is stopped first.
+   * @param mode local = loopback ACL; lan = 0.0.0.0 + ALLOWED_HOSTS=*
    */
   async tryStart(options?: {
     mode?: 'local' | 'lan' | 'env'
     requirePortInEnv?: boolean
   }): Promise<{ ok: boolean; message: string }> {
+    // MDC: StopWebServerInternal() before binding the other (or same) mode.
     if (this.isRunning) {
-      return { ok: false, message: 'HTTP server is already running.' }
+      this.stop()
     }
 
     const requirePort = options?.requirePortInEnv === true
@@ -115,16 +136,19 @@ export class CalendarWebServer {
     )
 
     if (mode === 'local') {
+      // Loopback ACL; Node binds 127.0.0.1 (MDC uses + bind for http.sys URL ACL).
       hostname = '127.0.0.1'
       allowedHosts = ['127.0.0.1', 'localhost']
     } else if (mode === 'lan') {
       hostname = '0.0.0.0'
       allowedHosts = ['*']
     } else {
-      // env launch: MDC ResolveLaunchServerMode
+      // env launch: MDC ResolveLaunchServerMode — default Local unless HOSTNAME=0.0.0.0
       if (hostname === '0.0.0.0' || hostname === '*' || hostname === '+') {
+        hostname = '0.0.0.0'
         allowedHosts = ['*']
       } else {
+        hostname = '127.0.0.1'
         allowedHosts = ['127.0.0.1', 'localhost']
       }
     }
@@ -132,7 +156,7 @@ export class CalendarWebServer {
     const loopbackOnly = isLoopbackOnlyHosts(allowedHosts)
     this.port = port
     this.hostname = hostname
-    this.lanMode = (hostname === '0.0.0.0' || hostname === '*' || hostname === '+') && !loopbackOnly
+    this.lanMode = !loopbackOnly
     this.allowedHosts = allowedHosts
     this.addresses = loopbackOnly
       ? [`http://127.0.0.1:${port}/`]
@@ -142,7 +166,7 @@ export class CalendarWebServer {
       void this.handleRequest(req, res)
     })
 
-    // Bind wildcard for LAN; loopback-only for local mode.
+    // LAN: wildcard bind; Local: loopback only.
     const listenHost = this.lanMode ? '0.0.0.0' : '127.0.0.1'
     this.server = server
     this.wss = new WebSocketServer({ noServer: true })
@@ -226,7 +250,10 @@ export class CalendarWebServer {
     this.server = null
     server?.close()
     this.port = 0
+    this.hostname = '127.0.0.1'
+    this.lanMode = false
     this.addresses = []
+    this.allowedHosts = ['127.0.0.1', 'localhost']
     console.log('[web-server] Stopped')
     return { ok: true, message: 'HTTP server stopped.' }
   }
@@ -270,6 +297,31 @@ export class CalendarWebServer {
       const path = url.pathname
 
       if (path.startsWith('/api/')) {
+        const onStoreMutated = (): void => {
+          if (this.options.onStoreMutated) this.options.onStoreMutated()
+          else this.broadcastStoreChanged()
+        }
+
+        const handledAttach = await tryHandleAttachmentRequest({
+          req,
+          res,
+          path,
+          auth: this.options.auth,
+          attachments: this.options.attachments,
+          onStoreMutated
+        })
+        if (handledAttach) return
+
+        const handledFile = await tryHandleBrowserFileRequest({
+          req,
+          res,
+          path,
+          auth: this.options.auth,
+          calendarStore: this.options.calendarStore,
+          onStoreMutated
+        })
+        if (handledFile) return
+
         const body = await readJsonBody(req)
         const token = AuthService.extractToken(
           req.headers.authorization,
@@ -281,7 +333,7 @@ export class CalendarWebServer {
             calendarStore: this.options.calendarStore,
             membersStore: this.options.membersStore,
             getSyncInfo: () => this.getSyncInfo(),
-            onStoreMutated: () => this.broadcastStoreChanged()
+            onStoreMutated
           },
           req.method ?? 'GET',
           path,
@@ -294,9 +346,13 @@ export class CalendarWebServer {
         return
       }
 
-      const vite = this.options.getViteOrigin()
+      const vite = preferLoopbackOrigin(this.options.getViteOrigin())
       if (vite) {
-        await proxyToVite(req, res, vite)
+        // Redirect UI to Vite instead of proxying (proxy made localhost feel slow).
+        // /api and /ws are handled above; Vite proxies those back to this server.
+        const dest = new URL(req.url ?? '/', vite).toString()
+        res.writeHead(302, { Location: dest, 'Cache-Control': 'no-store' })
+        res.end()
         return
       }
 
@@ -347,39 +403,19 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
   }
 }
 
-async function proxyToVite(
-  req: IncomingMessage,
-  res: ServerResponse,
-  viteOrigin: string
-): Promise<void> {
-  const target = new URL(req.url ?? '/', viteOrigin)
-  const lib = target.protocol === 'https:' ? httpsRequest : httpRequest
-  await new Promise<void>((resolve) => {
-    const proxyReq = lib(
-      target,
-      {
-        method: req.method,
-        headers: {
-          ...req.headers,
-          host: target.host
-        }
-      },
-      (proxyRes) => {
-        res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers)
-        proxyRes.pipe(res)
-        proxyRes.on('end', () => resolve())
-      }
-    )
-    proxyReq.on('error', (err) => {
-      console.warn('[web-server] vite proxy failed', err)
-      if (!res.headersSent) {
-        res.writeHead(502, { 'Content-Type': 'text/plain; charset=utf-8' })
-        res.end('Vite proxy failed')
-      }
-      resolve()
-    })
-    req.pipe(proxyReq)
-  })
+/** Prefer 127.0.0.1 over localhost to avoid Windows IPv6 (::1) connect delays. */
+function preferLoopbackOrigin(origin: string | null | undefined): string | null {
+  const raw = String(origin ?? '').trim()
+  if (!raw) return null
+  try {
+    const url = new URL(raw.endsWith('/') ? raw : `${raw}/`)
+    if (url.hostname === 'localhost' || url.hostname === '::1') {
+      url.hostname = '127.0.0.1'
+    }
+    return url.origin + '/'
+  } catch {
+    return raw.endsWith('/') ? raw : `${raw}/`
+  }
 }
 
 async function serveStatic(
@@ -410,7 +446,11 @@ async function serveStatic(
   }
 
   const ext = extname(filePath).toLowerCase()
-  res.writeHead(200, { 'Content-Type': MIME[ext] ?? 'application/octet-stream' })
+  const isHashedAsset = filePath.includes(`${sep}assets${sep}`)
+  res.writeHead(200, {
+    'Content-Type': MIME[ext] ?? 'application/octet-stream',
+    'Cache-Control': isHashedAsset ? 'public, max-age=31536000, immutable' : 'no-cache'
+  })
   createReadStream(filePath).pipe(res)
 }
 
@@ -430,10 +470,14 @@ function buildAddressList(hostname: string, port: number): string[] {
   return [...urls]
 }
 
-/** Resolve launch mode from .env (MDC ResolveLaunchServerMode). */
+/**
+ * Map .env HOSTNAME to tray-equivalent start modes (MDC ResolveLaunchServerMode).
+ * Missing / empty / localhost / 127.0.0.1 → Local (default).
+ * 0.0.0.0 (or * / +) → Web / LAN.
+ */
 export function resolveLaunchServerMode(): 'local' | 'lan' {
   const hostname = (
-    getEnvValue('HOSTNAME', 'MYCALENDAR_HOSTNAME', 'NEOCALENDAR_HOSTNAME') ?? '127.0.0.1'
+    getEnvValue('HOSTNAME', 'MYCALENDAR_HOSTNAME', 'NEOCALENDAR_HOSTNAME') ?? ''
   ).trim()
   if (hostname === '0.0.0.0' || hostname === '*' || hostname === '+') return 'lan'
   return 'local'

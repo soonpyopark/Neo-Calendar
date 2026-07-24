@@ -12,7 +12,9 @@
   (passed in via -d) so each build is a distinct upgrade target and old Add/Remove
   Programs entries get cleaned up automatically.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
     Name="Neo Calendar"
     Manufacturer="Neo Calendar"
@@ -34,6 +36,18 @@
     <Icon Id="AppIcon.ico" SourceFile="$(var.MsiDir)\payload\app-icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPURLINFOABOUT" Value="https://note4all.tistory.com" />
+    <!-- Wallpaper/Electron keeps Neo Calendar.exe (and DLLs) locked during upgrade.
+         MSI then schedules a reboot. Close the app first and never prompt to reboot —
+         user can relaunch from the Start menu (MDC-style; no restart required). -->
+    <Property Id="REBOOT" Value="ReallySuppress" />
+    <util:CloseApplication
+      Id="CloseNeoCalendar"
+      Target="Neo Calendar.exe"
+      CloseMessage="yes"
+      ElevatedCloseMessage="yes"
+      RebootPrompt="no"
+      TerminateProcess="1"
+      Timeout="8" />
 
     <!-- WixUI_InstallDir: license → choose install folder → install.
          (WixUI_Minimal has no directory page — that is why folder picker was missing.) -->

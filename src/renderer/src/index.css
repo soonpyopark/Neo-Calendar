@@ -89,8 +89,8 @@
   --event-lane-step: 20px;
   --day-event-gap: 6px;
   --event-more-offset: 4px;
-  --neo-header-opacity: 0.62;
-  --neo-shell-opacity: 0.35;
+  --neo-header-opacity: 0.95;
+  --neo-shell-opacity: 0.95;
   /* Window-mode resize grips / frame (Neo-only) */
   --neo-window-frame-color: var(--gcal-blue);
   --neo-window-frame-opacity: 0.85;
@@ -578,19 +578,31 @@ textarea {
   background-color: transparent;
 }
 
+/*
+ * Day tint uses the same --neo-shell-opacity as in-month cells (settings
+ * 「캘린더 불투명도」), not a fixed wash — so colored days match the shell.
+ */
 .day-cell.has-day-color::before {
   content: '';
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  background-color: var(--day-cell-bg);
-  opacity: 0.42;
+  background-color: color-mix(
+    in srgb,
+    var(--day-cell-bg) calc(var(--neo-shell-opacity) * 100%),
+    transparent
+  );
+  opacity: 1;
 }
 
 .day-cell.has-day-color:hover::before,
 .day-cell.has-day-color.selected::before {
-  opacity: 0.58;
+  background-color: color-mix(
+    in srgb,
+    var(--day-cell-bg) calc(min(1, var(--neo-shell-opacity) + 0.12) * 100%),
+    transparent
+  );
 }
 
 .day-cell.has-day-color > * {
@@ -607,7 +619,11 @@ textarea {
 }
 
 .day-cell.other-month.has-day-color::before {
-  opacity: 0.28;
+  background-color: color-mix(
+    in srgb,
+    var(--day-cell-bg) calc(var(--neo-shell-opacity) * 67%),
+    transparent
+  );
 }
 
 .day-cell.other-month .day-number .solar,
