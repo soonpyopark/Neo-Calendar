@@ -2,6 +2,7 @@ node_modules
 dist
 out
 release
+data/
 *.log
 .DS_Store
 .env
