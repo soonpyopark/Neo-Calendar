@@ -1,19 +1,17 @@
 {
   "version": 1,
   "calendar": {
-    "color": "#f6bf26",
-    "custom": true,
-    "dataKey": "8baa51e0-a686-4c31-ae7a-9c70612869fc",
-    "description": "",
     "id": "cal-aconite",
+    "dataKey": "8baa51e0-a686-4c31-ae7a-9c70612869fc",
     "name": "aconite의 캘린더",
+    "description": "",
+    "color": "#f6bf26",
+    "visible": false,
     "owner": "local",
+    "custom": true,
     "ownerLoginId": "aconite",
     "ownerName": "박순표",
-    "password": "",
-    "timezone": "Asia/Seoul",
-    "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
-    "visible": false
+    "sortOrder": 2
   },
   "events": [
     {
@@ -133,5 +131,5 @@
       "updatedAt": "2026-07-16T13:20:34.3858017Z"
     }
   ],
-  "updatedAt": "2026-07-24T02:52:00.610Z"
+  "updatedAt": "2026-07-25T09:52:18.727Z"
 }

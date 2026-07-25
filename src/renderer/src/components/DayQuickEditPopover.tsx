@@ -192,7 +192,10 @@ export function DayQuickEditPopover({
     setClickThroughEnabled(false)
     setIgnoreMouseEvents(false)
     return () => {
-      setClickThroughEnabled(true)
+      // Restore shell policy: window mode / undocked desktop keep capture;
+      // only WorkerW-embedded resumes click-through.
+      const windowLike = Boolean(document.querySelector('.wallpaper-root.is-window-mode'))
+      setClickThroughEnabled(!windowLike)
     }
   }, [])
 

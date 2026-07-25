@@ -1,20 +1,17 @@
 {
   "version": 1,
   "calendar": {
-    "color": "#bdbdbd",
-    "custom": true,
-    "dataKey": "cf2d879e-3d0d-450e-a9cd-703d49a5fb52",
-    "description": "",
     "id": "a85a47a5-6c47-4201-9afd-0282c5d6244a",
+    "dataKey": "cf2d879e-3d0d-450e-a9cd-703d49a5fb52",
     "name": "타인 일정",
+    "description": "",
+    "color": "#bdbdbd",
+    "visible": true,
     "owner": "local",
+    "custom": true,
     "ownerLoginId": "admin",
     "ownerName": "박순표",
-    "password": "",
-    "sortOrder": 3,
-    "timezone": "Asia/Seoul",
-    "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
-    "visible": true
+    "sortOrder": 3
   },
   "events": [
     {
@@ -79,5 +76,5 @@
       "updatedAt": "2026-07-22T11:32:47.5626382Z"
     }
   ],
-  "updatedAt": "2026-07-23T16:44:53.139Z"
+  "updatedAt": "2026-07-25T09:52:18.729Z"
 }

@@ -1,20 +1,17 @@
 {
   "version": 1,
   "calendar": {
-    "color": "#00bcd4",
-    "custom": true,
-    "dataKey": "c7938970-daa5-4ff8-bc49-12cd5471c479",
-    "description": "",
     "id": "5605ea3e-770b-41f3-b46c-609e593ce8a8",
+    "dataKey": "c7938970-daa5-4ff8-bc49-12cd5471c479",
     "name": "기념일",
+    "description": "",
+    "color": "#00bcd4",
+    "visible": true,
     "owner": "local",
+    "custom": true,
     "ownerLoginId": "admin",
     "ownerName": "박순표",
-    "password": "",
-    "sortOrder": 2,
-    "timezone": "Asia/Seoul",
-    "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
-    "visible": true
+    "sortOrder": 2
   },
   "events": [
     {
@@ -245,5 +242,5 @@
       "updatedAt": "2026-07-16T01:29:05.1998775Z"
     }
   ],
-  "updatedAt": "2026-07-23T16:44:53.136Z"
+  "updatedAt": "2026-07-25T09:52:18.728Z"
 }

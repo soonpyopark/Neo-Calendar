@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, type ReactElement, type Ref } from 'react'
+import { useRef, type ReactElement, type Ref } from 'react'
 import { InteractionUI } from './InteractionUI'
 import {
   DesktopModeIcon,
@@ -30,7 +30,6 @@ export type AppChromeProps = {
   modeBusy?: boolean
   /** From main: false while cursor must leave the header after a mode switch. */
   switchReady?: boolean
-  /** Expose chrome root so wake zones can be derived from its buttons. */
   chromeRef?: Ref<HTMLDivElement | null>
   onOpenSearch: () => void
   onOpenSettings: () => void
@@ -62,7 +61,6 @@ export function AppChrome({
   const isWindow = mode === 'window'
   const loggedIn = Boolean(user)
   const localChromeRef = useRef<HTMLDivElement | null>(null)
-  const windowModeBtnRef = useRef<HTMLSpanElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
 
   const setChromeRef = (node: HTMLDivElement | null): void => {
@@ -70,49 +68,6 @@ export function AppChrome({
     if (typeof chromeRef === 'function') chromeRef(node)
     else if (chromeRef) (chromeRef as { current: HTMLDivElement | null }).current = node
   }
-
-  const publishWindowModeZone = (): void => {
-    const api = window.neoCalendar
-    if (!api?.setWindowModeHitZone) return
-
-    if (mode !== 'desktop') {
-      api.setWindowModeHitZone(null)
-      return
-    }
-
-    const el = windowModeBtnRef.current
-    if (!el) {
-      api.setWindowModeHitZone(null)
-      return
-    }
-    const rect = el.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) {
-      api.setWindowModeHitZone(null)
-      return
-    }
-    api.setWindowModeHitZone({
-      x: rect.left,
-      y: rect.top,
-      width: rect.width,
-      height: rect.height
-    })
-  }
-
-  useLayoutEffect(() => {
-    publishWindowModeZone()
-  })
-
-  useEffect(() => {
-    const onResize = (): void => publishWindowModeZone()
-    window.addEventListener('resize', onResize)
-    const id = window.setInterval(publishWindowModeZone, 400)
-    return () => {
-      window.removeEventListener('resize', onResize)
-      window.clearInterval(id)
-      window.neoCalendar?.setWindowModeHitZone?.(null)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/ref
-  }, [mode])
 
   return (
     <div
@@ -201,7 +156,7 @@ export function AppChrome({
             aria-pressed={isDesktop}
             title={
               isDesktop
-                ? '바탕화면 모드 — 아이콘 아래 (버튼 호버·날짜 더블클릭 시 일시 분리)'
+                ? '바탕화면 모드 — 아이콘 아래'
                 : !switchReady
                   ? '잠시만 기다려 주세요'
                   : '바탕화면에 고정 (아이콘 아래로 들어감)'
@@ -215,28 +170,26 @@ export function AppChrome({
             <DesktopModeIcon />
           </InteractionUI>
 
-          <span ref={windowModeBtnRef} className="window-mode-hit-host">
-            <InteractionUI
-              as="button"
-              className={cn(
-                iconBtnClass,
-                iconBtnDisabledClass,
-                isWindow && softBlueIconBtnMutedClass
-              )}
-              aria-label="창모드"
-              aria-pressed={isWindow}
-              title={
-                !switchReady ? '잠시만 기다려 주세요' : '창 모드 — 이동·크기조절 가능'
-              }
-              disabled={modeBusy || isWindow || !modeButtonsReady}
-              onClick={() => {
-                if (!modeButtonsReady) return
-                onEnterWindow()
-              }}
-            >
-              <WindowModeIcon />
-            </InteractionUI>
-          </span>
+          <InteractionUI
+            as="button"
+            className={cn(
+              iconBtnClass,
+              iconBtnDisabledClass,
+              isWindow && softBlueIconBtnMutedClass
+            )}
+            aria-label="창모드"
+            aria-pressed={isWindow}
+            title={
+              !switchReady ? '잠시만 기다려 주세요' : '창 모드 — 이동·크기조절 가능'
+            }
+            disabled={modeBusy || isWindow || !modeButtonsReady}
+            onClick={() => {
+              if (!modeButtonsReady) return
+              onEnterWindow()
+            }}
+          >
+            <WindowModeIcon />
+          </InteractionUI>
         </div>
 
         <InteractionUI
@@ -251,5 +204,3 @@ export function AppChrome({
     </div>
   )
 }
-
-export default AppChrome

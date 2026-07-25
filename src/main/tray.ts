@@ -110,29 +110,26 @@ export function createAppTray(options: {
     }
   }
 
-  const bringToFront = (): void => {
+  const showFromTray = (): void => {
+    // Tray → window mode (primary window-mode entry).
+    options.desktopMode.enterWindow({ force: true })
     const win = options.getWindow()
     if (!win || win.isDestroyed()) return
-    const mode = options.desktopMode.getLaunchMode()
+    if (win.isMinimized()) win.restore()
+    win.show()
+    win.focus()
+    win.moveTop()
+    rebuild()
+  }
 
-    if (mode === 'desktop') {
-      if (!win.isVisible()) win.show()
-      // Raise above other apps so covered day cells can be double-clicked (MDC).
-      options.desktopMode.suspendForInteraction()
-      win.setAlwaysOnTop(true, 'floating')
-      win.show()
-      win.focus()
-      win.moveTop()
-      setTimeout(() => {
-        if (options.desktopMode.getLaunchMode() !== 'desktop') return
-        const current = options.getWindow()
-        if (!current || current.isDestroyed()) return
-        if (!options.desktopMode.isInteractionSuspended()) return
-        current.setAlwaysOnTop(false)
-      }, 2500)
+  const bringToFront = (): void => {
+    // Desktop → window mode. Window → raise.
+    if (options.desktopMode.getLaunchMode() === 'desktop') {
+      showFromTray()
       return
     }
-
+    const win = options.getWindow()
+    if (!win || win.isDestroyed()) return
     if (win.isMinimized()) win.restore()
     if (!win.isVisible()) win.show()
     win.setAlwaysOnTop(true, 'floating')
@@ -151,30 +148,8 @@ export function createAppTray(options: {
   const hideToTray = (): void => {
     const win = options.getWindow()
     if (!win || win.isDestroyed()) return
-    try {
-      if (
-        options.desktopMode.getLaunchMode() === 'desktop' &&
-        options.desktopMode.isInteractionSuspended()
-      ) {
-        options.desktopMode.resumeUnderIcons()
-      }
-    } catch {
-      /* ignore */
-    }
     win.hide()
     maybeShowCloseToTrayTip()
-  }
-
-  const showFromTray = (): void => {
-    // MDC ShowFromTray → EnterWindowMode (Unlock) + bring to front.
-    options.desktopMode.enterWindow({ force: true })
-    const win = options.getWindow()
-    if (!win || win.isDestroyed()) return
-    if (win.isMinimized()) win.restore()
-    win.show()
-    win.focus()
-    win.moveTop()
-    rebuild()
   }
 
   const showAbout = (): void => {
@@ -266,10 +241,7 @@ export function createAppTray(options: {
       {
         label: mode === 'desktop' ? '✓ 바탕화면 모드' : '바탕화면 모드',
         click: () => {
-          if (options.desktopMode.getLaunchMode() === 'desktop') {
-            bringToFront()
-            return
-          }
+          if (options.desktopMode.getLaunchMode() === 'desktop') return
           const win = options.getWindow()
           if (win && !win.isVisible()) win.showInactive()
           options.desktopMode.enterDesktop({

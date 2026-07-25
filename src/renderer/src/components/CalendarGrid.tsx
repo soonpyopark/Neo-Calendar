@@ -77,7 +77,7 @@ import {
 } from '../lib/headerButtonClasses'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import type { CalendarEvent } from '../../../shared/calendarTypes'
-import type { AppSettings, AuthUser, ClientHitRect, LaunchMode } from '../../../shared/ipc'
+import type { AppSettings, AuthUser, LaunchMode } from '../../../shared/ipc'
 import { SiteLink } from './SiteLink'
 import { openExternalUrl } from '../lib/openExternal'
 
@@ -260,6 +260,8 @@ function toWeekStartKey(week: DayCell[]): string {
 
 export type CalendarGridProps = {
   mode: LaunchMode
+  /** True only while WorkerW-embedded. Undocked desktop should interact like window mode. */
+  embedded?: boolean
   switchReady?: boolean
   user: AuthUser | null
   /** False until first getAuth() resolves — avoids flashing login before remembered session. */
@@ -275,6 +277,7 @@ export type CalendarGridProps = {
  */
 export function CalendarGrid({
   mode,
+  embedded = false,
   switchReady = true,
   user,
   authReady = true,
@@ -432,140 +435,7 @@ export function CalendarGrid({
   const weekStartsOn: 0 | 1 =
     settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
 
-  const rectToZone = (rect: DOMRect, pad = 2): ClientHitRect => ({
-    x: rect.left - pad,
-    y: rect.top - pad,
-    width: rect.width + pad * 2,
-    height: rect.height + pad * 2
-  })
-
-  /** Search/settings/login/export — hover undock for IME/modals. */
-  const publishWakeZones = (): void => {
-    const api = window.neoCalendar
-    if (!api?.setWakeHitZones) return
-    if (mode !== 'desktop') {
-      api.setWakeHitZones([])
-      api.setClickForwardHitZones?.([])
-      return
-    }
-
-    const pad = 2
-    const chromeRoot = chromeRef.current
-    // Skip 창모드 (own hit-zone) and 바탕화면모드 (already in desktop).
-    const wakeButtons = chromeRoot
-      ? Array.from(chromeRoot.querySelectorAll<HTMLElement>('button')).filter((btn) => {
-          const host = btn.closest('.window-mode-hit-host')
-          if (host) return false
-          const label = `${btn.getAttribute('aria-label') ?? ''} ${btn.title ?? ''}`
-          if (label.includes('바탕화면')) return false
-          return true
-        })
-      : []
-    const wakeZones = wakeButtons
-      .map((el) => el.getBoundingClientRect())
-      .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => rectToZone(rect, pad))
-
-    api.setWakeHitZones(wakeZones)
-
-    // Period toolbar: stay-embedded click inject (연/주/월/nav/오늘/internet/eye/check).
-    const periodRoot = periodHeaderRef.current
-    const clickZones = periodRoot
-      ? Array.from(periodRoot.querySelectorAll<HTMLElement>('button, [data-embed-click="1"]'))
-          .map((el) => el.getBoundingClientRect())
-          .filter((rect) => rect.width > 0 && rect.height > 0)
-          .map((rect) => rectToZone(rect, pad))
-      : []
-    api.setClickForwardHitZones?.(clickZones)
-
-    const stripRoots: HTMLElement[] = []
-    if (chromeRoot) stripRoots.push(chromeRoot)
-    if (periodRoot) stripRoots.push(periodRoot)
-    if (stripRoots.length > 0) {
-      const stripBottom = Math.max(
-        ...stripRoots.map((el) => {
-          const r = el.getBoundingClientRect()
-          return r.top + r.height
-        })
-      )
-      api.setHeaderHitZone?.({
-        x: 0,
-        y: 0,
-        width: window.innerWidth,
-        height: Math.max(0, stripBottom)
-      })
-    }
-  }
-
-  const publishDayCellZones = (): void => {
-    const api = window.neoCalendar
-    if (!api?.setDayCellHitZones) return
-    if (mode !== 'desktop') {
-      api.setDayCellHitZones([])
-      return
-    }
-
-    // Infinite month buffer keeps ~100+ weeks in the DOM. Only publish cells that
-    // intersect the visible month-body — stale off-screen rects after scroll used to
-    // open quick-edit for wrong dates (e.g. June) when double-clicking empty chrome.
-    const body = monthBodyRef.current
-    const clip = body?.getBoundingClientRect()
-    if (!clip || clip.width < 8 || clip.height < 8) {
-      api.setDayCellHitZones([])
-      return
-    }
-
-    const zones = Array.from(
-      document.querySelectorAll<HTMLElement>('.neo-cal-shell .day-cell[data-date-key]')
-    )
-      .map((el) => {
-        const rect = el.getBoundingClientRect()
-        const dateKey = el.dataset.dateKey ?? ''
-        const left = Math.max(rect.left, clip.left)
-        const top = Math.max(rect.top, clip.top)
-        const right = Math.min(rect.right, clip.right)
-        const bottom = Math.min(rect.bottom, clip.bottom)
-        const width = right - left
-        const height = bottom - top
-        return { x: left, y: top, width, height, dateKey }
-      })
-      .filter((z) => z.dateKey && z.width >= 8 && z.height >= 8)
-
-    api.setDayCellHitZones(zones)
-  }
-
-  const publishDesktopHitZones = (): void => {
-    publishWakeZones()
-    publishDayCellZones()
-  }
-
-  useLayoutEffect(() => {
-    publishDesktopHitZones()
-  })
-
-  useEffect(() => {
-    const onResize = (): void => publishDesktopHitZones()
-    window.addEventListener('resize', onResize)
-    const id = window.setInterval(publishDesktopHitZones, 400)
-
-    const body = monthBodyRef.current
-    const onScroll = (): void => {
-      // Scroll does not always re-render — refresh day-cell zones immediately.
-      publishDayCellZones()
-    }
-    body?.addEventListener('scroll', onScroll, { passive: true })
-
-    return () => {
-      window.removeEventListener('resize', onResize)
-      window.clearInterval(id)
-      body?.removeEventListener('scroll', onScroll)
-      window.neoCalendar?.setWakeHitZones?.([])
-      window.neoCalendar?.setClickForwardHitZones?.([])
-      window.neoCalendar?.setDayCellHitZones?.([])
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- publish uses latest mode/refs
-  }, [mode, viewMode])
-
+  // Desktop mouse-input bridges removed. Embedded = click-through; use tray.
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
   const weekdayLabels = useMemo(() => {
@@ -681,7 +551,8 @@ export function CalendarGrid({
       const next = new Date(nextYear, nextMonth1 - 1, 1)
       setViewDate(next)
     },
-    wheelLocked: wheelLocked || mode === 'desktop'
+    // Lock wheel only while under icons — undocked desktop scrolls like window mode.
+    wheelLocked: wheelLocked || (mode === 'desktop' && embedded)
   })
 
   const scrollToMonthRef = useRef(scrollToMonth)
@@ -989,105 +860,19 @@ export function CalendarGrid({
     )
   }
 
-  const openQuickEditByDateKey = (
-    dateKey: string,
-    clientX?: number,
-    clientY?: number
-  ): void => {
-    let resolvedKey = dateKey
-    let el: HTMLElement | null = null
-
-    // Prefer the live cell under the cursor — hit-zones can lag behind month scroll.
-    if (typeof clientX === 'number' && typeof clientY === 'number') {
-      const under = document.elementFromPoint(clientX, clientY)
-      const cell =
-        under instanceof Element
-          ? under.closest<HTMLElement>('.neo-cal-shell .day-cell[data-date-key]')
-          : null
-      if (!cell?.dataset.dateKey) {
-        // Non-date chrome (weekdays / gaps / header): do not open a random buffer day.
-        return
-      }
-      resolvedKey = cell.dataset.dateKey
-      el = cell
-    } else {
-      el = document.querySelector<HTMLElement>(
-        `.neo-cal-shell .day-cell[data-date-key="${CSS.escape(dateKey)}"]`
-      )
-    }
-
-    const date = parseDateKey(resolvedKey)
-    if (!date) return
-
-    const body = monthBodyRef.current
-    const bodyRect = body?.getBoundingClientRect()
-    const rect = el?.getBoundingClientRect()
-    if (el && bodyRect && rect) {
-      const visible =
-        rect.bottom > bodyRect.top + 2 &&
-        rect.top < bodyRect.bottom - 2 &&
-        rect.right > bodyRect.left + 2 &&
-        rect.left < bodyRect.right - 2
-      if (!visible) return
-    }
-
-    setEventPopover(null)
-    setDayList(null)
-    setSelectedKey(resolvedKey)
-    // Prefer the live day-cell rect for sizing. Pointer coords (WorkerW IPC) are only
-    // for hit-testing — a 0×0 anchor collapses the popover to the minimum height.
-    setQuickEdit({
-      dateKey: resolvedKey,
-      date,
-      anchorRect: rect
-        ? { top: rect.top, left: rect.left, width: rect.width, height: rect.height }
-        : typeof clientX === 'number' && typeof clientY === 'number'
-          ? { top: clientY, left: clientX, width: 0, height: 0 }
-          : null
-    })
-  }
-
-  useEffect(() => {
-    const api = window.neoCalendar
-    if (!api?.onOpenDayQuickEdit) return
-    return api.onOpenDayQuickEdit(({ dateKey, clientX, clientY }) => {
-      openQuickEditByDateKey(dateKey, clientX, clientY)
-    })
-  }, [])
-
   useEffect(() => {
     const onTheme = (): void => setThemeEpoch((n) => n + 1)
     window.addEventListener('neocalendar:colorSchemeEffective', onTheme)
     return () => window.removeEventListener('neocalendar:colorSchemeEffective', onTheme)
   }, [])
 
-  const interactionBusy = Boolean(
-    quickEdit ||
-      searchOpen ||
-      settingsOpen ||
-      loginOpen ||
-      eventPopover ||
-      dayList ||
-      editor ||
-      scopeDialog
-  )
-  const interactionBusyRef = useRef(interactionBusy)
-  interactionBusyRef.current = interactionBusy
-
-  useEffect(() => {
-    window.neoCalendar?.setInteractionBusy?.(interactionBusy)
-    return () => {
-      window.neoCalendar?.setInteractionBusy?.(false)
-    }
-  }, [interactionBusy])
-
   useEffect(() => {
     const api = window.neoCalendar
     if (!api?.onModeChanged) return
     return api.onModeChanged((status) => {
       onModeChange(status.mode)
-      // Don't kill open text UIs (settings/login/editor) while the user is typing.
-      if (status.mode === 'desktop' && status.embedded && !interactionBusyRef.current) {
+      // Re-embed → close overlays so they aren't stranded under desktop icons.
+      if (status.mode === 'desktop' && status.embedded) {
         closeOverlays()
       }
     })
@@ -1681,7 +1466,13 @@ export function CalendarGrid({
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
-            <InteractionUI as="button" className={todayBtnClass} onClick={goToday}>
+            <InteractionUI
+              as="button"
+              className={todayBtnClass}
+              aria-label="오늘"
+              title="오늘"
+              onClick={goToday}
+            >
               오늘
             </InteractionUI>
             <InteractionUI

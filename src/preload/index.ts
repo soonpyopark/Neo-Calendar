@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type {
   AppSettings,
+  ClickForwardHitZone,
   ClientHitRect,
   DayCellHitZone,
   LoginResult,
@@ -38,7 +39,7 @@ const api: NeoCalendarApi = {
   setWakeHitZones: (zones: ClientHitRect[]) => {
     ipcRenderer.send('set-wake-hit-zones', zones)
   },
-  setClickForwardHitZones: (zones: ClientHitRect[]) => {
+  setClickForwardHitZones: (zones: ClickForwardHitZone[]) => {
     ipcRenderer.send('set-click-forward-hit-zones', zones)
   },
   setDayCellHitZones: (zones: DayCellHitZone[]) => {

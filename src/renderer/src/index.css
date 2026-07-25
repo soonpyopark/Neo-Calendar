@@ -254,11 +254,6 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
-.window-mode-hit-host {
-  display: inline-flex;
-  flex-shrink: 0;
-}
-
 /* —— Month view: transparent shell; day cells carry --neo-shell-opacity (no double stack) —— */
 .month-view {
   display: flex;
@@ -648,6 +643,14 @@ textarea {
 /* 대한민국의 휴일 — 날짜 숫자 일요일과 동일 빨강 (토요일 파랑보다 우선) */
 .day-cell.holiday:not(.other-month) .day-number .solar {
   color: var(--gcal-sunday);
+}
+
+/* 오늘 표시(파란 원)는 요일/공휴일 글자색보다 항상 우선 — 선택자 개수를 늘려
+   위 규칙들(specificity 5)보다 강하게 만들어 흰 글씨가 항상 보이게 한다. */
+.day-cell.today.saturday:not(.other-month) .day-number .solar,
+.day-cell.today.sunday:not(.other-month) .day-number .solar,
+.day-cell.today.holiday:not(.other-month) .day-number .solar {
+  color: #fff;
 }
 
 .day-number {
@@ -1422,7 +1425,7 @@ body.is-resizing-window {
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  border-bottom: 1px solid var(--gcal-border-light);
+  border-bottom: 1px solid #cccccc;
   padding: 0.5rem 0.75rem;
 }
 
@@ -1580,7 +1583,7 @@ body.is-resizing-window {
   flex-shrink: 0;
   align-items: center;
   gap: 0.5rem;
-  border-top: 1px solid var(--gcal-border-light);
+  border-top: 1px solid #cccccc;
   padding: 0.5rem 0.625rem;
 }
 
@@ -2658,13 +2661,14 @@ button.is-primary:hover:not(:disabled) {
   justify-content: center;
   border: 0;
   border-radius: 9999px;
-  background: transparent;
+  /* Match check / mark / emoji / calendar / tag circle fill. */
+  background: var(--gcal-surface-2, #f1f3f4);
   color: var(--gcal-blue, #1a73e8);
   transition: background-color 0.15s, color 0.15s;
 }
 
 .event-editor-action-btn:hover {
-  background: var(--gcal-blue-soft, #e8f0fe);
+  background: color-mix(in srgb, var(--gcal-heading, #202124) 10%, var(--gcal-surface-2, #f1f3f4));
   color: var(--gcal-blue-dark, #174ea6);
 }
 

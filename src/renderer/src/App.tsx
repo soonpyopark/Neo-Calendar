@@ -13,6 +13,8 @@ function applyOpacitySettings(settings: AppSettings): void {
 
 export default function App(): ReactElement {
   const [mode, setMode] = useState<LaunchMode>('window')
+  /** True only while WorkerW-embedded (not while temporarily undocked). */
+  const [embedded, setEmbedded] = useState(false)
   const [switchReady, setSwitchReady] = useState(true)
   const [user, setUser] = useState<AuthUser | null>(null)
   const [authReady, setAuthReady] = useState(false)
@@ -31,6 +33,7 @@ export default function App(): ReactElement {
 
     void api.getModeStatus().then((status: ModeStatus) => {
       setMode(status.mode)
+      setEmbedded(status.embedded)
       setSwitchReady(status.switchReady !== false)
     })
     void api.getAuth().then((next) => {
@@ -44,6 +47,7 @@ export default function App(): ReactElement {
 
     return api.onModeChanged((status) => {
       setMode(status.mode)
+      setEmbedded(status.embedded)
       setSwitchReady(status.switchReady !== false)
     })
   }, [])
@@ -54,10 +58,15 @@ export default function App(): ReactElement {
     applyOpacitySettings(next)
   }
 
+  // Undocked desktop must behave like window mode for mouse/scroll/IME.
+  // Click-through only while actually under icons.
+  const clickThrough = mode === 'desktop' && embedded
+
   return (
-    <WallpaperContainer clickThrough={mode === 'desktop'}>
+    <WallpaperContainer clickThrough={clickThrough}>
       <CalendarGrid
         mode={mode}
+        embedded={embedded}
         switchReady={switchReady}
         user={user}
         authReady={authReady}

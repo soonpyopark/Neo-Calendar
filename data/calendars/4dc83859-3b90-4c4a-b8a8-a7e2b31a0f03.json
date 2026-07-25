@@ -1,20 +1,17 @@
 {
   "version": 1,
   "calendar": {
-    "color": "#673ab7",
-    "custom": true,
-    "dataKey": "4dc83859-3b90-4c4a-b8a8-a7e2b31a0f03",
-    "description": "",
     "id": "32496041-84de-4378-8562-e281f601992f",
+    "dataKey": "4dc83859-3b90-4c4a-b8a8-a7e2b31a0f03",
     "name": "개인 일정",
+    "description": "",
+    "color": "#673ab7",
+    "visible": true,
     "owner": "local",
+    "custom": true,
     "ownerLoginId": "admin",
     "ownerName": "박순표",
-    "password": "",
-    "sortOrder": 0,
-    "timezone": "Asia/Seoul",
-    "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
-    "visible": true
+    "sortOrder": 0
   },
   "events": [
     {
@@ -39,7 +36,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "점심 식사(이진혁 주사님)",
-      "updatedAt": "2026-07-24T02:00:08.062Z"
+      "updatedAt": "2026-07-25T12:40:11.707Z"
     },
     {
       "allDay": true,
@@ -404,5 +401,5 @@
       "updatedAt": "2026-07-23T17:34:57.711Z"
     }
   ],
-  "updatedAt": "2026-07-24T03:18:09.833Z"
+  "updatedAt": "2026-07-25T12:40:11.707Z"
 }

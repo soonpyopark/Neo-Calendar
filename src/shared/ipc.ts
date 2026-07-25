@@ -61,6 +61,11 @@ export type ClientHitRect = {
   height: number
 }
 
+/** Period-toolbar zone: screen hit → inject click by stable action id. */
+export type ClickForwardHitZone = ClientHitRect & {
+  action: string
+}
+
 export type DayCellHitZone = ClientHitRect & {
   dateKey: string
 }
@@ -78,27 +83,17 @@ export type NeoCalendarApi = {
   enterWindow: () => Promise<ModeStatus>
   getWindowBounds: () => Promise<WidgetBounds>
   setWindowBounds: (bounds: WidgetBounds) => Promise<WidgetBounds>
-  /** Client-space rect of the window-mode button (for WorkerW click bridging). */
+  /** Legacy no-ops — desktop mouse / hit-zone bridges removed. */
   setWindowModeHitZone: (rect: ClientHitRect | null) => void
-  /** Client-space rect of the app chrome header (legacy; prefer setWakeHitZones). */
   setHeaderHitZone: (rect: ClientHitRect | null) => void
-  /** Client-space zones that temporarily undock under-icons mode on hover. */
   setWakeHitZones: (zones: ClientHitRect[]) => void
-  /**
-   * Period/toolbar buttons that receive injected clicks while WorkerW-embedded
-   * (연/주/월/nav/오늘/internet/eye/check) — no undock.
-   */
-  setClickForwardHitZones: (zones: ClientHitRect[]) => void
-  /** Day cells for WorkerW double-click → quick edit (no hover wake). */
+  setClickForwardHitZones: (zones: ClickForwardHitZone[]) => void
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
-  /**
-   * True while a desktop-mode UI task is open (quick edit / search / settings / login).
-   * Keeps the temporary undock from re-embedding until work finishes + idle timeout.
-   */
   setInteractionBusy: (busy: boolean) => void
   /** Activate OS keyboard/IME focus for Hangul (and other IME) text input. */
   focusForTextInput: () => void
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
+  /** No-op subscription — day-cell double-click bridge removed. */
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
   /** Fired when calendar store mutates (web API or another client). */
   onStoreChanged: (listener: () => void) => () => void

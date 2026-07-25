@@ -5,18 +5,14 @@ import { CalendarStore } from './calendarStore/CalendarStore'
 import { EventAttachmentService } from './calendarStore/eventAttachments'
 import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
+import { DesktopIdleEmbedBridge } from './desktopIdleEmbedBridge'
 import { getEnvValue, loadDotEnv, resolveAdminCredentials } from './dotEnv'
 import { exportBackupZip, importBackupZip } from './calendarStore/backupZip'
 import { applyHolidayKeyFromEnv, syncKoreanHolidays } from './calendarStore/holidaySync'
 import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
-import { DayCellDblClickBridge, type DayCellClientZone } from './dayCellDblClickBridge'
-import { DesktopInputBridge } from './desktopInputBridge'
-import { hwndFromNativeHandle } from './desktopHitTest'
 import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
-import { WindowModeHitZone } from './windowModeHitZone'
-import { HeaderClickBridge } from './headerClickBridge'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
 import {
@@ -33,7 +29,7 @@ import type {
   SyncHolidaysInput,
   TagRecord
 } from '../shared/calendarTypes'
-import type { AppSettings, ClientHitRect, DayCellHitZone, ModeStatus } from '../shared/ipc'
+import type { AppSettings, ModeStatus } from '../shared/ipc'
 import {
   getShellRunAtStartup,
   projectViewOptionsForClient
@@ -84,12 +80,6 @@ function notifyStoreChanged(): void {
     /* ignore */
   }
 }
-let windowModeHitZone: WindowModeHitZone | null = null
-let headerClickBridge: HeaderClickBridge | null = null
-let desktopInputBridge: DesktopInputBridge | null = null
-let dayCellDblClickBridge: DayCellDblClickBridge | null = null
-let dayCellClientZones: DayCellClientZone[] = []
-let interactionBusy = false
 /** True only for tray "종료" / OS shutdown — otherwise close hides to tray (MDC). */
 let forceQuit = false
 
@@ -243,8 +233,17 @@ function registerIpc(): void {
         mainWindow.setIgnoreMouseEvents(true)
         return
       }
-      if (desktopMode.getLaunchMode() === 'window') {
+      // Window mode + unlocked desktop: always capture.
+      if (
+        desktopMode.getLaunchMode() === 'window' ||
+        desktopMode.isInteractionSuspended()
+      ) {
         mainWindow.setIgnoreMouseEvents(false)
+        return
+      }
+      // WorkerW-embedded: full click-through.
+      if (desktopMode.isWorkerEmbedded()) {
+        mainWindow.setIgnoreMouseEvents(true)
         return
       }
       const shouldForward = options?.forwardToOverlay ?? options?.forward ?? true
@@ -256,48 +255,13 @@ function registerIpc(): void {
     }
   )
 
-  ipcMain.on('set-window-mode-hit-zone', (_event, rect: ClientHitRect | null) => {
-    windowModeHitZone?.setClientRect(rect ?? null)
-  })
-
-  ipcMain.on('set-header-hit-zone', (_event, rect: ClientHitRect | null) => {
-    if (rect && rect.height > 0) {
-      desktopMode.setHeaderHitHeight(Math.round(rect.height + rect.y))
-    }
-  })
-
-  ipcMain.on('set-wake-hit-zones', (_event, zones: ClientHitRect[] | null) => {
-    desktopMode.setWakeClientZones(Array.isArray(zones) ? zones : [])
-  })
-
-  ipcMain.on('set-click-forward-hit-zones', (_event, zones: ClientHitRect[] | null) => {
-    headerClickBridge?.setClientZones(Array.isArray(zones) ? zones : [])
-  })
-
-  ipcMain.on('set-day-cell-hit-zones', (_event, zones: DayCellHitZone[] | null) => {
-    dayCellClientZones = Array.isArray(zones)
-      ? zones
-          .filter(
-            (z) =>
-              z &&
-              typeof z.dateKey === 'string' &&
-              z.dateKey.length > 0 &&
-              z.width > 0 &&
-              z.height > 0
-          )
-          .map((z) => ({
-            x: Math.round(z.x),
-            y: Math.round(z.y),
-            width: Math.round(z.width),
-            height: Math.round(z.height),
-            dateKey: z.dateKey
-          }))
-      : []
-  })
-
-  ipcMain.on('set-interaction-busy', (_event, busy: boolean) => {
-    interactionBusy = Boolean(busy)
-  })
+  // Legacy hit-zone / busy IPCs — no-ops (desktop mouse bridges removed).
+  ipcMain.on('set-window-mode-hit-zone', () => undefined)
+  ipcMain.on('set-header-hit-zone', () => undefined)
+  ipcMain.on('set-wake-hit-zones', () => undefined)
+  ipcMain.on('set-click-forward-hit-zones', () => undefined)
+  ipcMain.on('set-day-cell-hit-zones', () => undefined)
+  ipcMain.on('set-interaction-busy', () => undefined)
 
   ipcMain.on('focus-for-text-input', () => {
     desktopMode.focusForTextInput()
@@ -661,111 +625,18 @@ function bootApp(): void {
 
   createWindow()
 
-  // Fully embedded: window-mode button still works via hit-zone.
-  windowModeHitZone = new WindowModeHitZone(
-    () => mainWindow,
-    () => desktopMode.getLockedBounds(),
-    () => desktopMode.isWorkerEmbedded(),
-    () => {
-      desktopMode.enterWindow({ force: true })
-    }
-  )
-  windowModeHitZone.start()
-
-  // Period toolbar (연/주/월/nav/오늘/internet/eye/check): click while staying embedded.
-  headerClickBridge = new HeaderClickBridge(
-    () => mainWindow,
-    () => desktopMode.getLockedBounds(),
-    () => desktopMode.isWorkerEmbedded()
-  )
-  headerClickBridge.start()
-
-  // Hover IME/modal chrome (search/settings/login…) → temporary undock;
-  // outside click → re-embed immediately; else 10s idle → under icons.
-  // After button/tray desktop enter, wake is held until the cursor leaves those buttons.
-  desktopInputBridge = new DesktopInputBridge({
-    isArmed: () => desktopMode.getLaunchMode() === 'desktop',
-    isSuspended: () => desktopMode.isInteractionSuspended(),
-    isBusy: () => interactionBusy,
-    shouldHoldWake: () => desktopMode.shouldHoldWake(),
-    noteWakeCursor: (over) => desktopMode.noteWakeCursor(over),
-    getEnterZones: () => desktopMode.getWakeScreenZones(),
-    getWidgetBounds: () => desktopMode.getLockedBounds(),
-    onEnter: () => desktopMode.suspendForInteraction(),
-    onLeave: () => desktopMode.resumeUnderIcons()
-  })
-  desktopInputBridge.start()
-
-  // Date-cell double-click: undock + open/retarget quick edit (no hover wake).
-  // Also armed while undocked + busy so another day can be opened without closing first.
-  dayCellDblClickBridge = new DayCellDblClickBridge({
+  // Cold-start unlocked desktop: 10s without input → WorkerW embed.
+  const idleEmbed = new DesktopIdleEmbedBridge({
     isArmed: () =>
-      desktopMode.getLaunchMode() === 'desktop' &&
-      (desktopMode.isWorkerEmbedded() ||
-        (desktopMode.isInteractionSuspended() && interactionBusy)),
-    getScreenOrigin: () => desktopMode.getLockedBounds(),
-    getOurHwnd: () => {
-      const win = mainWindow
-      if (!win || win.isDestroyed()) return null
-      try {
-        return hwndFromNativeHandle(win.getNativeWindowHandle())
-      } catch {
-        return null
-      }
-    },
-    getZones: () => dayCellClientZones,
-    onDoubleClick: ({ dateKey, clientX, clientY }) => {
-      const win = mainWindow
-      if (!win || win.isDestroyed()) return
-
-      // Re-hit-test in the live DOM before undocking. Published zones can be stale after
-      // month scroll (infinite buffer), which opened quick-edit for off-screen days.
-      void win.webContents
-        .executeJavaScript(
-          `(() => {
-            const el = document.elementFromPoint(${clientX}, ${clientY});
-            if (!el || !el.closest) return { ok: false };
-            if (el.closest('.day-quick-edit')) return { ok: false };
-            const cell = el.closest('.neo-cal-shell .day-cell[data-date-key]');
-            if (!cell) return { ok: false };
-            const key = cell.getAttribute('data-date-key') || '';
-            if (!key) return { ok: false };
-            const body = cell.closest('.month-body');
-            if (body) {
-              const br = body.getBoundingClientRect();
-              const cr = cell.getBoundingClientRect();
-              const visible =
-                cr.bottom > br.top + 2 &&
-                cr.top < br.bottom - 2 &&
-                cr.right > br.left + 2 &&
-                cr.left < br.right - 2;
-              if (!visible) return { ok: false };
-            }
-            return { ok: true, dateKey: key };
-          })()`,
-          true
-        )
-        .then((result: unknown) => {
-          const hit = result as { ok?: boolean; dateKey?: string } | null
-          if (!hit?.ok || !hit.dateKey) return
-          if (!desktopMode.isInteractionSuspended()) {
-            desktopMode.suspendForInteraction()
-          }
-          win.webContents.send('open-day-quick-edit', {
-            dateKey: hit.dateKey,
-            clientX,
-            clientY
-          })
-        })
-        .catch(() => {
-          if (!desktopMode.isInteractionSuspended()) {
-            desktopMode.suspendForInteraction()
-          }
-          win.webContents.send('open-day-quick-edit', { dateKey, clientX, clientY })
-        })
+      desktopMode.getLaunchMode() === 'desktop' && desktopMode.isInteractionSuspended(),
+    onEmbed: () => {
+      desktopMode.resumeUnderIcons()
     }
   })
-  dayCellDblClickBridge.start()
+  idleEmbed.start()
+  mainWindow?.webContents.on('before-input-event', () => {
+    idleEmbed.noteActivity()
+  })
 
   const onDisplayChanged = (): void => {
     desktopMode.onDisplayTopologyChanged()
