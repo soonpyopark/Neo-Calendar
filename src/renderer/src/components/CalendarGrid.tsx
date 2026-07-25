@@ -443,21 +443,23 @@ export function CalendarGrid({
   // WorkerW-embedded: publish period-toolbar + visible day-cell hit zones.
   useLayoutEffect(() => {
     const api = window.neoCalendar
-    if (!api?.setClickForwardHitZones || !api.setDayCellHitZones) return
+    if (!api?.setClickForwardHitZones || !api.setDayCellHitZones || !api.setDayDblClickExcludeZones)
+      return
 
     const publish = (): void => {
       const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
       if (currentMode !== 'desktop' || !isEmbedded) {
         api.setClickForwardHitZones([])
         api.setDayCellHitZones([])
+        api.setDayDblClickExcludeZones([])
         return
       }
 
-      const period = periodHeaderRef.current
-      const toolbarZones = period
-        ? Array.from(
-            period.querySelectorAll<HTMLElement>('[data-toolbar-action]')
-          ).flatMap((el) => {
+      const roots = [chromeRef.current, periodHeaderRef.current].filter(
+        (el): el is HTMLDivElement => Boolean(el)
+      )
+      const toolbarZones = roots.flatMap((root) =>
+        Array.from(root.querySelectorAll<HTMLElement>('[data-toolbar-action]')).flatMap((el) => {
             if (el instanceof HTMLButtonElement && el.disabled) return []
             const action = el.dataset.toolbarAction ?? ''
             if (!action) return []
@@ -471,9 +473,9 @@ export function CalendarGrid({
                 height: Math.round(r.height),
                 action
               }
-            ]
-          })
-        : []
+          ]
+        })
+      )
       api.setClickForwardHitZones(toolbarZones)
 
       const vw = window.innerWidth
@@ -500,6 +502,25 @@ export function CalendarGrid({
         ]
       })
       api.setDayCellHitZones(dayZones)
+
+      const excludeZones = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '[data-shell-chrome="header"], [data-shell-chrome="footer"]'
+        )
+      ).flatMap((el) => {
+        const r = el.getBoundingClientRect()
+        if (r.width < 1 || r.height < 1) return []
+        return [
+          {
+            x: Math.round(r.left),
+            y: Math.round(r.top),
+            width: Math.round(r.width),
+            height: Math.round(r.height)
+          }
+        ]
+      })
+      api.setDayDblClickExcludeZones(excludeZones)
+
       if (dayZones.length !== lastDayZoneCountRef.current) {
         lastDayZoneCountRef.current = dayZones.length
         console.log('[day-dblclick] renderer published zones', dayZones.length)
@@ -509,8 +530,10 @@ export function CalendarGrid({
     publishHitZonesRef.current = publish
     publish()
     const ro = new ResizeObserver(publish)
+    const chrome = chromeRef.current
     const period = periodHeaderRef.current
     const body = monthBodyRef.current
+    if (chrome) ro.observe(chrome)
     if (period) ro.observe(period)
     if (body) ro.observe(body)
     body?.addEventListener('scroll', publish, { passive: true })
@@ -522,8 +545,22 @@ export function CalendarGrid({
       window.removeEventListener('resize', publish)
       api.setClickForwardHitZones([])
       api.setDayCellHitZones([])
+      api.setDayDblClickExcludeZones([])
     }
-  }, [mode, embedded, viewMode, viewDate, eventsHidden, completedHidden, webEditUrl])
+  }, [
+    mode,
+    embedded,
+    viewMode,
+    viewDate,
+    eventsHidden,
+    completedHidden,
+    webEditUrl,
+    searchOpen,
+    settingsOpen,
+    exporting,
+    modeBusy,
+    switchReady
+  ])
 
   // Re-publish after embed (WorkerW blocks forwarded mousemove).
   useEffect(() => {
@@ -538,7 +575,20 @@ export function CalendarGrid({
       window.clearTimeout(t)
       window.clearInterval(interval)
     }
-  }, [mode, embedded, viewMode, viewDate, eventsHidden, completedHidden, webEditUrl])
+  }, [
+    mode,
+    embedded,
+    viewMode,
+    viewDate,
+    eventsHidden,
+    completedHidden,
+    webEditUrl,
+    searchOpen,
+    settingsOpen,
+    exporting,
+    modeBusy,
+    switchReady
+  ])
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
   const weekdayLabels = useMemo(() => {
@@ -1025,7 +1075,7 @@ export function CalendarGrid({
     if (!api?.onToolbarClick) return
     return api.onToolbarClick(({ action }) => {
       const btn = document.querySelector<HTMLElement>(
-        `.header-period-row [data-toolbar-action="${action}"]`
+        `.neo-cal-shell [data-toolbar-action="${action}"]`
       )
       if (btn instanceof HTMLButtonElement && btn.disabled) return
       btn?.click()
@@ -1501,17 +1551,23 @@ export function CalendarGrid({
   }, [dayList, eventsByDate, store.tags])
 
   const dayListDate = dayList ? parseDateKeyLocal(dayList.dateKey) : null
+  const captureToolbarOnHover = !embedded
 
   return (
     <div
       className={cn('neo-cal-shell flex h-full flex-col', roundedCorners && 'is-rounded-corners')}
     >
       <header
-        className={cn(headerShellClass, 'interaction-ui', mode === 'window' && 'is-window-mode')}
+        className={cn(
+          headerShellClass,
+          !embedded && 'interaction-ui',
+          mode === 'window' && 'is-window-mode'
+        )}
         data-shell-chrome="header"
       >
         <AppChrome
           mode={mode}
+          embedded={embedded}
           user={user}
           searchOpen={searchOpen}
           settingsOpen={settingsOpen}
@@ -1547,6 +1603,7 @@ export function CalendarGrid({
                 className={
                   viewMode === value ? viewModeIconBtnActiveClass : viewModeIconBtnClass
                 }
+                captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={
                   value === 'year'
                     ? PERIOD_TOOLBAR_ACTIONS.viewYear
@@ -1569,6 +1626,7 @@ export function CalendarGrid({
               <InteractionUI
                 as="button"
                 className={yearNavBtnClass}
+                captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prevYear}
                 onClick={() => shiftYear(-1)}
                 aria-label="이전 연도"
@@ -1580,6 +1638,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={`${navBtnClass} mr-5`}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prev}
               onClick={onPrev}
               aria-label={
@@ -1609,6 +1668,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={`${navBtnClass} ml-5`}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.next}
               onClick={onNext}
               aria-label={
@@ -1624,6 +1684,7 @@ export function CalendarGrid({
               <InteractionUI
                 as="button"
                 className={yearNavBtnClass}
+                captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.nextYear}
                 onClick={() => shiftYear(1)}
                 aria-label="다음 연도"
@@ -1638,6 +1699,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={todayBtnClass}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.today}
               aria-label="오늘"
               title="오늘"
@@ -1648,6 +1710,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={cn(desktopModeIconBtnClass, softBlueIconBtnClass)}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.webEditor}
               onClick={handleOpenWebEditor}
               aria-label="브라우저에서 편집"
@@ -1667,6 +1730,7 @@ export function CalendarGrid({
                 softBlueIconBtnClass,
                 eventsHidden && softBlueIconBtnActiveClass
               )}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.toggleEvents}
               onClick={() => setViewFlag({ eventsHidden: !eventsHidden })}
               aria-label={eventsHidden ? '모든 일정 보이기' : '모든 일정 숨기기'}
@@ -1682,6 +1746,7 @@ export function CalendarGrid({
                 softBlueIconBtnClass,
                 completedHidden && softBlueIconBtnActiveClass
               )}
+              captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.toggleCompleted}
               onClick={() => setViewFlag({ completedHidden: !completedHidden })}
               aria-label={completedHidden ? '완료 일정 보이기' : '완료 일정 숨기기'}

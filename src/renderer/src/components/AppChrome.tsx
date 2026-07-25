@@ -16,6 +16,7 @@ import {
   softBlueIconBtnMutedClass
 } from '../lib/headerButtonClasses'
 import type { AuthUser, LaunchMode } from '../../../shared/ipc'
+import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -30,6 +31,8 @@ export type AppChromeProps = {
   modeBusy?: boolean
   /** From main: false while cursor must leave the header after a mode switch. */
   switchReady?: boolean
+  /** WorkerW-embedded: clicks via main bridge, not hover wake. */
+  embedded?: boolean
   chromeRef?: Ref<HTMLDivElement | null>
   onOpenSearch: () => void
   onOpenSettings: () => void
@@ -48,6 +51,7 @@ export function AppChrome({
   exporting = false,
   modeBusy = false,
   switchReady = true,
+  embedded = false,
   chromeRef,
   onOpenSearch,
   onOpenSettings,
@@ -62,6 +66,7 @@ export function AppChrome({
   const loggedIn = Boolean(user)
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
+  const captureOnHover = !embedded
 
   const setChromeRef = (node: HTMLDivElement | null): void => {
     localChromeRef.current = node
@@ -97,6 +102,8 @@ export function AppChrome({
         <InteractionUI
           as="button"
           className={cn(iconBtnClass, iconBtnDisabledClass)}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.search}
           aria-label="검색"
           title={settingsOpen ? '설정을 닫은 후 검색할 수 있습니다' : '검색'}
           disabled={settingsOpen}
@@ -108,6 +115,8 @@ export function AppChrome({
         <InteractionUI
           as="button"
           className={cn(iconBtnClass, iconBtnDisabledClass)}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.settings}
           aria-label="설정"
           title={
             !loggedIn
@@ -125,6 +134,8 @@ export function AppChrome({
         <InteractionUI
           as="button"
           className={cn(iconBtnClass, iconBtnDisabledClass)}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportExcel}
           aria-label="Excel로 내보내기"
           title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'Excel로 내보내기'}
           disabled={!loggedIn || exporting || settingsOpen || searchOpen}
@@ -136,6 +147,8 @@ export function AppChrome({
         <InteractionUI
           as="button"
           className={cn(iconBtnClass, iconBtnDisabledClass)}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportPdf}
           aria-label="PDF로 내보내기"
           title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'PDF로 내보내기'}
           disabled={!loggedIn || exporting || settingsOpen || searchOpen}
@@ -152,6 +165,8 @@ export function AppChrome({
               iconBtnDisabledClass,
               isDesktop && softBlueIconBtnMutedClass
             )}
+            captureOnHover={captureOnHover}
+            data-toolbar-action={CHROME_TOOLBAR_ACTIONS.enterDesktop}
             aria-label="바탕화면모드"
             aria-pressed={isDesktop}
             title={
@@ -177,6 +192,8 @@ export function AppChrome({
               iconBtnDisabledClass,
               isWindow && softBlueIconBtnMutedClass
             )}
+            captureOnHover={captureOnHover}
+            data-toolbar-action={CHROME_TOOLBAR_ACTIONS.enterWindow}
             aria-label="창모드"
             aria-pressed={isWindow}
             title={

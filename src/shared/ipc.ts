@@ -66,7 +66,7 @@ export type ClickForwardHitZone = ClientHitRect & {
   action: string
 }
 
-/** Stable ids for `.header-period-row [data-toolbar-action]`. */
+/** Stable ids for header `[data-toolbar-action]` buttons (WorkerW embedded click). */
 export const PERIOD_TOOLBAR_ACTIONS = {
   viewYear: 'view-year',
   viewWeek: 'view-week',
@@ -79,6 +79,15 @@ export const PERIOD_TOOLBAR_ACTIONS = {
   webEditor: 'web-editor',
   toggleEvents: 'toggle-events',
   toggleCompleted: 'toggle-completed'
+} as const
+
+export const CHROME_TOOLBAR_ACTIONS = {
+  search: 'search',
+  settings: 'settings',
+  exportExcel: 'export-excel',
+  exportPdf: 'export-pdf',
+  enterDesktop: 'enter-desktop',
+  enterWindow: 'enter-window'
 } as const
 
 export type ToolbarClickPayload = {
@@ -116,6 +125,8 @@ export type NeoCalendarApi = {
   setClickForwardHitZones: (zones: ClickForwardHitZone[]) => void
   /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
+  /** Client rects where day double-click must not fire (e.g. header/footer chrome). */
+  setDayDblClickExcludeZones: (zones: ClientHitRect[]) => void
   setInteractionBusy: (busy: boolean) => void
   /** Activate OS keyboard/IME focus for Hangul (and other IME) text input. */
   focusForTextInput: () => void

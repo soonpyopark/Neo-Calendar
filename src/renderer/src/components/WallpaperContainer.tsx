@@ -30,7 +30,9 @@ export function WallpaperContainer({
 
     const syncMouseCapture = (clientX: number, clientY: number): void => {
       const el = document.elementFromPoint(clientX, clientY)
-      const overInteractive = Boolean(el?.closest('.interaction-ui'))
+      const overInteractive = Boolean(
+        el?.closest('.interaction-ui') && !el?.closest('[data-toolbar-action]')
+      )
       setIgnoreMouseEvents(!overInteractive, { forwardToOverlay: true })
     }
 

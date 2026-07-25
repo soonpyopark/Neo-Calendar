@@ -13,6 +13,8 @@ type BridgeOptions = {
   /** App content footprint in screen DIP. */
   getAppBounds: () => WidgetBounds | null
   onEmbed: () => void
+  /** True when another app's window is topmost at the click point. */
+  isForeignAppAtPoint?: (pt: ScreenPoint) => boolean
 }
 
 /**
@@ -61,6 +63,14 @@ export class DesktopOutsideClickEmbedBridge {
 
     const bounds = this.options.getAppBounds()
     if (!bounds) return
+
+    if (this.options.isForeignAppAtPoint?.(pt)) {
+      this.lastEmbedAt = now
+      console.log('[outside-click] foreign app click → re-embed', { x: pt.x, y: pt.y })
+      this.options.onEmbed()
+      return
+    }
+
     if (contains(bounds, pt)) return
 
     this.lastEmbedAt = now

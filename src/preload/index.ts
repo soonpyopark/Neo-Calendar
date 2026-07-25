@@ -47,6 +47,9 @@ const api: NeoCalendarApi = {
   setDayCellHitZones: (zones: DayCellHitZone[]) => {
     ipcRenderer.send('set-day-cell-hit-zones', zones)
   },
+  setDayDblClickExcludeZones: (zones: ClientHitRect[]) => {
+    ipcRenderer.send('set-day-dblclick-exclude-zones', zones)
+  },
   setInteractionBusy: (busy: boolean) => {
     ipcRenderer.send('set-interaction-busy', Boolean(busy))
   },

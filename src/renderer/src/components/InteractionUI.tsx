@@ -12,6 +12,8 @@ type CommonProps = {
   children: ReactNode
   className?: string
   style?: CSSProperties
+  /** When false, skip hover-based click-through wake (embedded toolbar buttons). */
+  captureOnHover?: boolean
 }
 
 type DivProps = CommonProps &
@@ -46,29 +48,32 @@ function isPortalFlyoutTarget(target: EventTarget | null): boolean {
 }
 
 function bindInteractionHandlers<T extends HTMLElement>(
+  captureOnHover: boolean,
   onMouseEnter?: (event: ReactMouseEvent<T>) => void,
   onMouseLeave?: (event: ReactMouseEvent<T>) => void,
   onClick?: (event: ReactMouseEvent<T>) => void
 ): {
-  onMouseEnter: (event: ReactMouseEvent<T>) => void
-  onMouseLeave: (event: ReactMouseEvent<T>) => void
+  onMouseEnter?: (event: ReactMouseEvent<T>) => void
+  onMouseLeave?: (event: ReactMouseEvent<T>) => void
   onClick: (event: ReactMouseEvent<T>) => void
 } {
   return {
-    onMouseEnter: (event: ReactMouseEvent<T>) => {
-      event.stopPropagation()
-      setIgnoreMouseEvents(false)
-      onMouseEnter?.(event)
-    },
-    onMouseLeave: (event: ReactMouseEvent<T>) => {
-      event.stopPropagation()
-      // Moving into a portaled flyout must not re-enable desktop click-through,
-      // or the flyout never receives the enter/click (ignore already on).
-      if (!isPortalFlyoutTarget(event.relatedTarget)) {
-        setIgnoreMouseEvents(true, { forwardToOverlay: true })
-      }
-      onMouseLeave?.(event)
-    },
+    onMouseEnter: captureOnHover
+      ? (event: ReactMouseEvent<T>) => {
+          event.stopPropagation()
+          setIgnoreMouseEvents(false)
+          onMouseEnter?.(event)
+        }
+      : onMouseEnter,
+    onMouseLeave: captureOnHover
+      ? (event: ReactMouseEvent<T>) => {
+          event.stopPropagation()
+          if (!isPortalFlyoutTarget(event.relatedTarget)) {
+            setIgnoreMouseEvents(true, { forwardToOverlay: true })
+          }
+          onMouseLeave?.(event)
+        }
+      : onMouseLeave,
     onClick: (event: ReactMouseEvent<T>) => {
       event.stopPropagation()
       onClick?.(event)
@@ -89,13 +94,19 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
       children,
       style,
       className: _className,
+      captureOnHover = true,
       onMouseEnter,
       onMouseLeave,
       onClick,
       as: _as,
       ...rest
     } = props
-    const handlers = bindInteractionHandlers<HTMLButtonElement>(onMouseEnter, onMouseLeave, onClick)
+    const handlers = bindInteractionHandlers<HTMLButtonElement>(
+      captureOnHover,
+      onMouseEnter,
+      onMouseLeave,
+      onClick
+    )
 
     return (
       <button type="button" className={className} style={style} {...rest} {...handlers}>
@@ -109,13 +120,19 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
       children,
       style,
       className: _className,
+      captureOnHover = true,
       onMouseEnter,
       onMouseLeave,
       onClick,
       as: _as,
       ...rest
     } = props
-    const handlers = bindInteractionHandlers<HTMLSpanElement>(onMouseEnter, onMouseLeave, onClick)
+    const handlers = bindInteractionHandlers<HTMLSpanElement>(
+      captureOnHover,
+      onMouseEnter,
+      onMouseLeave,
+      onClick
+    )
 
     return (
       <span className={className} style={style} {...rest} {...handlers}>
@@ -128,13 +145,19 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
     children,
     style,
     className: _className,
+    captureOnHover = true,
     onMouseEnter,
     onMouseLeave,
     onClick,
     as: _as,
     ...rest
   } = props
-  const handlers = bindInteractionHandlers<HTMLDivElement>(onMouseEnter, onMouseLeave, onClick)
+  const handlers = bindInteractionHandlers<HTMLDivElement>(
+    captureOnHover,
+    onMouseEnter,
+    onMouseLeave,
+    onClick
+  )
 
   return (
     <div className={className} style={style} {...rest} {...handlers}>

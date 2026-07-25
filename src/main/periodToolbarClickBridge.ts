@@ -14,6 +14,8 @@ type BridgeOptions = {
   getScreenOrigin: () => { x: number; y: number } | null
   getZones: () => ClickForwardClientZone[]
   onToolbarClick: (payload: { action: string; clientX: number; clientY: number }) => void
+  /** Skip when click should not reach the embedded calendar. */
+  shouldProcessEmbeddedClick?: (pt: ScreenPoint) => boolean
 }
 
 const COOLDOWN_MS = 350
@@ -49,6 +51,9 @@ export class PeriodToolbarClickBridge {
   private handleMouseDown(pt: ScreenPoint): void {
     if (!this.options.isArmed()) {
       this.lastZoneCount = -1
+      return
+    }
+    if (this.options.shouldProcessEmbeddedClick && !this.options.shouldProcessEmbeddedClick(pt)) {
       return
     }
 

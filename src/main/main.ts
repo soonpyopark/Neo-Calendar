@@ -22,6 +22,7 @@ import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
 import { focusWindowForTextInput } from './windowFocus'
+import { isForeignAppAtPoint, shouldProcessEmbeddedGlobalClick } from './windowAtPoint'
 import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
@@ -114,6 +115,8 @@ let webServer: CalendarWebServer | null = null
 let tray: AppTray | null = null
 /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
 let dayCellHitZones: DayCellClientZone[] = []
+/** Header/shell rects where day double-click must not fire. */
+let dayDblClickExcludeZones: ClientHitRect[] = []
 /** Period toolbar footprints for WorkerW click → unlock + action. */
 let clickForwardHitZones: ClickForwardClientZone[] = []
 
@@ -166,6 +169,14 @@ function hitTestScreenOrigin(): { x: number; y: number } | null {
     mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
   const origin = live ?? locked
   return origin ? { x: origin.x, y: origin.y } : null
+}
+
+function isForeignClickAtPoint(pt: { x: number; y: number }): boolean {
+  return isForeignAppAtPoint(mainWindow, pt)
+}
+
+function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolean {
+  return shouldProcessEmbeddedGlobalClick(mainWindow, pt)
 }
 
 /** Mirror main-process day-dblclick logs into renderer DevTools (dev only). */
@@ -395,6 +406,9 @@ function registerIpc(): void {
   ipcMain.on('set-day-cell-hit-zones', (_event, zones: DayCellHitZone[]) => {
     dayCellHitZones = sanitizeDayCellHitZones(zones)
     sendDayDblClickLog('[day-dblclick] main received zones', { count: dayCellHitZones.length })
+  })
+  ipcMain.on('set-day-dblclick-exclude-zones', (_event, zones: ClientHitRect[]) => {
+    dayDblClickExcludeZones = sanitizeClientHitRects(zones)
   })
   ipcMain.on('set-interaction-busy', () => undefined)
 
@@ -783,6 +797,7 @@ function bootApp(): void {
         mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
       return live ?? locked
     },
+    isForeignAppAtPoint: (pt) => isForeignClickAtPoint(pt),
     onEmbed: () => {
       desktopMode.resumeUnderIcons()
     }
@@ -794,6 +809,7 @@ function bootApp(): void {
     isArmed: () => desktopMode.isWorkerEmbedded(),
     getScreenOrigin: () => hitTestScreenOrigin(),
     getZones: () => clickForwardHitZones,
+    shouldProcessEmbeddedClick: (pt) => shouldProcessEmbeddedClickAtPoint(pt),
     onToolbarClick: (payload) => {
       unlockAndTriggerToolbar({ action: payload.action })
     }
@@ -805,6 +821,8 @@ function bootApp(): void {
     isArmed: () => desktopMode.isWorkerEmbedded(),
     getScreenOrigin: () => hitTestScreenOrigin(),
     getZones: () => dayCellHitZones,
+    getExcludeZones: () => dayDblClickExcludeZones,
+    shouldProcessEmbeddedClick: (pt) => shouldProcessEmbeddedClickAtPoint(pt),
     onDebug: (msg, data) => sendDayDblClickLog(msg, data),
     onDoubleClick: (payload) => {
       unlockAndOpenDayQuickEdit(payload)

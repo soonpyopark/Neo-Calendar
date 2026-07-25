@@ -1,5 +1,5 @@
-import type { WidgetBounds } from '../shared/ipc'
 import koffi from 'koffi'
+import type { WidgetBounds } from '../shared/ipc'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
 
 /** Fallback if GetDoubleClickTime is unavailable. */
@@ -23,6 +23,8 @@ type BridgeOptions = {
   /** Same screen DIP origin as header hover wake. */
   getScreenOrigin: () => { x: number; y: number } | null
   getZones: () => DayCellClientZone[]
+  /** Shell chrome rects (header, footer, etc.) — clicks here must not open day quick edit. */
+  getExcludeZones?: () => Array<Pick<WidgetBounds, 'x' | 'y' | 'width' | 'height'>>
   /**
    * Called once a full double-click is confirmed.
    * Must NOT run on the first click — only after the second press within
@@ -31,6 +33,8 @@ type BridgeOptions = {
   onDoubleClick: (payload: { dateKey: string; clientX: number; clientY: number }) => void
   /** Dev-only: mirror main-process logs into renderer DevTools. */
   onDebug?: (msg: string, data?: Record<string, unknown>) => void
+  /** Skip when click should not reach the embedded calendar. */
+  shouldProcessEmbeddedClick?: (pt: ScreenPoint) => boolean
 }
 
 /**
@@ -82,6 +86,9 @@ export class DayCellDblClickBridge {
       this.lastZoneCount = -1
       return
     }
+    if (this.options.shouldProcessEmbeddedClick && !this.options.shouldProcessEmbeddedClick(pt)) {
+      return
+    }
 
     const zones = this.options.getZones()
     if (zones.length === 0) {
@@ -100,6 +107,11 @@ export class DayCellDblClickBridge {
     const origin = this.options.getScreenOrigin()
     if (!origin) {
       this.debug('[day-dblclick] click ignored — no screen origin')
+      return
+    }
+
+    if (this.isExcluded(pt, origin)) {
+      this.lastPress = null
       return
     }
 
@@ -160,6 +172,20 @@ export class DayCellDblClickBridge {
       dateKey: hit.dateKey,
       dblWindowMs: dblWindow
     })
+  }
+
+  private isExcluded(pt: Point, origin: { x: number; y: number }): boolean {
+    const zones = this.options.getExcludeZones?.() ?? []
+    for (const zone of zones) {
+      const screenZone: WidgetBounds = {
+        x: origin.x + zone.x,
+        y: origin.y + zone.y,
+        width: zone.width,
+        height: zone.height
+      }
+      if (contains(screenZone, pt)) return true
+    }
+    return false
   }
 
   private hitDayCell(
