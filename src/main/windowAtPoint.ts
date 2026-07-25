@@ -22,15 +22,26 @@ type WindowAtPointApi = {
   GetClassNameW: (hwnd: unknown, buf: Buffer, max: number) => number
   IsChild: (parent: unknown, child: unknown) => number
   GetAncestor: (hwnd: unknown, flags: number) => unknown
+  GetWindowRect: (
+    hwnd: unknown,
+    rectOut: { left: number; top: number; right: number; bottom: number }
+  ) => number
 }
 
 const GA_PARENT = 3
+const GA_ROOT = 2
 
 let user32Api: WindowAtPointApi | null = null
 
 function getUser32(): WindowAtPointApi {
   if (user32Api) return user32Api
   const user32 = koffi.load('user32.dll')
+  const RECT = koffi.struct('NeoWindowAtPointRect', {
+    left: 'long',
+    top: 'long',
+    right: 'long',
+    bottom: 'long'
+  })
   user32Api = {
     WindowFromPoint: user32.func('WindowFromPoint', 'void *', ['long', 'long']) as WindowAtPointApi['WindowFromPoint'],
     GetForegroundWindow: user32.func('GetForegroundWindow', 'void *', []) as WindowAtPointApi['GetForegroundWindow'],
@@ -40,7 +51,11 @@ function getUser32(): WindowAtPointApi {
     ]) as WindowAtPointApi['GetWindowThreadProcessId'],
     GetClassNameW: user32.func('GetClassNameW', 'int', ['void *', 'void *', 'int']) as WindowAtPointApi['GetClassNameW'],
     IsChild: user32.func('IsChild', 'bool', ['void *', 'void *']) as WindowAtPointApi['IsChild'],
-    GetAncestor: user32.func('GetAncestor', 'void *', ['void *', 'uint32']) as WindowAtPointApi['GetAncestor']
+    GetAncestor: user32.func('GetAncestor', 'void *', ['void *', 'uint32']) as WindowAtPointApi['GetAncestor'],
+    GetWindowRect: user32.func('GetWindowRect', 'bool', [
+      'void *',
+      koffi.out(koffi.pointer(RECT))
+    ]) as WindowAtPointApi['GetWindowRect']
   }
   return user32Api
 }
@@ -138,6 +153,57 @@ function isForeignProcessHwnd(
   return pid !== process.pid
 }
 
+function readWindowRectPhysical(
+  user32: WindowAtPointApi,
+  hwnd: unknown
+): { left: number; top: number; right: number; bottom: number } | null {
+  try {
+    const rect = { left: 0, top: 0, right: 0, bottom: 0 }
+    if (!user32.GetWindowRect(hwnd, rect)) return null
+    return rect
+  } catch {
+    return null
+  }
+}
+
+function isPhysicalPointInRect(
+  pt: { x: number; y: number },
+  rect: { left: number; top: number; right: number; bottom: number }
+): boolean {
+  return (
+    pt.x >= rect.left && pt.x < rect.right && pt.y >= rect.top && pt.y < rect.bottom
+  )
+}
+
+/**
+ * WindowFromPoint can return WorkerW/desktop under layered apps. Also block when
+ * the foreground foreign app's window contains the click.
+ */
+function isClickInsideForeignForeground(
+  user32: WindowAtPointApi,
+  ptDip: { x: number; y: number },
+  ourHwnd: bigint
+): boolean {
+  const fg = user32.GetForegroundWindow()
+  if (!fg) return false
+  if (isOurHwnd(user32, fg, ourHwnd)) return false
+  if (isDesktopShellHwnd(user32, fg)) return false
+  const pid = readPid(user32, fg)
+  if (pid === 0 || pid === process.pid) return false
+
+  let target: unknown = fg
+  try {
+    const root = user32.GetAncestor(fg, GA_ROOT)
+    if (root) target = root
+  } catch {
+    /* ignore */
+  }
+
+  const rect = readWindowRectPhysical(user32, target)
+  if (!rect) return false
+  return isPhysicalPointInRect(dipToPhysicalPoint(ptDip), rect)
+}
+
 /**
  * True when the topmost window under `pt` belongs to another application.
  */
@@ -151,8 +217,8 @@ export function isForeignAppAtPoint(
   const user32 = getUser32()
   const ourHwnd = hwndFromBuffer(win.getNativeWindowHandle())
   const atPoint = hwndAtPhysicalPoint(user32, ptDip)
-  if (!atPoint) return false
-  return isForeignProcessHwnd(user32, atPoint, ourHwnd)
+  if (atPoint && isForeignProcessHwnd(user32, atPoint, ourHwnd)) return true
+  return isClickInsideForeignForeground(user32, ptDip, ourHwnd)
 }
 
 /**
@@ -175,6 +241,7 @@ export function shouldProcessEmbeddedGlobalClick(
   if (!atPoint) return false
 
   if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
+  if (isClickInsideForeignForeground(user32, ptDip, ourHwnd)) return false
 
   if (isDesktopShellHwnd(user32, atPoint)) return true
 

@@ -125,7 +125,7 @@ export type NeoCalendarApi = {
   setClickForwardHitZones: (zones: ClickForwardHitZone[]) => void
   /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
-  /** Client rects where day double-click must not fire (e.g. header/footer chrome). */
+  /** Client rects where day double-click must not fire (e.g. header/footer/weekday row). */
   setDayDblClickExcludeZones: (zones: ClientHitRect[]) => void
   setInteractionBusy: (busy: boolean) => void
   /** Activate OS keyboard/IME focus for Hangul (and other IME) text input. */

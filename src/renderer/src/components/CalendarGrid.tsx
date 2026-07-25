@@ -505,7 +505,7 @@ export function CalendarGrid({
 
       const excludeZones = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-shell-chrome="header"], [data-shell-chrome="footer"]'
+          '[data-shell-chrome="header"], [data-shell-chrome="footer"], [data-shell-chrome="weekday-header"]'
         )
       ).flatMap((el) => {
         const r = el.getBoundingClientRect()
@@ -1494,7 +1494,7 @@ export function CalendarGrid({
             >
               {monthIndex + 1}월
             </InteractionUI>
-            <div className="year-month-weekdays">
+            <div className="year-month-weekdays" data-shell-chrome="weekday-header">
               {weekdayLabels.map((d) => (
                 <span key={d}>{d}</span>
               ))}
@@ -1771,7 +1771,7 @@ export function CalendarGrid({
           )}
           style={eventLayoutCssVars as CSSProperties}
         >
-          <div className="month-weekdays">
+          <div className="month-weekdays" data-shell-chrome="weekday-header">
             {showWeekNumbers ? <div className="week-number-header" aria-hidden /> : null}
             {weekdayLabels.map((label) => (
               <div
@@ -1810,7 +1810,7 @@ export function CalendarGrid({
             } as CSSProperties
           }
         >
-          <div className="month-weekdays">
+          <div className="month-weekdays" data-shell-chrome="weekday-header">
             {showWeekNumbers ? (
               <div className="week-number-header" title="주차">
                 주
