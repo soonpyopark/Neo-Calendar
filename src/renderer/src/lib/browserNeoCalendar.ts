@@ -221,6 +221,7 @@ export function installBrowserNeoCalendar(): void {
     setHeaderHitZone: () => undefined,
     setWakeHitZones: () => undefined,
     setClickForwardHitZones: () => undefined,
+    onToolbarClick: () => () => undefined,
     setDayCellHitZones: () => undefined,
     setInteractionBusy: () => undefined,
     focusForTextInput: () => undefined,

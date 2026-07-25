@@ -221,6 +221,73 @@ export function isWorkerEmbedded(): boolean {
   return embeddedHwnd !== null
 }
 
+/** Actual content footprint in screen DIP (matches renderer getBoundingClientRect). */
+export function getWindowDipScreenBounds(win: BrowserWindow): WidgetBounds | null {
+  if (win.isDestroyed()) return null
+
+  try {
+    const content = win.getContentBounds()
+    if (
+      Number.isFinite(content.x) &&
+      Number.isFinite(content.y) &&
+      content.width > 0 &&
+      content.height > 0
+    ) {
+      return {
+        x: Math.round(content.x),
+        y: Math.round(content.y),
+        width: Math.round(content.width),
+        height: Math.round(content.height)
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  try {
+    const api = getUser32()
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    const rect = { left: 0, top: 0, right: 0, bottom: 0 }
+    if (!api.GetWindowRect(hwnd, rect)) {
+      const b = win.getBounds()
+      return { x: b.x, y: b.y, width: b.width, height: b.height }
+    }
+
+    const physical = {
+      x: rect.left,
+      y: rect.top,
+      width: rect.right - rect.left,
+      height: rect.bottom - rect.top
+    }
+
+    try {
+      const dip = screen.screenToDipRect(null, physical)
+      return {
+        x: Math.round(dip.x),
+        y: Math.round(dip.y),
+        width: Math.round(dip.width),
+        height: Math.round(dip.height)
+      }
+    } catch {
+      const display = screen.getDisplayNearestPoint({ x: physical.x, y: physical.y })
+      const s = display.scaleFactor || 1
+      return {
+        x: Math.round(physical.x / s),
+        y: Math.round(physical.y / s),
+        width: Math.round(physical.width / s),
+        height: Math.round(physical.height / s)
+      }
+    }
+  } catch {
+    try {
+      const b = win.getBounds()
+      return { x: b.x, y: b.y, width: b.width, height: b.height }
+    } catch {
+      return null
+    }
+  }
+}
+
 export function setAsWallpaper(win: BrowserWindow, bounds?: WidgetBounds): void {
   if (process.platform !== 'win32') {
     win.setAlwaysOnTop(false)

@@ -148,7 +148,6 @@ export function MonthDayCell({
 
   return (
     <div
-      data-date-key={dayKey}
       className={cn(
         'day-cell',
         'interaction-ui',
@@ -161,6 +160,7 @@ export function MonthDayCell({
         tall && 'day-cell--tall'
       )}
       style={cellStyle}
+      data-date-key={dayKey}
       onClick={interactive ? () => onDaySelect(cell.date) : undefined}
       onDoubleClick={
         interactive

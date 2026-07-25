@@ -6,13 +6,23 @@ import { EventAttachmentService } from './calendarStore/eventAttachments'
 import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
 import { DesktopIdleEmbedBridge } from './desktopIdleEmbedBridge'
+import { DesktopOutsideClickEmbedBridge } from './desktopOutsideClickEmbedBridge'
+import {
+  DayCellDblClickBridge,
+  type DayCellClientZone
+} from './dayCellDblClickBridge'
+import {
+  PeriodToolbarClickBridge,
+  type ClickForwardClientZone
+} from './periodToolbarClickBridge'
 import { getEnvValue, loadDotEnv, resolveAdminCredentials } from './dotEnv'
 import { exportBackupZip, importBackupZip } from './calendarStore/backupZip'
 import { applyHolidayKeyFromEnv, syncKoreanHolidays } from './calendarStore/holidaySync'
 import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
-import { withWallpaperApi, type WallpaperBrowserWindow } from './wallpaper'
+import { focusWindowForTextInput } from './windowFocus'
+import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
 import {
@@ -29,11 +39,54 @@ import type {
   SyncHolidaysInput,
   TagRecord
 } from '../shared/calendarTypes'
-import type { AppSettings, ModeStatus } from '../shared/ipc'
+import type {
+  AppSettings,
+  ClientHitRect,
+  ClickForwardHitZone,
+  DayCellHitZone,
+  ModeStatus,
+  OpenDayQuickEditPayload,
+  ToolbarClickPayload
+} from '../shared/ipc'
 import {
   getShellRunAtStartup,
   projectViewOptionsForClient
 } from '../shared/viewOptionsBySurface'
+
+function sanitizeClientHitRects(zones: unknown): ClientHitRect[] {
+  if (!Array.isArray(zones)) return []
+  const out: ClientHitRect[] = []
+  for (const z of zones) {
+    if (!z || typeof z !== 'object') continue
+    const r = z as Partial<ClientHitRect>
+    const x = Number(r.x)
+    const y = Number(r.y)
+    const width = Number(r.width)
+    const height = Number(r.height)
+    if (![x, y, width, height].every(Number.isFinite)) continue
+    if (width < 1 || height < 1) continue
+    out.push({ x, y, width, height })
+  }
+  return out
+}
+
+function sanitizeDayCellHitZones(zones: unknown): DayCellClientZone[] {
+  if (!Array.isArray(zones)) return []
+  const out: DayCellClientZone[] = []
+  for (const z of zones) {
+    if (!z || typeof z !== 'object') continue
+    const r = z as Partial<DayCellHitZone>
+    const x = Number(r.x)
+    const y = Number(r.y)
+    const width = Number(r.width)
+    const height = Number(r.height)
+    const dateKey = typeof r.dateKey === 'string' ? r.dateKey.trim() : ''
+    if (!dateKey || ![x, y, width, height].every(Number.isFinite)) continue
+    if (width < 1 || height < 1) continue
+    out.push({ x, y, width, height, dateKey })
+  }
+  return out
+}
 
 /**
  * Align Windows login-item with store (MDC StartupRegistrationService.Sync).
@@ -59,6 +112,10 @@ let auth: AuthService
 let desktopMode: DesktopModeController
 let webServer: CalendarWebServer | null = null
 let tray: AppTray | null = null
+/** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
+let dayCellHitZones: DayCellClientZone[] = []
+/** Period toolbar footprints for WorkerW click → unlock + action. */
+let clickForwardHitZones: ClickForwardClientZone[] = []
 
 function notifyStoreChanged(): void {
   try {
@@ -101,6 +158,75 @@ function syncOwnerNameFromLoginId(loginId: string): void {
   const current = calendarStore.getSnapshot().settings.ownerName?.trim() ?? ''
   if (current === id) return
   calendarStore.patchStoreSettings({ ownerName: id })
+}
+
+function hitTestScreenOrigin(): { x: number; y: number } | null {
+  const locked = desktopMode?.getLockedBounds() ?? null
+  const live =
+    mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
+  const origin = live ?? locked
+  return origin ? { x: origin.x, y: origin.y } : null
+}
+
+/** Mirror main-process day-dblclick logs into renderer DevTools (dev only). */
+function sendDayDblClickLog(msg: string, data?: Record<string, unknown>): void {
+  if (app.isPackaged) return
+  const win = mainWindow
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return
+  win.webContents.send('day-dblclick-log', { msg, data })
+}
+
+function sanitizeClickForwardHitZones(zones: unknown): ClickForwardClientZone[] {
+  if (!Array.isArray(zones)) return []
+  const out: ClickForwardClientZone[] = []
+  for (const z of zones) {
+    if (!z || typeof z !== 'object') continue
+    const r = z as Partial<ClickForwardHitZone>
+    const x = Number(r.x)
+    const y = Number(r.y)
+    const width = Number(r.width)
+    const height = Number(r.height)
+    const action = typeof r.action === 'string' ? r.action.trim() : ''
+    if (!action || ![x, y, width, height].every(Number.isFinite)) continue
+    if (width < 1 || height < 1) continue
+    out.push({ x, y, width, height, action })
+  }
+  return out
+}
+
+/** Unlock WorkerW embed, focus HWND, then open quick edit in renderer. */
+function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
+  desktopMode.suspendForInteraction()
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+
+  focusWindowForTextInput(win)
+  win.setIgnoreMouseEvents(false)
+
+  // Wait for detach + mode-changed before mounting the popover.
+  setTimeout(() => {
+    if (win.isDestroyed()) return
+    win.setIgnoreMouseEvents(false)
+    win.webContents.send('open-day-quick-edit', payload)
+    focusWindowForTextInput(win)
+  }, 60)
+}
+
+/** Unlock WorkerW embed, then dispatch a period-toolbar action in renderer. */
+function unlockAndTriggerToolbar(payload: ToolbarClickPayload): void {
+  desktopMode.suspendForInteraction()
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+
+  focusWindowForTextInput(win)
+  win.setIgnoreMouseEvents(false)
+
+  setTimeout(() => {
+    if (win.isDestroyed()) return
+    win.setIgnoreMouseEvents(false)
+    win.webContents.send('toolbar-click', payload)
+    focusWindowForTextInput(win)
+  }, 60)
 }
 
 function broadcastMode(status: ModeStatus): void {
@@ -214,6 +340,10 @@ function createWindow(): void {
 
   if (process.env.ELECTRON_RENDERER_URL) {
     void win.loadURL(process.env.ELECTRON_RENDERER_URL)
+    win.webContents.once('did-finish-load', () => {
+      if (win.isDestroyed()) return
+      win.webContents.openDevTools({ mode: 'detach' })
+    })
   } else {
     void win.loadFile(join(__dirname, '../renderer/index.html'))
   }
@@ -255,12 +385,17 @@ function registerIpc(): void {
     }
   )
 
-  // Legacy hit-zone / busy IPCs — no-ops (desktop mouse bridges removed).
+  // Legacy hit-zone IPCs — period toolbar + day-cell bridges active when embedded.
   ipcMain.on('set-window-mode-hit-zone', () => undefined)
   ipcMain.on('set-header-hit-zone', () => undefined)
   ipcMain.on('set-wake-hit-zones', () => undefined)
-  ipcMain.on('set-click-forward-hit-zones', () => undefined)
-  ipcMain.on('set-day-cell-hit-zones', () => undefined)
+  ipcMain.on('set-click-forward-hit-zones', (_event, zones: ClickForwardHitZone[]) => {
+    clickForwardHitZones = sanitizeClickForwardHitZones(zones)
+  })
+  ipcMain.on('set-day-cell-hit-zones', (_event, zones: DayCellHitZone[]) => {
+    dayCellHitZones = sanitizeDayCellHitZones(zones)
+    sendDayDblClickLog('[day-dblclick] main received zones', { count: dayCellHitZones.length })
+  })
   ipcMain.on('set-interaction-busy', () => undefined)
 
   ipcMain.on('focus-for-text-input', () => {
@@ -637,6 +772,45 @@ function bootApp(): void {
   mainWindow?.webContents.on('before-input-event', () => {
     idleEmbed.noteActivity()
   })
+
+  // Unlocked desktop: click outside calendar → re-embed under icons.
+  const outsideClickEmbed = new DesktopOutsideClickEmbedBridge({
+    isArmed: () =>
+      desktopMode.getLaunchMode() === 'desktop' && desktopMode.isInteractionSuspended(),
+    getAppBounds: () => {
+      const locked = desktopMode.getLockedBounds()
+      const live =
+        mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
+      return live ?? locked
+    },
+    onEmbed: () => {
+      desktopMode.resumeUnderIcons()
+    }
+  })
+  outsideClickEmbed.start()
+
+  // WorkerW-embedded: click period toolbar → unlock + run action.
+  const toolbarClick = new PeriodToolbarClickBridge({
+    isArmed: () => desktopMode.isWorkerEmbedded(),
+    getScreenOrigin: () => hitTestScreenOrigin(),
+    getZones: () => clickForwardHitZones,
+    onToolbarClick: (payload) => {
+      unlockAndTriggerToolbar({ action: payload.action })
+    }
+  })
+  toolbarClick.start()
+
+  // WorkerW-embedded: custom double-click on date cell → unlock + quick edit.
+  const dayDblClick = new DayCellDblClickBridge({
+    isArmed: () => desktopMode.isWorkerEmbedded(),
+    getScreenOrigin: () => hitTestScreenOrigin(),
+    getZones: () => dayCellHitZones,
+    onDebug: (msg, data) => sendDayDblClickLog(msg, data),
+    onDoubleClick: (payload) => {
+      unlockAndOpenDayQuickEdit(payload)
+    }
+  })
+  dayDblClick.start()
 
   const onDisplayChanged = (): void => {
     desktopMode.onDisplayTopologyChanged()

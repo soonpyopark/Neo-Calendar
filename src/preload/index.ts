@@ -8,6 +8,8 @@ import type {
   ModeStatus,
   NeoCalendarApi,
   OpenDayQuickEditPayload,
+  DayDblClickLogPayload,
+  ToolbarClickPayload,
   SetIgnoreMouseOptions
 } from '../shared/ipc'
 import type {
@@ -70,6 +72,30 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('open-day-quick-edit', handler)
     return () => {
       ipcRenderer.removeListener('open-day-quick-edit', handler)
+    }
+  },
+  onToolbarClick: (listener: (payload: ToolbarClickPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: ToolbarClickPayload
+    ): void => {
+      listener(payload)
+    }
+    ipcRenderer.on('toolbar-click', handler)
+    return () => {
+      ipcRenderer.removeListener('toolbar-click', handler)
+    }
+  },
+  onDayDblClickLog: (listener: (payload: DayDblClickLogPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: DayDblClickLogPayload
+    ): void => {
+      listener(payload)
+    }
+    ipcRenderer.on('day-dblclick-log', handler)
+    return () => {
+      ipcRenderer.removeListener('day-dblclick-log', handler)
     }
   },
   onStoreChanged: (listener: () => void) => {

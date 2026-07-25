@@ -66,6 +66,25 @@ export type ClickForwardHitZone = ClientHitRect & {
   action: string
 }
 
+/** Stable ids for `.header-period-row [data-toolbar-action]`. */
+export const PERIOD_TOOLBAR_ACTIONS = {
+  viewYear: 'view-year',
+  viewWeek: 'view-week',
+  viewMonth: 'view-month',
+  prevYear: 'prev-year',
+  prev: 'prev',
+  next: 'next',
+  nextYear: 'next-year',
+  today: 'today',
+  webEditor: 'web-editor',
+  toggleEvents: 'toggle-events',
+  toggleCompleted: 'toggle-completed'
+} as const
+
+export type ToolbarClickPayload = {
+  action: string
+}
+
 export type DayCellHitZone = ClientHitRect & {
   dateKey: string
 }
@@ -76,6 +95,11 @@ export type OpenDayQuickEditPayload = {
   clientY?: number
 }
 
+export type DayDblClickLogPayload = {
+  msg: string
+  data?: Record<string, unknown>
+}
+
 export type NeoCalendarApi = {
   setIgnoreMouse: (ignore: boolean, options?: SetIgnoreMouseOptions) => void
   getModeStatus: () => Promise<ModeStatus>
@@ -83,18 +107,25 @@ export type NeoCalendarApi = {
   enterWindow: () => Promise<ModeStatus>
   getWindowBounds: () => Promise<WidgetBounds>
   setWindowBounds: (bounds: WidgetBounds) => Promise<WidgetBounds>
-  /** Legacy no-ops — desktop mouse / hit-zone bridges removed. */
+  /** Legacy no-ops — unused hit-zone bridges. */
   setWindowModeHitZone: (rect: ClientHitRect | null) => void
   setHeaderHitZone: (rect: ClientHitRect | null) => void
+  /** Legacy no-op — header hover wake removed. */
   setWakeHitZones: (zones: ClientHitRect[]) => void
+  /** Period toolbar footprints for WorkerW embedded click → unlock + action. */
   setClickForwardHitZones: (zones: ClickForwardHitZone[]) => void
+  /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
   setDayCellHitZones: (zones: DayCellHitZone[]) => void
   setInteractionBusy: (busy: boolean) => void
   /** Activate OS keyboard/IME focus for Hangul (and other IME) text input. */
   focusForTextInput: () => void
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
-  /** No-op subscription — day-cell double-click bridge removed. */
+  /** Main → renderer: open day quick edit after WorkerW double-click unlock. */
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
+  /** Main → renderer: run period toolbar action after embedded click unlock. */
+  onToolbarClick: (listener: (payload: ToolbarClickPayload) => void) => () => void
+  /** Dev: main-process day-dblclick logs mirrored into renderer DevTools. */
+  onDayDblClickLog?: (listener: (payload: DayDblClickLogPayload) => void) => () => void
   /** Fired when calendar store mutates (web API or another client). */
   onStoreChanged: (listener: () => void) => () => void
   getAuth: () => Promise<AuthUser | null>

@@ -36,6 +36,7 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
+import { PERIOD_TOOLBAR_ACTIONS } from '../../../shared/ipc'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
@@ -426,6 +427,10 @@ export function CalendarGrid({
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
   const monthBodyRef = useRef<HTMLDivElement | null>(null)
+  const publishHitZonesRef = useRef<(() => void) | null>(null)
+  const lastDayZoneCountRef = useRef(-1)
+  const modeEmbeddedRef = useRef({ mode, embedded })
+  modeEmbeddedRef.current = { mode, embedded }
 
   const eventsHidden = store.settings.viewOptions.eventsHidden
   const completedHidden = store.settings.viewOptions.completedHidden
@@ -435,7 +440,105 @@ export function CalendarGrid({
   const weekStartsOn: 0 | 1 =
     settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
 
-  // Desktop mouse-input bridges removed. Embedded = click-through; use tray.
+  // WorkerW-embedded: publish period-toolbar + visible day-cell hit zones.
+  useLayoutEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.setClickForwardHitZones || !api.setDayCellHitZones) return
+
+    const publish = (): void => {
+      const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+      if (currentMode !== 'desktop' || !isEmbedded) {
+        api.setClickForwardHitZones([])
+        api.setDayCellHitZones([])
+        return
+      }
+
+      const period = periodHeaderRef.current
+      const toolbarZones = period
+        ? Array.from(
+            period.querySelectorAll<HTMLElement>('[data-toolbar-action]')
+          ).flatMap((el) => {
+            if (el instanceof HTMLButtonElement && el.disabled) return []
+            const action = el.dataset.toolbarAction ?? ''
+            if (!action) return []
+            const r = el.getBoundingClientRect()
+            if (r.width < 1 || r.height < 1) return []
+            return [
+              {
+                x: Math.round(r.left),
+                y: Math.round(r.top),
+                width: Math.round(r.width),
+                height: Math.round(r.height),
+                action
+              }
+            ]
+          })
+        : []
+      api.setClickForwardHitZones(toolbarZones)
+
+      const vw = window.innerWidth
+      const vh = window.innerHeight
+      const dayZones = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.neo-cal-shell .day-cell[data-date-key], .neo-cal-shell .year-day[data-date-key]'
+        )
+      ).flatMap((el) => {
+        if (el instanceof HTMLButtonElement && el.disabled) return []
+        const dateKey = el.dataset.dateKey ?? ''
+        if (!dateKey) return []
+        const r = el.getBoundingClientRect()
+        if (r.width < 1 || r.height < 1) return []
+        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
+        return [
+          {
+            x: Math.round(r.left),
+            y: Math.round(r.top),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            dateKey
+          }
+        ]
+      })
+      api.setDayCellHitZones(dayZones)
+      if (dayZones.length !== lastDayZoneCountRef.current) {
+        lastDayZoneCountRef.current = dayZones.length
+        console.log('[day-dblclick] renderer published zones', dayZones.length)
+      }
+    }
+
+    publishHitZonesRef.current = publish
+    publish()
+    const ro = new ResizeObserver(publish)
+    const period = periodHeaderRef.current
+    const body = monthBodyRef.current
+    if (period) ro.observe(period)
+    if (body) ro.observe(body)
+    body?.addEventListener('scroll', publish, { passive: true })
+    window.addEventListener('resize', publish)
+    return () => {
+      publishHitZonesRef.current = null
+      ro.disconnect()
+      body?.removeEventListener('scroll', publish)
+      window.removeEventListener('resize', publish)
+      api.setClickForwardHitZones([])
+      api.setDayCellHitZones([])
+    }
+  }, [mode, embedded, viewMode, viewDate, eventsHidden, completedHidden, webEditUrl])
+
+  // Re-publish after embed (WorkerW blocks forwarded mousemove).
+  useEffect(() => {
+    if (mode !== 'desktop' || !embedded) return
+    const republish = (): void => publishHitZonesRef.current?.()
+    republish()
+    const raf = requestAnimationFrame(republish)
+    const t = window.setTimeout(republish, 100)
+    const interval = window.setInterval(republish, 800)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.clearTimeout(t)
+      window.clearInterval(interval)
+    }
+  }, [mode, embedded, viewMode, viewDate, eventsHidden, completedHidden, webEditUrl])
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
   const weekdayLabels = useMemo(() => {
@@ -874,9 +977,63 @@ export function CalendarGrid({
       // Re-embed → close overlays so they aren't stranded under desktop icons.
       if (status.mode === 'desktop' && status.embedded) {
         closeOverlays()
+        requestAnimationFrame(() => publishHitZonesRef.current?.())
       }
     })
   }, [onModeChange, closeOverlays])
+
+  const openQuickEditFromDateRef = useRef(openQuickEditFromDate)
+  openQuickEditFromDateRef.current = openQuickEditFromDate
+
+  // WorkerW double-click unlock → open quick edit + HWND focus for IME.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onOpenDayQuickEdit) return
+    return api.onOpenDayQuickEdit((payload) => {
+      console.log('[day-dblclick] renderer open quick edit', payload)
+      const date =
+        parseDateKeyLocal(payload.dateKey) ?? parseDateKey(payload.dateKey)
+      if (!date) return
+      const el = document.querySelector<HTMLElement>(
+        `.neo-cal-shell .day-cell[data-date-key="${payload.dateKey}"], .neo-cal-shell .year-day[data-date-key="${payload.dateKey}"]`
+      )
+      const rect =
+        el?.getBoundingClientRect() ??
+        (typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
+          ? new DOMRect(payload.clientX, payload.clientY, 48, 48)
+          : null)
+      openQuickEditFromDateRef.current(date, rect)
+      requestAnimationFrame(() => {
+        void api.focusForTextInput?.()
+      })
+    })
+  }, [])
+
+  // Dev: mirror main-process day-dblclick logs into DevTools Console.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onDayDblClickLog) return
+    return api.onDayDblClickLog(({ msg, data }) => {
+      if (data) console.log(msg, data)
+      else console.log(msg)
+    })
+  }, [])
+
+  // WorkerW embedded toolbar click → unlock + synthesize button click.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onToolbarClick) return
+    return api.onToolbarClick(({ action }) => {
+      const btn = document.querySelector<HTMLElement>(
+        `.header-period-row [data-toolbar-action="${action}"]`
+      )
+      if (btn instanceof HTMLButtonElement && btn.disabled) return
+      btn?.click()
+      requestAnimationFrame(() => {
+        void api.focusForTextInput?.()
+      })
+    })
+  }, [])
 
   const toggleCompleted = async (id: string, completed?: boolean): Promise<void> => {
     if (!canEdit) return
@@ -1307,6 +1464,7 @@ export function CalendarGrid({
                     cell.weekday === 6 && cell.inMonth && 'saturday',
                     holidayKeys.has(cell.dateKey) && cell.inMonth && 'holiday'
                   )}
+                  data-date-key={cell.dateKey}
                   disabled={!cell.inMonth}
                   onClick={(e) => {
                     e.stopPropagation()
@@ -1389,6 +1547,13 @@ export function CalendarGrid({
                 className={
                   viewMode === value ? viewModeIconBtnActiveClass : viewModeIconBtnClass
                 }
+                data-toolbar-action={
+                  value === 'year'
+                    ? PERIOD_TOOLBAR_ACTIONS.viewYear
+                    : value === 'week'
+                      ? PERIOD_TOOLBAR_ACTIONS.viewWeek
+                      : PERIOD_TOOLBAR_ACTIONS.viewMonth
+                }
                 aria-label={`${label} 보기`}
                 aria-pressed={viewMode === value}
                 title={`${label} 보기`}
@@ -1404,6 +1569,7 @@ export function CalendarGrid({
               <InteractionUI
                 as="button"
                 className={yearNavBtnClass}
+                data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prevYear}
                 onClick={() => shiftYear(-1)}
                 aria-label="이전 연도"
                 title="이전 연도"
@@ -1414,6 +1580,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={`${navBtnClass} mr-5`}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prev}
               onClick={onPrev}
               aria-label={
                 viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'
@@ -1442,6 +1609,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={`${navBtnClass} ml-5`}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.next}
               onClick={onNext}
               aria-label={
                 viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'
@@ -1456,6 +1624,7 @@ export function CalendarGrid({
               <InteractionUI
                 as="button"
                 className={yearNavBtnClass}
+                data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.nextYear}
                 onClick={() => shiftYear(1)}
                 aria-label="다음 연도"
                 title="다음 연도"
@@ -1469,6 +1638,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={todayBtnClass}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.today}
               aria-label="오늘"
               title="오늘"
               onClick={goToday}
@@ -1478,6 +1648,7 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={cn(desktopModeIconBtnClass, softBlueIconBtnClass)}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.webEditor}
               onClick={handleOpenWebEditor}
               aria-label="브라우저에서 편집"
               title={
@@ -1496,6 +1667,7 @@ export function CalendarGrid({
                 softBlueIconBtnClass,
                 eventsHidden && softBlueIconBtnActiveClass
               )}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.toggleEvents}
               onClick={() => setViewFlag({ eventsHidden: !eventsHidden })}
               aria-label={eventsHidden ? '모든 일정 보이기' : '모든 일정 숨기기'}
               aria-pressed={eventsHidden}
@@ -1510,6 +1682,7 @@ export function CalendarGrid({
                 softBlueIconBtnClass,
                 completedHidden && softBlueIconBtnActiveClass
               )}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.toggleCompleted}
               onClick={() => setViewFlag({ completedHidden: !completedHidden })}
               aria-label={completedHidden ? '완료 일정 보이기' : '완료 일정 숨기기'}
               aria-pressed={completedHidden}

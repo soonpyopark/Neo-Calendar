@@ -1,0 +1,196 @@
+import type { WidgetBounds } from '../shared/ipc'
+import koffi from 'koffi'
+import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
+
+/** Fallback if GetDoubleClickTime is unavailable. */
+const DEFAULT_DBLCLICK_MS = 500
+const COOLDOWN_MS = 400
+/** Second click may jitter over desktop icons above WorkerW. */
+const CLICK_JITTER_PX = 20
+
+export type DayCellClientZone = {
+  x: number
+  y: number
+  width: number
+  height: number
+  dateKey: string
+}
+
+type Point = { x: number; y: number }
+
+type BridgeOptions = {
+  isArmed: () => boolean
+  /** Same screen DIP origin as header hover wake. */
+  getScreenOrigin: () => { x: number; y: number } | null
+  getZones: () => DayCellClientZone[]
+  /**
+   * Called once a full double-click is confirmed.
+   * Must NOT run on the first click — only after the second press within
+   * GetDoubleClickTime on the same day cell.
+   */
+  onDoubleClick: (payload: { dateKey: string; clientX: number; clientY: number }) => void
+  /** Dev-only: mirror main-process logs into renderer DevTools. */
+  onDebug?: (msg: string, data?: Record<string, unknown>) => void
+}
+
+/**
+ * WorkerW child windows do not receive WM_LBUTTONDBLCLK reliably.
+ * Uses the shared WH_MOUSE_LL hook + GetDoubleClickTime().
+ */
+export class DayCellDblClickBridge {
+  private unsubscribe: (() => void) | null = null
+  private lastPress: { dateKey: string; at: number; x: number; y: number } | null = null
+  private lastOpenAt = 0
+  private lastOpenedKey: string | null = null
+  private lastZoneCount = -1
+  private lastMissLogAt = 0
+  private lastEmptyZonesLogAt = 0
+  private readonly GetDoubleClickTime: () => number
+  private readonly options: BridgeOptions
+
+  private debug(msg: string, data?: Record<string, unknown>): void {
+    if (data) console.log(msg, data)
+    else console.log(msg)
+    this.options.onDebug?.(msg, data)
+  }
+
+  constructor(options: BridgeOptions) {
+    this.options = options
+    const user32 = koffi.load('user32.dll')
+    this.GetDoubleClickTime = user32.func('GetDoubleClickTime', 'uint', []) as () => number
+  }
+
+  start(): void {
+    if (process.platform !== 'win32' || this.unsubscribe) return
+    this.unsubscribe = subscribeGlobalMouseDown((pt, button) => {
+      if (button === 'left') this.handleMouseDown(pt)
+    })
+    console.log('[day-dblclick] global mouse hook armed (GetDoubleClickTime)')
+    this.debug('[day-dblclick] hook ready — waiting for embedded clicks')
+  }
+
+  stop(): void {
+    this.unsubscribe?.()
+    this.unsubscribe = null
+    this.lastPress = null
+    this.lastZoneCount = -1
+  }
+
+  private handleMouseDown(pt: ScreenPoint): void {
+    if (!this.options.isArmed()) {
+      this.lastPress = null
+      this.lastZoneCount = -1
+      return
+    }
+
+    const zones = this.options.getZones()
+    if (zones.length === 0) {
+      const now = Date.now()
+      if (now - this.lastEmptyZonesLogAt > 1500) {
+        this.lastEmptyZonesLogAt = now
+        this.debug('[day-dblclick] click ignored — main has 0 zones')
+      }
+      return
+    }
+    if (zones.length !== this.lastZoneCount) {
+      this.lastZoneCount = zones.length
+      this.debug('[day-dblclick] tracking', { zones: zones.length })
+    }
+
+    const origin = this.options.getScreenOrigin()
+    if (!origin) {
+      this.debug('[day-dblclick] click ignored — no screen origin')
+      return
+    }
+
+    const now = Date.now()
+    const dblWindow = this.GetDoubleClickTime() || DEFAULT_DBLCLICK_MS
+    const prev = this.lastPress
+
+    let hit = this.hitDayCell(pt, origin, zones)
+
+    if (
+      !hit &&
+      prev &&
+      now - prev.at <= dblWindow &&
+      Math.hypot(pt.x - prev.x, pt.y - prev.y) <= CLICK_JITTER_PX
+    ) {
+      hit = {
+        dateKey: prev.dateKey,
+        clientX: Math.round(pt.x - origin.x),
+        clientY: Math.round(pt.y - origin.y)
+      }
+    }
+
+    if (!hit) {
+      if (now - this.lastMissLogAt > 800) {
+        this.lastMissLogAt = now
+        this.debug('[day-dblclick] click missed all zones', {
+          x: pt.x,
+          y: pt.y,
+          origin,
+          zones: zones.length
+        })
+      }
+      if (!prev || now - prev.at > dblWindow) {
+        this.lastPress = null
+      }
+      return
+    }
+
+    if (hit.dateKey === this.lastOpenedKey && now - this.lastOpenAt < COOLDOWN_MS) {
+      return
+    }
+
+    if (prev && prev.dateKey === hit.dateKey && now - prev.at <= dblWindow) {
+      this.lastPress = null
+      this.lastOpenAt = now
+      this.lastOpenedKey = hit.dateKey
+      this.debug('[day-dblclick] confirmed → unlock + quick edit', { dateKey: hit.dateKey })
+      this.options.onDoubleClick({
+        dateKey: hit.dateKey,
+        clientX: hit.clientX,
+        clientY: hit.clientY
+      })
+      return
+    }
+
+    this.lastPress = { dateKey: hit.dateKey, at: now, x: pt.x, y: pt.y }
+    this.debug('[day-dblclick] first click recorded', {
+      dateKey: hit.dateKey,
+      dblWindowMs: dblWindow
+    })
+  }
+
+  private hitDayCell(
+    pt: Point,
+    origin: { x: number; y: number },
+    zones: DayCellClientZone[]
+  ): { dateKey: string; clientX: number; clientY: number } | null {
+    for (const zone of zones) {
+      const screenZone: WidgetBounds = {
+        x: origin.x + zone.x,
+        y: origin.y + zone.y,
+        width: zone.width,
+        height: zone.height
+      }
+      if (contains(screenZone, pt)) {
+        return {
+          dateKey: zone.dateKey,
+          clientX: Math.round(pt.x - origin.x),
+          clientY: Math.round(pt.y - origin.y)
+        }
+      }
+    }
+    return null
+  }
+}
+
+function contains(bounds: WidgetBounds, pt: Point, pad = 4): boolean {
+  return (
+    pt.x >= bounds.x - pad &&
+    pt.y >= bounds.y - pad &&
+    pt.x < bounds.x + bounds.width + pad &&
+    pt.y < bounds.y + bounds.height + pad
+  )
+}

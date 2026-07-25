@@ -136,6 +136,29 @@ export class DesktopModeController {
     }
   }
 
+  /** Temporary undock for header hover wake / text IME. */
+  suspendForInteraction(): void {
+    if (this.mode !== 'desktop' || this.interactionSuspended) return
+    const win = this.getWindow()
+    if (!win || win.isDestroyed() || !this.lockedBounds) return
+
+    const footprint = { ...this.lockedBounds }
+    this.interactionSuspended = true
+    clearWallpaperPin(win, footprint)
+    win.setSkipTaskbar(true)
+    win.setResizable(false)
+    win.setMovable(false)
+    win.setAlwaysOnTop(false)
+    win.setHasShadow(false)
+    win.setBounds(footprint)
+    win.setIgnoreMouseEvents(false)
+    win.setBounds(footprint)
+    focusWindowForTextInput(win)
+    win.setBounds(footprint)
+    console.log('[desktop] Suspended under-icons — window-like input', footprint)
+    this.onModeChanged?.(this.getStatus())
+  }
+
   /** Embed unlocked desktop under icons (WorkerW). */
   resumeUnderIcons(): void {
     if (this.mode !== 'desktop' || !this.interactionSuspended) return
@@ -155,11 +178,14 @@ export class DesktopModeController {
     this.onModeChanged?.(this.getStatus())
   }
 
-  /** IME/focus helper while window or unlocked desktop. */
+  /** IME/focus helper; undocks if still embedded. */
   focusForTextInput(): void {
     const win = this.getWindow()
     if (!win || win.isDestroyed()) return
-    if (this.mode === 'desktop' && !this.interactionSuspended) return
+    if (this.mode === 'desktop' && !this.interactionSuspended) {
+      this.suspendForInteraction()
+      return
+    }
     win.setIgnoreMouseEvents(false)
     focusWindowForTextInput(win)
   }
