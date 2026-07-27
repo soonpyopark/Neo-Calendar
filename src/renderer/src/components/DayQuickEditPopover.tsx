@@ -36,10 +36,26 @@ import type { DayReorderItem } from '../lib/dayReorder'
 
 const QUICK_EDIT_CHROME_HEIGHT = 88
 const QUICK_EDIT_BODY_EXTRA_MONTH = 96
+/** Year view (mini day cells): reserve list rows even when anchor height is tiny. */
+const QUICK_EDIT_YEAR_VISIBLE_ITEMS = 6
+const QUICK_EDIT_ITEM_ROW_PX = 32
+const QUICK_EDIT_CREATE_ROW_PX = 36
+const QUICK_EDIT_BODY_LAYOUT_PX = 24
 const COLOR_PANEL_PAD = 8
 /** Inset from shell content edges (principle #4). */
 const VIEWPORT_PAD = 5
 const MIN_BODY_HEIGHT = 72
+
+function quickEditBodyHeightForItems(itemCount: number): number {
+  return (
+    QUICK_EDIT_BODY_LAYOUT_PX +
+    QUICK_EDIT_CREATE_ROW_PX +
+    itemCount * QUICK_EDIT_ITEM_ROW_PX
+  )
+}
+
+/** Passed from CalendarGrid year view only — month/week quick edit stays unchanged. */
+export const QUICK_EDIT_YEAR_MIN_BODY = quickEditBodyHeightForItems(QUICK_EDIT_YEAR_VISIBLE_ITEMS)
 
 export type AnchorRect = {
   top: number
@@ -61,6 +77,8 @@ export type DayQuickEditPopoverProps = {
   focusEvent?: CalendarEvent | null
   /** Month view: grow taller than the day cell (MDC). */
   expandBody?: boolean
+  /** Year view: minimum body height (mini day cells in year grid). */
+  minBodyHeight?: number
   onClose: () => void
   onCreate: (title: string, calendarId: string, tagIds?: string[], links?: EventLink[]) => void
   onToggleCompleted: (event: CalendarEvent, completed: boolean) => void
@@ -80,16 +98,17 @@ export type DayQuickEditPopoverProps = {
 
 function buildQuickEditStyle(
   anchorRect: AnchorRect | null,
-  options?: { bodyExtra?: number }
+  options?: { bodyExtra?: number; minBodyHeight?: number }
 ): CSSProperties | undefined {
   const bodyExtra = options?.bodyExtra ?? 0
+  const floorBody = options?.minBodyHeight ?? 0
   // Pointer-only anchors (0×0) must not drive cell-relative sizing — use the
   // centered fallback panel instead of collapsing to the minimum height.
   const usableAnchor =
     anchorRect && anchorRect.width > 0 && anchorRect.height > 0 ? anchorRect : null
   if (!usableAnchor) {
     const width = 320
-    const height = 280
+    const height = Math.max(280, floorBody + QUICK_EDIT_CHROME_HEIGHT)
     const clamped = clampRectToViewport({
       top: (window.innerHeight - height) / 2,
       left: (window.innerWidth - width) / 2,
@@ -97,7 +116,10 @@ function buildQuickEditStyle(
       height,
       padding: VIEWPORT_PAD
     })
-    const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
+    const fittedBody = Math.max(
+      floorBody || MIN_BODY_HEIGHT,
+      clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
+    )
     return {
       top: clamped.top,
       left: clamped.left,
@@ -111,6 +133,7 @@ function buildQuickEditStyle(
   const padX = 12
   const width = Math.max(usableAnchor.width + padX * 2, 300)
   const desiredBody = Math.max(
+    floorBody,
     Math.round(usableAnchor.height) + bodyExtra,
     bodyExtra > 0 ? 160 : MIN_BODY_HEIGHT
   )
@@ -125,7 +148,10 @@ function buildQuickEditStyle(
     padding: VIEWPORT_PAD
   })
   // Keep chrome + body inside the clamped panel height (principle #4).
-  const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
+  const fittedBody = Math.max(
+    floorBody || MIN_BODY_HEIGHT,
+    clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
+  )
 
   return {
     top: clamped.top,
@@ -155,6 +181,7 @@ export function DayQuickEditPopover({
   canEdit = true,
   focusEvent = null,
   expandBody = false,
+  minBodyHeight = 0,
   onClose,
   onCreate,
   onToggleCompleted,
@@ -187,6 +214,7 @@ export function DayQuickEditPopover({
   const eventClickTimerRef = useRef<number | null>(null)
   const suppressEventClickRef = useRef(false)
   const bodyExtra = expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
+  const styleOptions = { bodyExtra, minBodyHeight: minBodyHeight || undefined }
 
   const clearEventClickTimer = (): void => {
     if (eventClickTimerRef.current != null) {
@@ -216,7 +244,7 @@ export function DayQuickEditPopover({
   }
 
   const [style, setStyle] = useState<CSSProperties | undefined>(() =>
-    buildQuickEditStyle(anchorRect, { bodyExtra })
+    buildQuickEditStyle(anchorRect, styleOptions)
   )
 
   // Portaled flyouts (calendar/tag/emoji/…) sit outside this InteractionUI box.
@@ -234,11 +262,15 @@ export function DayQuickEditPopover({
 
   // Principle #4: remeasure after layout / resize so the panel never leaves the window.
   useLayoutEffect(() => {
-    const base = buildQuickEditStyle(anchorRect, { bodyExtra })
+    const base = buildQuickEditStyle(anchorRect, styleOptions)
     setStyle(base)
 
     const panel = panelRef.current
     if (!panel || !base) return undefined
+
+    const minPanelFromBody = minBodyHeight
+      ? minBodyHeight + QUICK_EDIT_CHROME_HEIGHT
+      : 0
 
     const apply = (): void => {
       const desiredTop = typeof base.top === 'number' ? base.top : panel.getBoundingClientRect().top
@@ -246,7 +278,11 @@ export function DayQuickEditPopover({
         typeof base.left === 'number' ? base.left : panel.getBoundingClientRect().left
       const measured = panel.getBoundingClientRect()
       const width = Math.max(measured.width, Number(base.width) || 300)
-      const height = Math.max(measured.height, Number(base.height) || 120)
+      const height = Math.max(
+        measured.height,
+        Number(base.height) || 120,
+        minPanelFromBody
+      )
       const clamped = clampRectToViewport({
         top: desiredTop,
         left: desiredLeft,
@@ -254,7 +290,10 @@ export function DayQuickEditPopover({
         height,
         padding: VIEWPORT_PAD
       })
-      const fittedBody = Math.max(MIN_BODY_HEIGHT, clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT)
+      const fittedBody = Math.max(
+        minBodyHeight || MIN_BODY_HEIGHT,
+        clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
+      )
       const next: CSSProperties = {
         top: clamped.top,
         left: clamped.left,
@@ -292,7 +331,7 @@ export function DayQuickEditPopover({
       ro?.disconnect()
       window.removeEventListener('resize', apply)
     }
-  }, [anchorRect, bodyExtra])
+  }, [anchorRect, bodyExtra, minBodyHeight])
 
   const resolvedDayKey = dateKey || (date ? toDateKey(date) : '')
 

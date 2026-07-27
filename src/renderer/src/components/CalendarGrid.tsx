@@ -12,7 +12,7 @@ import {
 import { InteractionUI } from './InteractionUI'
 import { useAppDialog } from './AppDialogProvider'
 import { AppChrome } from './AppChrome'
-import { DayQuickEditPopover, type AnchorRect } from './DayQuickEditPopover'
+import { DayQuickEditPopover, type AnchorRect, QUICK_EDIT_YEAR_MIN_BODY } from './DayQuickEditPopover'
 import { getLunarMonthLabel } from '../lib/lunar'
 import {
   generateWeekRange,
@@ -2018,6 +2018,7 @@ export function CalendarGrid({
           anchorRect={quickEdit.anchorRect}
           canEdit={canEdit}
           expandBody={viewMode === 'month'}
+          minBodyHeight={viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : undefined}
           onReorderEvents={handleReorderEvents}
           onClose={() => {
             if (scopeDialog) return
