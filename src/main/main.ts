@@ -55,7 +55,12 @@ import type {
   QuickEditDeferToMainPayload,
   ToolbarClickPayload
 } from '../shared/ipc'
-import { EMBEDDED_FLOATING_CHROME_ACTIONS, PERIOD_TOOLBAR_ACTIONS } from '../shared/ipc'
+import {
+  CHROME_TOOLBAR_ACTIONS,
+  EMBEDDED_EXPORT_CHROME_ACTIONS,
+  EMBEDDED_FLOATING_CHROME_ACTIONS,
+  PERIOD_TOOLBAR_ACTIONS
+} from '../shared/ipc'
 import {
   getShellRunAtStartup,
   projectViewOptionsForClient
@@ -267,9 +272,15 @@ function deferQuickEditToMain(payload: QuickEditDeferToMainPayload): void {
 
 /** WorkerW embedded: run period-toolbar action in renderer without undocking. */
 function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
+  if (payload.action === CHROME_TOOLBAR_ACTIONS.enterWindow) {
+    panelWindowManager?.closeAll()
+    desktopMode.enterWindow()
+    return
+  }
   if (
     !PERIOD_TOOLBAR_ACTION_IDS.has(payload.action) &&
-    !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action)
+    !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action) &&
+    !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action)
   ) {
     return
   }
@@ -488,7 +499,10 @@ function registerIpc(): void {
   ipcMain.handle('enter-desktop', () =>
     desktopMode.enterDesktop({ intentional: true, force: false })
   )
-  ipcMain.handle('enter-window', () => desktopMode.enterWindow())
+  ipcMain.handle('enter-window', () => {
+    panelWindowManager?.closeAll()
+    return desktopMode.enterWindow()
+  })
   ipcMain.handle('get-window-bounds', () => desktopMode.getWindowBounds())
   ipcMain.handle('set-window-bounds', (_event, bounds) => desktopMode.setWindowBounds(bounds))
 
@@ -751,7 +765,7 @@ function registerIpc(): void {
   ipcMain.handle(
     'calendar:export',
     async (
-      _event,
+      event,
       input: { format: 'excel' | 'pdf'; year: number; month: number; asAdmin?: boolean }
     ) => {
       const raw = calendarStore.getSnapshot()
@@ -759,6 +773,13 @@ function registerIpc(): void {
         ...raw,
         settings: projectViewOptionsForClient(raw.settings, 'native')
       }
+      const senderWin = BrowserWindow.fromWebContents(event.sender)
+      const parent =
+        senderWin &&
+        !senderWin.isDestroyed() &&
+        panelWindowManager?.isPanelWebContents(event.sender.id)
+          ? senderWin
+          : mainWindow
       return exportCalendarMonth(
         {
           store,
@@ -767,7 +788,7 @@ function registerIpc(): void {
           format: input?.format === 'pdf' ? 'pdf' : 'excel',
           asAdmin: input?.asAdmin !== false
         },
-        mainWindow
+        parent && !parent.isDestroyed() ? parent : null
       )
     }
   )
@@ -860,21 +881,7 @@ function bootApp(): void {
 
   createWindow()
 
-  panelWindowManager = new PanelWindowManager(
-    () => mainWindow,
-    () => {
-      if (desktopMode.getLaunchMode() === 'desktop') {
-        const locked = desktopMode.getLockedBounds()
-        if (locked && locked.width > 0 && locked.height > 0) return locked
-        const saved = settingsStore.getWidgetBounds()
-        if (saved.width > 0 && saved.height > 0) return saved
-      }
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        return getWindowDipScreenBounds(mainWindow)
-      }
-      return desktopMode.getLockedBounds()
-    }
-  )
+  panelWindowManager = new PanelWindowManager(() => mainWindow)
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
   const idleEmbed = new DesktopIdleEmbedBridge({

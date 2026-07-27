@@ -340,7 +340,11 @@ export function QuickEditWindowApp(): ReactElement | null {
   }
 
   const routeFromQuickEdit = useCallback(
-    (kind: 'editor' | 'detail', event?: CalendarEvent | null): void => {
+    (
+      kind: 'editor' | 'detail',
+      event?: CalendarEvent | null,
+      pointer?: { x: number; y: number; screenX?: number; screenY?: number }
+    ): void => {
       if (!init?.dateKey) return
       const returnQuickEdit = { dateKey: init.dateKey, anchor: init.anchor ?? null }
       if (kind === 'detail') {
@@ -349,7 +353,10 @@ export function QuickEditWindowApp(): ReactElement | null {
           kind: 'eventDetail',
           eventId: event.id,
           dayKey: init.dateKey,
-          anchor: init.anchor ?? null
+          pointerScreen:
+            pointer?.screenX != null && pointer?.screenY != null
+              ? { x: pointer.screenX, y: pointer.screenY }
+              : null
         })
         return
       }
@@ -435,7 +442,7 @@ export function QuickEditWindowApp(): ReactElement | null {
           )
         }}
         onOpenMore={(event) => routeFromQuickEdit('editor', event)}
-        onOpenEvent={(event) => routeFromQuickEdit('detail', event)}
+        onOpenEvent={(event, pointer) => routeFromQuickEdit('detail', event, pointer)}
         onEditEvent={(event) => routeFromQuickEdit('editor', event)}
         onAttachFiles={async (event) => {
           if (!canEdit) {

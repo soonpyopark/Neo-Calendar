@@ -513,7 +513,7 @@ export function EventEditor({
     <div
       className={
         isFloating
-          ? 'flex h-full w-full items-center justify-center overflow-y-auto'
+          ? 'h-full w-full overflow-y-auto'
           : 'interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"

@@ -327,8 +327,13 @@
       "exdates": [],
       "guests": [],
       "id": "5bcab27c-7760-4613-9440-45f1fa02cb2c",
-      "link": "",
-      "links": [],
+      "link": "https://naver.com",
+      "links": [
+        {
+          "id": "link-ms3dr51t-6q422z",
+          "url": "https://naver.com"
+        }
+      ],
       "location": "",
       "markerShape": null,
       "ownerLoginId": "admin",
@@ -343,7 +348,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "지각(3H) : 합계(7D1H)",
-      "updatedAt": "2026-07-22T13:07:24.1165174Z"
+      "updatedAt": "2026-07-27T15:26:58.022Z"
     },
     {
       "allDay": true,
@@ -439,5 +444,5 @@
       "ownerLoginId": "admin"
     }
   ],
-  "updatedAt": "2026-07-27T14:58:55.372Z"
+  "updatedAt": "2026-07-27T15:26:58.022Z"
 }

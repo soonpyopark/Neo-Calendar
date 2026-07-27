@@ -12,6 +12,7 @@ export type PanelKind =
   | 'search'
   | 'eventDetail'
   | 'dayList'
+  | 'exportConfirm'
 
 export type PanelAnchorRect = QuickEditAnchorRect
 
@@ -47,6 +48,8 @@ export type PanelWindowInit =
       eventId: string
       dayKey?: string
       anchor?: PanelAnchorRect | null
+      /** Screen DIP pointer — used when opening from another floating panel window. */
+      pointerScreen?: { x: number; y: number } | null
       fromSearch?: boolean
     }
   | {
@@ -54,6 +57,12 @@ export type PanelWindowInit =
       dateKey: string
       anchor: PanelAnchorRect
       eventsHidden: boolean
+    }
+  | {
+      kind: 'exportConfirm'
+      format: 'excel' | 'pdf'
+      year: number
+      month: number
     }
 
 export type OpenPanelWindowRequest = PanelWindowInit & {
@@ -117,23 +126,13 @@ function centerInMainWindow(options: {
   )
   let x = mainOrigin.x + Math.round((mainSize.width - safeWidth) / 2)
   let y = mainOrigin.y + Math.round((mainSize.height - safeHeight) / 2)
-  const mainMinX = mainOrigin.x + pad
-  const mainMinY = mainOrigin.y + pad
-  const mainMaxX = mainOrigin.x + mainSize.width - pad - safeWidth
-  const mainMaxY = mainOrigin.y + mainSize.height - pad - safeHeight
-  x = clamp(x, mainMinX, Math.max(mainMinX, mainMaxX))
-  y = clamp(y, mainMinY, Math.max(mainMinY, mainMaxY))
-  const workMinX = workArea.x + pad
-  const workMinY = workArea.y + pad
-  const workMaxX = workArea.x + workArea.width - pad - safeWidth
-  const workMaxY = workArea.y + workArea.height - pad - safeHeight
-  if (workMaxX >= workMinX) {
-    x = clamp(x, workMinX, workMaxX)
-  }
-  if (workMaxY >= workMinY) {
-    y = clamp(y, workMinY, workMaxY)
-  }
+  const minX = workArea.x + pad
+  const minY = workArea.y + pad
+  const maxX = workArea.x + workArea.width - pad - safeWidth
+  const maxY = workArea.y + workArea.height - pad - safeHeight
   return {
+    x: Math.round(clamp(x, minX, Math.max(minX, maxX))),
+    y: Math.round(clamp(y, minY, Math.max(minY, maxY))),
     width: Math.round(safeWidth),
     height: Math.round(safeHeight)
   }
@@ -158,6 +157,64 @@ function anchoredBounds(options: {
   return {
     x: Math.round(clamp(left, minLeft, Math.max(minLeft, maxLeft))),
     y: Math.round(clamp(top, minTop, Math.max(minTop, maxTop))),
+    width: Math.round(panelWidth),
+    height: Math.round(panelHeight)
+  }
+}
+
+function isPointerAnchorRect(anchor: PanelAnchorRect): boolean {
+  return anchor.width > 0 && anchor.height > 0 && anchor.width <= 32 && anchor.height <= 32
+}
+
+/** Place near the pointer (below/right with flip), clamped to the main calendar window. */
+function pointerAnchoredBounds(options: {
+  pointerClient: { x: number; y: number }
+  mainOrigin: { x: number; y: number }
+  mainSize: { width: number; height: number }
+  workArea: { x: number; y: number; width: number; height: number }
+  panelWidth: number
+  panelHeight: number
+  gap?: number
+}): { x: number; y: number; width: number; height: number } {
+  const pad = VIEWPORT_PAD
+  const gap = options.gap ?? 8
+  const { pointerClient, mainOrigin, mainSize, workArea } = options
+  const panelWidth = Math.min(
+    options.panelWidth,
+    Math.max(0, mainSize.width - pad * 2),
+    Math.max(0, workArea.width - pad * 2)
+  )
+  const panelHeight = Math.min(
+    options.panelHeight,
+    Math.max(0, mainSize.height - pad * 2),
+    Math.max(0, workArea.height - pad * 2)
+  )
+  const boundsLeft = mainOrigin.x + pad
+  const boundsTop = mainOrigin.y + pad
+  const boundsRight = mainOrigin.x + mainSize.width - pad
+  const boundsBottom = mainOrigin.y + mainSize.height - pad
+
+  const screenX = mainOrigin.x + pointerClient.x
+  const screenY = mainOrigin.y + pointerClient.y
+
+  let left = screenX + gap
+  if (left + panelWidth > boundsRight) {
+    left = screenX - panelWidth - gap
+  }
+  left = clamp(left, boundsLeft, Math.max(boundsLeft, boundsRight - panelWidth))
+
+  let top = screenY + gap
+  if (top + panelHeight > boundsBottom) {
+    const aboveTop = screenY - gap - panelHeight
+    if (aboveTop >= boundsTop) {
+      top = aboveTop
+    }
+  }
+  top = clamp(top, boundsTop, Math.max(boundsTop, boundsBottom - panelHeight))
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
     width: Math.round(panelWidth),
     height: Math.round(panelHeight)
   }
@@ -200,7 +257,51 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'eventDetail') {
-    return centerInMainWindow({
+    const detailInit = init
+    if (detailInit.pointerScreen) {
+      return pointerAnchoredBounds({
+        pointerClient: {
+          x: detailInit.pointerScreen.x - mainOrigin.x,
+          y: detailInit.pointerScreen.y - mainOrigin.y
+        },
+        mainOrigin,
+        mainSize,
+        workArea,
+        panelWidth: 418,
+        panelHeight: 360
+      })
+    }
+
+    const usable =
+      anchorClient && anchorClient.width > 0 && anchorClient.height > 0 ? anchorClient : null
+    if (usable) {
+      if (isPointerAnchorRect(usable)) {
+        return pointerAnchoredBounds({
+          pointerClient: {
+            x: usable.left + usable.width / 2,
+            y: usable.top + usable.height / 2
+          },
+          mainOrigin,
+          mainSize,
+          workArea,
+          panelWidth: 418,
+          panelHeight: 360
+        })
+      }
+      const anchorScreen = {
+        top: mainOrigin.y + usable.top,
+        left: mainOrigin.x + usable.left,
+        width: usable.width,
+        height: usable.height
+      }
+      return anchoredBounds({
+        anchorScreen,
+        panelWidth: 418,
+        panelHeight: 360,
+        workArea
+      })
+    }
+    return centeredBounds({
       mainOrigin,
       mainSize,
       workArea,
@@ -210,7 +311,7 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'eventEditor') {
-    return centerInMainWindow({
+    return centeredBounds({
       mainOrigin,
       mainSize,
       workArea,
@@ -237,6 +338,16 @@ export function computePanelWindowBounds(options: {
       width: Math.min(880, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2),
       height: Math.min(700, workArea.height - VIEWPORT_PAD * 2),
       topBias: -Math.round(mainSize.height * 0.12)
+    })
+  }
+
+  if (init.kind === 'exportConfirm') {
+    return centeredBounds({
+      mainOrigin,
+      mainSize,
+      workArea,
+      width: 392,
+      height: 176
     })
   }
 

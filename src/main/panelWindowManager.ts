@@ -11,7 +11,7 @@ import {
   type PanelWindowInit
 } from '../shared/panelWindows'
 import type { QuickEditDeferToMainPayload } from '../shared/quickEditLayout'
-import type { OpenDayQuickEditPayload, WidgetBounds } from '../shared/ipc'
+import type { OpenDayQuickEditPayload } from '../shared/ipc'
 import type { QuickEditViewMode } from '../shared/quickEditLayout'
 import type { WallpaperBrowserWindow } from './wallpaper'
 
@@ -60,10 +60,7 @@ export class PanelWindowManager {
   private outsideBlockedUntil = 0
   private lastOutsideCloseAt = 0
 
-  constructor(
-    private readonly getMainWindow: () => WallpaperBrowserWindow | null,
-    private readonly getMainFootprint: () => WidgetBounds | null = () => null
-  ) {
+  constructor(private readonly getMainWindow: () => WallpaperBrowserWindow | null) {
     ipcMain.handle('panel-get-init', (event) => this.getInitForWebContents(event.sender.id))
 
     ipcMain.on('panel-close', (event) => {
@@ -216,6 +213,7 @@ export class PanelWindowManager {
   private beforeOpenSlot(slot: PanelSlot): void {
     if (slot === 'eventEditor') {
       this.evictSlot('eventDetail')
+      this.evictSlot('quickEdit')
     }
     if (slot === 'quickEdit') {
       this.evictSlot('eventDetail')
@@ -329,8 +327,7 @@ export class PanelWindowManager {
     this.lastMainWindow = mainWindow
     this.ensureOutsideListener()
 
-    const mainBounds =
-      this.getMainFootprint() ?? getWindowDipScreenBounds(mainWindow)
+    const mainBounds = getWindowDipScreenBounds(mainWindow)
     if (!mainBounds) return
 
     const origin = { x: mainBounds.x, y: mainBounds.y }
@@ -343,7 +340,8 @@ export class PanelWindowManager {
     const resolvedAnchor =
       init.kind === 'dayList'
         ? init.anchor
-        : anchorClient ?? (init.kind === 'quickEdit' ? (init.anchor ?? null) : null)
+        : anchorClient ??
+          (init.kind === 'quickEdit' || init.kind === 'eventDetail' ? (init.anchor ?? null) : null)
 
     const windowBounds = this.computeWindowBounds({
       init,

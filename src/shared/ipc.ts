@@ -103,6 +103,17 @@ export const EMBEDDED_FLOATING_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.settings
 ])
 
+/** Header actions that detach from WorkerW and switch launch mode. */
+export const EMBEDDED_MODE_CHROME_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.enterWindow
+])
+
+/** Header export actions while WorkerW-embedded (undock briefly for dialogs). */
+export const EMBEDDED_EXPORT_CHROME_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.exportExcel,
+  CHROME_TOOLBAR_ACTIONS.exportPdf
+])
+
 export type ToolbarClickPayload = {
   action: string
 }

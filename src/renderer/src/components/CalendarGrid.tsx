@@ -36,7 +36,12 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
-import { EMBEDDED_FLOATING_CHROME_ACTIONS, PERIOD_TOOLBAR_ACTIONS } from '../../../shared/ipc'
+import {
+  EMBEDDED_EXPORT_CHROME_ACTIONS,
+  EMBEDDED_FLOATING_CHROME_ACTIONS,
+  EMBEDDED_MODE_CHROME_ACTIONS,
+  PERIOD_TOOLBAR_ACTIONS
+} from '../../../shared/ipc'
 import type { OpenPanelWindowRequest, PanelAnchorRect, PanelWindowInit } from '../../../shared/panelWindows'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
@@ -539,7 +544,13 @@ export function CalendarGrid({
             (el) => {
               if (el instanceof HTMLButtonElement && el.disabled) return []
               const action = el.dataset.toolbarAction ?? ''
-              if (!action || !EMBEDDED_FLOATING_CHROME_ACTIONS.has(action)) return []
+              if (
+                !action ||
+                (!EMBEDDED_FLOATING_CHROME_ACTIONS.has(action) &&
+                  !EMBEDDED_MODE_CHROME_ACTIONS.has(action) &&
+                  !EMBEDDED_EXPORT_CHROME_ACTIONS.has(action))
+              )
+                return []
               const r = el.getBoundingClientRect()
               if (r.width < 1 || r.height < 1) return []
               return [
@@ -1119,6 +1130,10 @@ export function CalendarGrid({
     if (!api?.onModeChanged) return
     return api.onModeChanged((status) => {
       onModeChange(status.mode)
+      if (status.mode === 'window') {
+        closeOverlays()
+        return
+      }
       // Re-embed → close overlays so they aren't stranded under desktop icons.
       if (status.mode === 'desktop' && status.embedded) {
         closeOverlays()
@@ -1171,7 +1186,11 @@ export function CalendarGrid({
     if (!api?.onToolbarClick) return
     return api.onToolbarClick(({ action }) => {
       const toolbarActionSet = PERIOD_TOOLBAR_ACTION_ID_SET
-      const chromeActionSet = EMBEDDED_FLOATING_CHROME_ACTIONS
+      const chromeActionSet = new Set([
+        ...EMBEDDED_FLOATING_CHROME_ACTIONS,
+        ...EMBEDDED_MODE_CHROME_ACTIONS,
+        ...EMBEDDED_EXPORT_CHROME_ACTIONS
+      ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       const btn = document.querySelector<HTMLElement>(
         `.neo-cal-shell [data-toolbar-action="${action}"]`
@@ -1469,10 +1488,10 @@ export function CalendarGrid({
     const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
     if (currentMode === 'desktop' && isEmbedded) {
       setEventPopover(null)
+      setQuickEdit(null)
       setDayList(null)
       setScopeDialog(null)
       setPendingDelete(null)
-      setQuickEdit(null)
       openEmbeddedPanel({
         kind: 'eventEditor',
         eventId: event?.id ?? null,
@@ -1488,11 +1507,10 @@ export function CalendarGrid({
       return
     }
     setEventPopover(null)
+    setQuickEdit(null)
     setDayList(null)
     setScopeDialog(null)
     setPendingDelete(null)
-    if (!opts?.returnQuickEdit) setQuickEdit(null)
-    else setQuickEdit(null)
 
     if (event) {
       const master = findMasterEvent(event)
@@ -1644,6 +1662,16 @@ export function CalendarGrid({
     if (!canEdit || exporting) return
     const exportYear = viewDate.getFullYear()
     const exportMonth = viewDate.getMonth() + 1
+    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+    if (currentMode === 'desktop' && isEmbedded) {
+      openEmbeddedPanel({
+        kind: 'exportConfirm',
+        format,
+        year: exportYear,
+        month: exportMonth
+      })
+      return
+    }
     const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
     const ok = await confirm(
       `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
@@ -2241,8 +2269,12 @@ export function CalendarGrid({
               returnQuickEdit: quickEdit
             })
           }}
-          onOpenEvent={(event) =>
-            openEventDetail(event, quickEdit.anchorRect, { dayKey: quickEdit.dateKey })
+          onOpenEvent={(event, pointer) =>
+            openEventDetail(
+              event,
+              pointer ? { x: pointer.x, y: pointer.y } : quickEdit.anchorRect,
+              { dayKey: quickEdit.dateKey }
+            )
           }
           onEditEvent={(event) => {
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
@@ -2286,7 +2318,6 @@ export function CalendarGrid({
           }
           onClose={clearEventDetail}
           onEdit={(event) => {
-            // MDC: detail pencil → full EventEditor (closes detail + day list).
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event, { defaultDate: eventPopover.dayKey })
           }}

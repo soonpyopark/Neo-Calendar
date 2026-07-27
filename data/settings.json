@@ -82,7 +82,7 @@
         "colorScheme": "light",
         "accentColor": "#795548",
         "eventsHidden": false,
-        "completedHidden": false
+        "completedHidden": true
       },
       "browser": {
         "showWeekNumbers": true,
@@ -127,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-27T15:15:43.811Z"
+  "updatedAt": "2026-07-27T15:35:54.009Z"
 }

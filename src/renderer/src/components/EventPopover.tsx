@@ -21,6 +21,13 @@ const toolbarBtnClass =
 
 export type EventPopoverAnchor = AnchorRect | { x: number; y: number } | null
 
+export type EventDetailPointer = {
+  x: number
+  y: number
+  screenX?: number
+  screenY?: number
+}
+
 export type EventPopoverProps = {
   event: CalendarEvent
   calendar?: CalendarRecord | null
@@ -30,7 +37,7 @@ export type EventPopoverProps = {
   surface?: 'inline' | 'floating'
   canEdit?: boolean
   onClose: () => void
-  onEdit: (event: CalendarEvent) => void
+  onEdit: (event: CalendarEvent, pointer?: EventDetailPointer) => void
   onDelete: (event: CalendarEvent) => void
   onToggleCompleted?: (event: CalendarEvent, completed: boolean) => void
 }
@@ -94,6 +101,25 @@ export function EventPopover({
         }))
       : getCenteredPanelStyle({ padding: 16, maxWidth: 418 })
 
+  const emitEdit = (nativeEvent?: {
+    clientX: number
+    clientY: number
+    screenX: number
+    screenY: number
+  }): void => {
+    onEdit(
+      event,
+      nativeEvent
+        ? {
+            x: nativeEvent.clientX,
+            y: nativeEvent.clientY,
+            screenX: nativeEvent.screenX,
+            screenY: nativeEvent.screenY
+          }
+        : undefined
+    )
+  }
+
   return (
     <div
       className={
@@ -140,7 +166,7 @@ export function EventPopover({
                 <button
                   type="button"
                   className={toolbarBtnClass}
-                  onClick={() => onEdit(event)}
+                  onClick={(e) => emitEdit(e.nativeEvent)}
                   aria-label="수정"
                 >
                   <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
@@ -185,7 +211,7 @@ export function EventPopover({
             dayKey={dayKey}
             tags={tags}
             hideCalendarFooter={isFloating}
-            onTitleDoubleClick={canEdit ? () => onEdit(event) : undefined}
+            onTitleDoubleClick={canEdit ? () => emitEdit() : undefined}
           />
         </div>
         {isFloating ? (

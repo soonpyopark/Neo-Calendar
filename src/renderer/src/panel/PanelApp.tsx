@@ -6,6 +6,7 @@ import { SettingsPanelHost } from './panelHosts/SettingsPanelHost'
 import { SearchPanelHost } from './panelHosts/SearchPanelHost'
 import { EventDetailPanelHost } from './panelHosts/EventDetailPanelHost'
 import { DayListPanelHost } from './panelHosts/DayListPanelHost'
+import { ExportConfirmPanelHost } from './panelHosts/ExportConfirmPanelHost'
 
 export function PanelApp(): ReactElement | null {
   const [init, setInit] = useState<PanelWindowInit | null>(null)
@@ -43,6 +44,8 @@ export function PanelApp(): ReactElement | null {
       return <EventDetailPanelHost init={init} />
     case 'dayList':
       return <DayListPanelHost init={init} />
+    case 'exportConfirm':
+      return <ExportConfirmPanelHost init={init} />
     default:
       return null
   }

@@ -82,7 +82,10 @@ export type DayQuickEditPopoverProps = {
   onEventLinkChange?: (event: CalendarEvent, links: EventLink[]) => void
   onReorderEvents?: (ordered: DayReorderItem[], dayKey: string) => void | Promise<void>
   onOpenMore: (event?: CalendarEvent | null) => void
-  onOpenEvent?: (event: CalendarEvent) => void
+  onOpenEvent?: (
+    event: CalendarEvent,
+    pointer?: { x: number; y: number; screenX?: number; screenY?: number }
+  ) => void
   onEditEvent?: (event: CalendarEvent) => void
   onAttachFiles?: (event: CalendarEvent) => void | Promise<void>
 }
@@ -224,7 +227,10 @@ export function DayQuickEditPopover({
     []
   )
 
-  const openEventDetailFromRow = (item: CalendarEvent): void => {
+  const openEventDetailFromRow = (
+    item: CalendarEvent,
+    pointer?: { x: number; y: number; screenX?: number; screenY?: number }
+  ): void => {
     setSelectedEvent(item)
     clearEventClickTimer()
     eventClickTimerRef.current = window.setTimeout(() => {
@@ -233,7 +239,7 @@ export function DayQuickEditPopover({
         suppressEventClickRef.current = false
         return
       }
-      onOpenEvent?.(item)
+      onOpenEvent?.(item, pointer)
     }, 250)
   }
 
@@ -748,7 +754,12 @@ export function DayQuickEditPopover({
                       }}
                       onClick={(e) => {
                         if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
-                        openEventDetailFromRow(item)
+                        openEventDetailFromRow(item, {
+                          x: e.clientX,
+                          y: e.clientY,
+                          screenX: e.screenX,
+                          screenY: e.screenY
+                        })
                       }}
                       onDoubleClick={(e) => {
                         if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
