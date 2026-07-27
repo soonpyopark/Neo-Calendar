@@ -489,16 +489,15 @@ export function CalendarGrid({
       const vw = window.innerWidth
       const vh = window.innerHeight
       const dayZoneSelectors = [
-        '.neo-cal-shell .day-cell[data-date-key] .day-number',
+        '.neo-cal-shell .day-cell[data-date-key]',
         '.neo-cal-shell .year-day[data-date-key]'
       ].join(', ')
       const dayZones = Array.from(
         document.querySelectorAll<HTMLElement>(dayZoneSelectors)
       ).flatMap((el) => {
-        const host = el.closest<HTMLElement>('[data-date-key]')
-        const dateKey = host?.dataset.dateKey ?? el.dataset.dateKey ?? ''
+        const dateKey = el.dataset.dateKey ?? ''
         if (!dateKey) return []
-        if (host instanceof HTMLButtonElement && host.disabled) return []
+        if (el instanceof HTMLButtonElement && el.disabled) return []
         const r = el.getBoundingClientRect()
         if (r.width < 1 || r.height < 1) return []
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
@@ -1957,8 +1956,7 @@ export function CalendarGrid({
         }}
       >
         <p className="neo-cal-footer-hint m-0 min-w-0">
-          [참고] 날짜 영역을 더블클릭해서 일정을 추가하고, 일정바를 더블클릭하면 상세 편집기로 수정
-          가능합니다.
+          [참고] 날짜 영역을 더블클릭해서 일정을 추가하세요.
         </p>
         <SiteLink />
       </footer>
