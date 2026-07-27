@@ -94,6 +94,7 @@ export type { CalendarEvent }
 export type ViewMode = 'year' | 'week' | 'month'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
+const PERIOD_TOOLBAR_ACTION_ID_SET = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
 const VIEW_MODE_OPTIONS: Array<{ value: ViewMode; label: string; Icon: () => ReactElement }> = [
   { value: 'year', label: '연', Icon: YearViewIcon },
   { value: 'week', label: '주', Icon: WeekViewIcon },
@@ -487,28 +488,30 @@ export function CalendarGrid({
         return
       }
 
-      const roots = [chromeRef.current, periodHeaderRef.current].filter(
-        (el): el is HTMLDivElement => Boolean(el)
-      )
-      const toolbarZones = roots.flatMap((root) =>
-        Array.from(root.querySelectorAll<HTMLElement>('[data-toolbar-action]')).flatMap((el) => {
-            if (el instanceof HTMLButtonElement && el.disabled) return []
-            const action = el.dataset.toolbarAction ?? ''
-            if (!action) return []
-            const r = el.getBoundingClientRect()
-            if (r.width < 1 || r.height < 1) return []
-            return [
-              {
-                x: Math.round(r.left),
-                y: Math.round(r.top),
-                width: Math.round(r.width),
-                height: Math.round(r.height),
-                action
-              }
+      const periodRoot = periodHeaderRef.current
+      if (!periodRoot) {
+        api.setClickForwardHitZones([])
+      } else {
+        const toolbarZones = Array.from(
+          periodRoot.querySelectorAll<HTMLElement>('[data-toolbar-action]')
+        ).flatMap((el) => {
+          if (el instanceof HTMLButtonElement && el.disabled) return []
+          const action = el.dataset.toolbarAction ?? ''
+          if (!action || !PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return []
+          const r = el.getBoundingClientRect()
+          if (r.width < 1 || r.height < 1) return []
+          return [
+            {
+              x: Math.round(r.left),
+              y: Math.round(r.top),
+              width: Math.round(r.width),
+              height: Math.round(r.height),
+              action
+            }
           ]
         })
-      )
-      api.setClickForwardHitZones(toolbarZones)
+        api.setClickForwardHitZones(toolbarZones)
+      }
 
       const vw = window.innerWidth
       const vh = window.innerHeight
@@ -1105,19 +1108,23 @@ export function CalendarGrid({
     })
   }, [])
 
-  // WorkerW embedded toolbar click → unlock + synthesize button click.
+  // WorkerW embedded: period toolbar click → synthesize button (stay embedded).
   useEffect(() => {
     const api = window.neoCalendar
     if (!api?.onToolbarClick) return
     return api.onToolbarClick(({ action }) => {
+      if (!PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return
       const btn = document.querySelector<HTMLElement>(
         `.neo-cal-shell [data-toolbar-action="${action}"]`
       )
       if (btn instanceof HTMLButtonElement && btn.disabled) return
       btn?.click()
-      requestAnimationFrame(() => {
-        void api.focusForTextInput?.()
-      })
+      const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+      if (currentMode !== 'desktop' || !isEmbedded) {
+        requestAnimationFrame(() => {
+          void api.focusForTextInput?.()
+        })
+      }
     })
   }, [])
 

@@ -21,7 +21,7 @@ type BridgeOptions = {
 const COOLDOWN_MS = 350
 
 /**
- * WorkerW-embedded: single click on period toolbar → unlock + run action in renderer.
+ * WorkerW-embedded: single click on period toolbar → run action in renderer (stay embedded).
  */
 export class PeriodToolbarClickBridge {
   private unsubscribe: (() => void) | null = null
@@ -39,7 +39,7 @@ export class PeriodToolbarClickBridge {
     this.unsubscribe = subscribeGlobalMouseDown((pt, button) => {
       if (button === 'left') this.handleMouseDown(pt)
     })
-    console.log('[toolbar-click] period toolbar click → unlock armed')
+    console.log('[toolbar-click] period toolbar click → embedded armed')
   }
 
   stop(): void {
@@ -75,7 +75,7 @@ export class PeriodToolbarClickBridge {
     this.lastClickAt = now
     this.lastAction = hit.action
 
-    console.log('[toolbar-click] confirmed → unlock + action', hit.action)
+    console.log('[toolbar-click] confirmed → embedded action', hit.action)
     this.options.onToolbarClick({
       action: hit.action,
       clientX: hit.clientX,

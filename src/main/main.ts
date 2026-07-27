@@ -55,6 +55,7 @@ import type {
   QuickEditDeferToMainPayload,
   ToolbarClickPayload
 } from '../shared/ipc'
+import { PERIOD_TOOLBAR_ACTIONS } from '../shared/ipc'
 import {
   getShellRunAtStartup,
   projectViewOptionsForClient
@@ -119,6 +120,7 @@ let auth: AuthService
 let desktopMode: DesktopModeController
 let webServer: CalendarWebServer | null = null
 let tray: AppTray | null = null
+const PERIOD_TOOLBAR_ACTION_IDS = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
 /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
 let dayCellHitZones: DayCellClientZone[] = []
 /** Header/shell rects where day double-click must not fire. */
@@ -129,7 +131,7 @@ let desktopQuickEditContext: DesktopQuickEditContext = {
   eventsHidden: false
 }
 let quickEditWindowManager: QuickEditWindowManager | null = null
-/** Period toolbar footprints for WorkerW click → unlock + action. */
+/** Period toolbar footprints for WorkerW embedded click → action (stay embedded). */
 let clickForwardHitZones: ClickForwardClientZone[] = []
 
 function notifyStoreChanged(): void {
@@ -263,21 +265,12 @@ function deferQuickEditToMain(payload: QuickEditDeferToMainPayload): void {
   }, 60)
 }
 
-/** Unlock WorkerW embed, then dispatch a period-toolbar action in renderer. */
-function unlockAndTriggerToolbar(payload: ToolbarClickPayload): void {
-  desktopMode.suspendForInteraction()
+/** WorkerW embedded: run period-toolbar action in renderer without undocking. */
+function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
+  if (!PERIOD_TOOLBAR_ACTION_IDS.has(payload.action)) return
   const win = mainWindow
   if (!win || win.isDestroyed()) return
-
-  focusWindowForTextInput(win)
-  win.setIgnoreMouseEvents(false)
-
-  setTimeout(() => {
-    if (win.isDestroyed()) return
-    win.setIgnoreMouseEvents(false)
-    win.webContents.send('toolbar-click', payload)
-    focusWindowForTextInput(win)
-  }, 60)
+  win.webContents.send('toolbar-click', payload)
 }
 
 function broadcastMode(status: ModeStatus): void {
@@ -894,14 +887,14 @@ function bootApp(): void {
   })
   outsideClickEmbed.start()
 
-  // WorkerW-embedded: click period toolbar → unlock + run action.
+  // WorkerW-embedded: click period toolbar → action (stay embedded).
   const toolbarClick = new PeriodToolbarClickBridge({
     isArmed: () => desktopMode.isWorkerEmbedded(),
     getScreenOrigin: () => hitTestScreenOrigin(),
     getZones: () => clickForwardHitZones,
     shouldProcessEmbeddedClick: (pt) => shouldProcessEmbeddedClickAtPoint(pt),
     onToolbarClick: (payload) => {
-      unlockAndTriggerToolbar({ action: payload.action })
+      triggerEmbeddedPeriodToolbar({ action: payload.action })
     }
   })
   toolbarClick.start()
