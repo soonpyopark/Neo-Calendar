@@ -228,6 +228,7 @@ export function installBrowserNeoCalendar(): void {
     focusForTextInput: () => undefined,
     onModeChanged: () => () => undefined,
     onOpenDayQuickEdit: () => () => undefined,
+    onFocusDayCell: () => () => undefined,
     setDesktopQuickEditContext: () => undefined,
     getQuickEditInit: async () => null,
     closeQuickEditWindow: () => undefined,

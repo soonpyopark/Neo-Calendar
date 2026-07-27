@@ -195,7 +195,32 @@ function isForeignClickAtPoint(pt: { x: number; y: number }): boolean {
 }
 
 function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolean {
+  if (panelWindowManager?.isPointInsideAnyPanel(pt)) return false
   return shouldProcessEmbeddedGlobalClick(mainWindow, pt)
+}
+
+function restoreMainWindowMouseAfterPanels(): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  if (desktopMode.isInputLocked()) {
+    win.setIgnoreMouseEvents(true)
+    return
+  }
+  if (desktopMode.getLaunchMode() === 'window' || desktopMode.isInteractionSuspended()) {
+    win.setIgnoreMouseEvents(false)
+    return
+  }
+  if (desktopMode.isWorkerEmbedded()) {
+    win.setIgnoreMouseEvents(true)
+    return
+  }
+  win.setIgnoreMouseEvents(true, { forward: true })
+}
+
+function shieldMainWindowWhilePanelsOpen(): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+  win.setIgnoreMouseEvents(true, { forward: false })
 }
 
 /** Mirror main-process day-dblclick logs into renderer DevTools (dev only). */
@@ -246,6 +271,9 @@ function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
 function openFloatingDayQuickEdit(payload: OpenDayQuickEditPayload): void {
   const win = mainWindow
   if (!win || win.isDestroyed() || !panelWindowManager) return
+  if (!win.webContents.isDestroyed()) {
+    win.webContents.send('focus-day-cell', { dateKey: payload.dateKey })
+  }
   panelWindowManager.openQuickEditFromEmbeddedDblClick(
     win,
     payload,
@@ -881,7 +909,12 @@ function bootApp(): void {
 
   createWindow()
 
-  panelWindowManager = new PanelWindowManager(() => mainWindow)
+  panelWindowManager = new PanelWindowManager(() => mainWindow, {
+    onPanelStackChanged: (hasOpenPanels) => {
+      if (hasOpenPanels) shieldMainWindowWhilePanelsOpen()
+      else restoreMainWindowMouseAfterPanels()
+    }
+  })
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
   const idleEmbed = new DesktopIdleEmbedBridge({
@@ -907,6 +940,7 @@ function bootApp(): void {
       return live ?? locked
     },
     isForeignAppAtPoint: (pt) => isForeignClickAtPoint(pt),
+    shouldSkipClick: (pt) => panelWindowManager?.isPointInsideAnyPanel(pt) ?? false,
     onEmbed: () => {
       desktopMode.resumeUnderIcons()
     }

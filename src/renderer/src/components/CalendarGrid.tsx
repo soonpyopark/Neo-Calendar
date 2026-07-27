@@ -1078,12 +1078,30 @@ export function CalendarGrid({
     }
   }
 
+  const focusDayCell = useCallback((dateKey: string): void => {
+    setSelectedKey(dateKey)
+    requestAnimationFrame(() => {
+      const el = document.querySelector<HTMLElement>(
+        `.neo-cal-shell .day-cell[data-date-key="${dateKey}"], .neo-cal-shell .year-day[data-date-key="${dateKey}"]`
+      )
+      if (!el) return
+      try {
+        el.focus({ preventScroll: true })
+      } catch {
+        el.focus()
+      }
+    })
+  }, [])
+
+  const focusDayCellRef = useRef(focusDayCell)
+  focusDayCellRef.current = focusDayCell
+
   const openQuickEdit = (
     cell: DayCell,
     eventOrRect?: MouseEvent | DOMRect | null
   ): void => {
     setEventPopover(null)
-    setSelectedKey(cell.dateKey)
+    focusDayCell(cell.dateKey)
     let anchorRect: AnchorRect | null = null
     if (eventOrRect instanceof DOMRect) {
       anchorRect = {
@@ -1130,6 +1148,14 @@ export function CalendarGrid({
       rect ?? null
     )
   }
+
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onFocusDayCell) return
+    return api.onFocusDayCell(({ dateKey }) => {
+      focusDayCellRef.current(dateKey)
+    })
+  }, [])
 
   useEffect(() => {
     const onTheme = (): void => setThemeEpoch((n) => n + 1)

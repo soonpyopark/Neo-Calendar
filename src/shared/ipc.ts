@@ -128,6 +128,10 @@ export type OpenDayQuickEditPayload = {
   clientY?: number
 }
 
+export type FocusDayCellPayload = {
+  dateKey: string
+}
+
 export type DayDblClickLogPayload = {
   msg: string
   data?: Record<string, unknown>
@@ -157,6 +161,8 @@ export type NeoCalendarApi = {
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
   /** Main → renderer: open day quick edit after WorkerW double-click unlock. */
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
+  /** Main → renderer: highlight/focus a day cell (e.g. while a floating quick-edit panel opens). */
+  onFocusDayCell: (listener: (payload: FocusDayCellPayload) => void) => () => void
   /** WorkerW embedded: publish view context for floating quick-edit window. */
   setDesktopQuickEditContext: (context: DesktopQuickEditContext) => void
   /** Floating quick-edit window: read open payload after load. */

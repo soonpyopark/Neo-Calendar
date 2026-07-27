@@ -9,6 +9,7 @@ import type {
   ModeStatus,
   NeoCalendarApi,
   OpenDayQuickEditPayload,
+  FocusDayCellPayload,
   DayDblClickLogPayload,
   QuickEditDeferToMainPayload,
   ToolbarClickPayload,
@@ -79,6 +80,18 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('open-day-quick-edit', handler)
     return () => {
       ipcRenderer.removeListener('open-day-quick-edit', handler)
+    }
+  },
+  onFocusDayCell: (listener: (payload: FocusDayCellPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: FocusDayCellPayload
+    ): void => {
+      listener(payload)
+    }
+    ipcRenderer.on('focus-day-cell', handler)
+    return () => {
+      ipcRenderer.removeListener('focus-day-cell', handler)
     }
   },
   setDesktopQuickEditContext: (context: DesktopQuickEditContext) => {

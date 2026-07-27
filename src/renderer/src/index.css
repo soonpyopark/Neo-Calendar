@@ -1743,12 +1743,27 @@ body.is-resizing-window {
   box-sizing: border-box;
 }
 
-/* Floating quick-edit BrowserWindow — same panel chrome as inline overlay. */
+/* Floating panel BrowserWindows — capture the full window hit area (layered alpha pass-through). */
+html.neo-panel-window,
+html.neo-quick-edit-window {
+  pointer-events: auto;
+}
+
+html.neo-panel-window #root,
+html.neo-quick-edit-window #root {
+  width: 100%;
+  height: 100%;
+  pointer-events: auto;
+}
+
+html.neo-panel-window .neo-panel-shell,
 html.neo-quick-edit-window .neo-quick-edit-shell {
   position: relative;
   width: 100%;
   height: 100%;
-  background: transparent;
+  pointer-events: auto;
+  /* Nearly invisible fill so Windows hit-tests the whole BrowserWindow bounds. */
+  background: rgba(0, 0, 0, 0.001);
 }
 
 html.neo-quick-edit-window .day-quick-edit {

@@ -17,8 +17,10 @@ installTextInputFocusBridge()
 
 createRoot(container).render(
   <StrictMode>
-    <AppDialogProvider>
-      <PanelApp />
-    </AppDialogProvider>
+    <div className="neo-panel-shell h-screen w-screen overflow-hidden">
+      <AppDialogProvider>
+        <PanelApp />
+      </AppDialogProvider>
+    </div>
   </StrictMode>
 )

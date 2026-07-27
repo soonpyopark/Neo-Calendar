@@ -102,7 +102,7 @@
       "updatedAt": "2026-07-22T10:41:07.3643685Z"
     },
     {
-      "allDay": true,
+      "allDay": false,
       "calendarId": "32496041-84de-4378-8562-e281f601992f",
       "color": null,
       "completed": false,
@@ -110,7 +110,7 @@
       "createdBy": "local",
       "description": "",
       "endDate": "2026-07-15",
-      "endTime": null,
+      "endTime": "12:00",
       "exdates": [],
       "guests": [],
       "id": "f0f58c12-8230-47ea-b78f-bd78ef6f332e",
@@ -120,13 +120,17 @@
       "repeatCount": null,
       "repeatUntil": null,
       "startDate": "2026-07-15",
-      "startTime": null,
+      "startTime": "12:00",
       "tagIds": [],
       "title": "점심 커피(과장님)",
-      "updatedAt": "2026-07-27T14:58:55.371Z",
+      "updatedAt": "2026-07-27T16:05:10.426Z",
       "sortOrderByDay": {
         "2026-07-15": 0
-      }
+      },
+      "links": [],
+      "link": "",
+      "markerShape": null,
+      "sortOrder": null
     },
     {
       "allDay": true,
@@ -439,5 +443,5 @@
       "ownerLoginId": "admin"
     }
   ],
-  "updatedAt": "2026-07-27T15:46:09.837Z"
+  "updatedAt": "2026-07-27T16:05:10.426Z"
 }

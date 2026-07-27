@@ -52,6 +52,11 @@ type OpenEmbeddedOptions = {
   mainWindow: WallpaperBrowserWindow
 }
 
+type PanelWindowManagerOptions = {
+  /** Fired when the floating panel stack becomes non-empty or empty. */
+  onPanelStackChanged?: (hasOpenPanels: boolean) => void
+}
+
 export class PanelWindowManager {
   private entriesBySlot = new Map<PanelSlot, PanelEntry>()
   private slotByWebContentsId = new Map<number, PanelSlot>()
@@ -60,7 +65,10 @@ export class PanelWindowManager {
   private outsideBlockedUntil = 0
   private lastOutsideCloseAt = 0
 
-  constructor(private readonly getMainWindow: () => WallpaperBrowserWindow | null) {
+  constructor(
+    private readonly getMainWindow: () => WallpaperBrowserWindow | null,
+    private readonly options: PanelWindowManagerOptions = {}
+  ) {
     ipcMain.handle('panel-get-init', (event) => this.getInitForWebContents(event.sender.id))
 
     ipcMain.on('panel-close', (event) => {
@@ -232,6 +240,7 @@ export class PanelWindowManager {
     const entry: PanelEntry = { slot, win, webContentsId, init, anchorScreen }
     this.entriesBySlot.set(slot, entry)
     this.slotByWebContentsId.set(webContentsId, slot)
+    this.notifyPanelStackChanged()
   }
 
   private unregisterEntry(slot: PanelSlot, webContentsId: number): void {
@@ -246,13 +255,19 @@ export class PanelWindowManager {
       if (this.entriesBySlot.size === 0) {
         this.stopOutsideListener()
       }
+      this.notifyPanelStackChanged()
     } catch {
       this.entriesBySlot.delete(slot)
       this.slotByWebContentsId.delete(webContentsId)
       if (this.entriesBySlot.size === 0) {
         this.stopOutsideListener()
       }
+      this.notifyPanelStackChanged()
     }
+  }
+
+  private notifyPanelStackChanged(): void {
+    this.options.onPanelStackChanged?.(this.entriesBySlot.size > 0)
   }
 
   /** Remove slot tracking and close the window without relying on `closed` cleanup. */
@@ -292,6 +307,22 @@ export class PanelWindowManager {
 
   isPanelWebContents(webContentsId: number): boolean {
     return this.slotByWebContentsId.has(webContentsId)
+  }
+
+  isPointInsideAnyPanel(pt: ScreenPoint): boolean {
+    for (const entry of this.entriesBySlot.values()) {
+      const bounds = winBounds(entry.win)
+      if (!bounds) continue
+      if (
+        pt.x >= bounds.x &&
+        pt.y >= bounds.y &&
+        pt.x < bounds.x + bounds.width &&
+        pt.y < bounds.y + bounds.height
+      ) {
+        return true
+      }
+    }
+    return false
   }
 
   closeAll(): void {
@@ -362,6 +393,7 @@ export class PanelWindowManager {
       y: windowBounds.y,
       width: windowBounds.width,
       height: windowBounds.height,
+      parent: mainWindow,
       frame: false,
       transparent: true,
       skipTaskbar: true,
@@ -391,6 +423,7 @@ export class PanelWindowManager {
     })
 
     const webContentsId = win.webContents.id
+    win.setIgnoreMouseEvents(false)
     this.registerEntry(slot, win, init, anchorScreen)
 
     win.once('ready-to-show', () => {

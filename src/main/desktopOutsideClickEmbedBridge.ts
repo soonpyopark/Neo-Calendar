@@ -15,6 +15,8 @@ type BridgeOptions = {
   onEmbed: () => void
   /** True when another app's window is topmost at the click point. */
   isForeignAppAtPoint?: (pt: ScreenPoint) => boolean
+  /** Skip handling (e.g. click landed on a floating panel window). */
+  shouldSkipClick?: (pt: ScreenPoint) => boolean
 }
 
 /**
@@ -60,6 +62,7 @@ export class DesktopOutsideClickEmbedBridge {
     }
     if (now < this.blockedUntil) return
     if (now - this.lastEmbedAt < REEMBED_COOLDOWN_MS) return
+    if (this.options.shouldSkipClick?.(pt)) return
 
     const bounds = this.options.getAppBounds()
     if (!bounds) return
