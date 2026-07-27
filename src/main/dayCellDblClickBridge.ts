@@ -25,12 +25,8 @@ type BridgeOptions = {
   getZones: () => DayCellClientZone[]
   /** Shell chrome rects (header, footer, etc.) — clicks here must not open day quick edit. */
   getExcludeZones?: () => Array<Pick<WidgetBounds, 'x' | 'y' | 'width' | 'height'>>
-  /**
-   * Called once a full double-click is confirmed.
-   * Must NOT run on the first click — only after the second press within
-   * GetDoubleClickTime on the same day cell.
-   */
-  onDoubleClick: (payload: { dateKey: string; clientX: number; clientY: number }) => void
+  /** Called once a full double-click is confirmed on a day header zone. */
+  onQuickEditClick: (payload: { dateKey: string; clientX: number; clientY: number }) => void
   /** Dev-only: mirror main-process logs into renderer DevTools. */
   onDebug?: (msg: string, data?: Record<string, unknown>) => void
   /** Skip when click should not reach the embedded calendar. */
@@ -38,7 +34,7 @@ type BridgeOptions = {
 }
 
 /**
- * WorkerW child windows do not receive WM_LBUTTONDBLCLK reliably.
+ * WorkerW child windows do not receive reliable in-window clicks on date headers.
  * Uses the shared WH_MOUSE_LL hook + GetDoubleClickTime().
  */
 export class DayCellDblClickBridge {
@@ -159,7 +155,7 @@ export class DayCellDblClickBridge {
       this.lastOpenAt = now
       this.lastOpenedKey = hit.dateKey
       this.debug('[day-dblclick] confirmed → unlock + quick edit', { dateKey: hit.dateKey })
-      this.options.onDoubleClick({
+      this.options.onQuickEditClick({
         dateKey: hit.dateKey,
         clientX: hit.clientX,
         clientY: hit.clientY

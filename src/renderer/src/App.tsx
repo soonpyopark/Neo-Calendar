@@ -22,8 +22,8 @@ export default function App(): ReactElement {
 
   useEffect(() => {
     // Match first-run defaults before settings IPC returns.
-    document.documentElement.style.setProperty('--neo-header-opacity', '0.95')
-    document.documentElement.style.setProperty('--neo-shell-opacity', '0.95')
+    document.documentElement.style.setProperty('--neo-header-opacity', '1')
+    document.documentElement.style.setProperty('--neo-shell-opacity', '1')
 
     const api = window.neoCalendar
     if (!api) {

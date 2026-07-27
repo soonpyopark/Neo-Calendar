@@ -44,4 +44,4 @@ export const headerShellClass =
   'relative z-20 flex shrink-0 flex-col gap-2 border-b border-gcal-border-light px-4 py-2 neo-mdc-chrome'
 
 export const footerShellClass =
-  'relative z-20 flex shrink-0 items-center justify-end border-t border-gcal-grid-line px-4 py-2 neo-mdc-chrome'
+  'relative z-20 flex shrink-0 items-center justify-between gap-3 border-t border-gcal-grid-line px-4 py-2 neo-mdc-chrome'

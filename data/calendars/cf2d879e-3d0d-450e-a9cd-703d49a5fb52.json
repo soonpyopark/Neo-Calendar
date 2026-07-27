@@ -66,15 +66,15 @@
       "repeatUntil": null,
       "sortOrder": 0,
       "sortOrderByDay": {
-        "2026-07-30": 1,
+        "2026-07-30": 2,
         "2026-07-31": 1
       },
       "startDate": "2026-07-30",
       "startTime": null,
       "tagIds": [],
       "title": "(동신교회) 청소년부 수련회",
-      "updatedAt": "2026-07-22T11:32:47.5626382Z"
+      "updatedAt": "2026-07-27T12:13:33.101Z"
     }
   ],
-  "updatedAt": "2026-07-25T09:52:18.729Z"
+  "updatedAt": "2026-07-27T12:13:33.101Z"
 }

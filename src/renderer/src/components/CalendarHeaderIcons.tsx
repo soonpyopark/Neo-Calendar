@@ -81,6 +81,62 @@ export function ChevronRightIcon(): ReactElement {
   )
 }
 
+export function ChevronUpIcon({ size = 20 }: { size?: number }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path fill="currentColor" d="M7.41 15.41 12 10.83l4.59 4.58L18 14l-6-6-6 6 1.41 1.41z" />
+    </svg>
+  )
+}
+
+export function PlusIcon({ size = 16 }: { size?: number }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+    </svg>
+  )
+}
+
+/** Upward triangle for day-cell quick-edit control. */
+export function TriangleUpIcon({ size = 16 }: { size?: number }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path fill="currentColor" d="M12 8.25 17.25 16.5H6.75L12 8.25z" />
+    </svg>
+  )
+}
+
+/** Right-pointing triangle for day-cell quick-edit control (inside circle chrome). */
+export function TriangleRightIcon({ size = 16 }: { size?: number }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true">
+      <path fill="currentColor" d="M8.25 6.75 16.5 12 8.25 17.25V6.75z" />
+    </svg>
+  )
+}
+
+export function PlusInSquareIcon({ size = 16 }: { size?: number }): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="none">
+      <rect
+        x="4.25"
+        y="4.25"
+        width="15.5"
+        height="15.5"
+        rx="2.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+      />
+      <path
+        d="M12 8.25v7.5M8.25 12h7.5"
+        stroke="currentColor"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function WebBrowserIcon(): ReactElement {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">

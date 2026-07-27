@@ -166,6 +166,7 @@ export function DayQuickEditPopover({
   onReorderEvents,
   onOpenMore,
   onEditEvent,
+  onOpenEvent,
   onAttachFiles
 }: DayQuickEditPopoverProps): ReactElement {
   const [title, setTitle] = useState('')
@@ -183,7 +184,36 @@ export function DayQuickEditPopover({
   const inputRef = useRef<HTMLInputElement>(null)
   const colorTriggerRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
+  const eventClickTimerRef = useRef<number | null>(null)
+  const suppressEventClickRef = useRef(false)
   const bodyExtra = expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
+
+  const clearEventClickTimer = (): void => {
+    if (eventClickTimerRef.current != null) {
+      window.clearTimeout(eventClickTimerRef.current)
+      eventClickTimerRef.current = null
+    }
+  }
+
+  useEffect(
+    () => () => {
+      clearEventClickTimer()
+    },
+    []
+  )
+
+  const openEventDetailFromRow = (item: CalendarEvent): void => {
+    setSelectedEvent(item)
+    clearEventClickTimer()
+    eventClickTimerRef.current = window.setTimeout(() => {
+      eventClickTimerRef.current = null
+      if (suppressEventClickRef.current) {
+        suppressEventClickRef.current = false
+        return
+      }
+      onOpenEvent?.(item)
+    }, 250)
+  }
 
   const [style, setStyle] = useState<CSSProperties | undefined>(() =>
     buildQuickEditStyle(anchorRect, { bodyExtra })
@@ -663,7 +693,10 @@ export function DayQuickEditPopover({
                         setDropSeriesId(null)
                         if (fromId) reorderMovable(fromId, seriesId)
                       }}
-                      onClick={() => setSelectedEvent(item)}
+                      onClick={(e) => {
+                        if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
+                        openEventDetailFromRow(item)
+                      }}
                     >
                       <input
                         type="checkbox"
@@ -688,13 +721,11 @@ export function DayQuickEditPopover({
                         className="day-quick-edit-item-title"
                         role={isHoliday ? undefined : 'button'}
                         tabIndex={isHoliday ? undefined : 0}
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSelectedEvent(item)
-                        }}
                         onDoubleClick={(e) => {
                           e.preventDefault()
                           e.stopPropagation()
+                          clearEventClickTimer()
+                          suppressEventClickRef.current = true
                           setSelectedEvent(item)
                           if (isHoliday) return
                           onEditEvent?.(item)
@@ -703,8 +734,10 @@ export function DayQuickEditPopover({
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter' && e.key !== ' ') return
                           e.preventDefault()
+                          e.stopPropagation()
+                          clearEventClickTimer()
                           setSelectedEvent(item)
-                          if (e.key === 'Enter' && !isHoliday) onOpenMore(item)
+                          if (e.key === 'Enter') onOpenEvent?.(item)
                         }}
                       >
                         {item.title}

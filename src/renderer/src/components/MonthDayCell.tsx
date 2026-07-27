@@ -17,6 +17,7 @@ import { getDayParts } from '../lib/lunar'
 import { getEventLinks } from '../lib/eventLinks'
 import { buildDayReorderPayload, commitDayReorder, type DayReorderItem } from '../lib/dayReorder'
 import { resolveDayVisibleEventLimit } from '../hooks/useMaxVisibleEvents'
+import { TriangleRightIcon } from './CalendarHeaderIcons'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
@@ -51,7 +52,7 @@ export type MonthDayCellProps = {
   completedHidden?: boolean
   canEdit?: boolean
   tall?: boolean
-  /** WorkerW embedded: quick edit only via `.day-number` (global hook), not whole cell. */
+  /** WorkerW embedded: quick edit via main-process header hit zones, not whole cell. */
   desktopEmbedded?: boolean
   themeEpoch?: number
   onDaySelect: (date: Date) => void
@@ -132,10 +133,11 @@ export function MonthDayCell({
     : segments
   const { visibleCount, hiddenEventCount } = resolveDayVisibleEventLimit(uiSegments, eventCapacity)
   const visibleSegments = eventsHidden ? [] : uiSegments.slice(0, visibleCount)
+  const displayDayColor = eventsHidden ? null : (dayColor ?? null)
 
   const weekdayClass = cell.weekday === 0 ? 'sunday' : cell.weekday === 6 ? 'saturday' : ''
-  const cellStyle = dayColor
-    ? ({ '--day-cell-bg': dayColor } as CSSProperties)
+  const cellStyle = displayDayColor
+    ? ({ '--day-cell-bg': displayDayColor } as CSSProperties)
     : undefined
   const { solar, lunar, lunarDay, solarTerm } = getDayParts(
     cell.date.getFullYear(),
@@ -159,7 +161,7 @@ export function MonthDayCell({
         !cell.inMonth && 'other-month',
         cell.isToday && 'today',
         selected && 'selected',
-        dayColor && 'has-day-color',
+        displayDayColor && 'has-day-color',
         tall && 'day-cell--tall'
       )}
       style={cellStyle}
@@ -187,12 +189,44 @@ export function MonthDayCell({
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
     >
-      <DayNumber
-        solar={solar}
-        lunarLabel={lunar}
-        lunarDay={lunarDay}
-        solarTerm={solarTerm}
-      />
+      <div
+        className="day-cell-header"
+        onClick={(e) => e.stopPropagation()}
+        onDoubleClick={
+          !desktopEmbedded
+            ? (e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                openQuickEditFromCell(e.currentTarget)
+              }
+            : undefined
+        }
+      >
+        <DayNumber
+          solar={solar}
+          lunarLabel={lunar}
+          lunarDay={lunarDay}
+          solarTerm={solarTerm}
+        />
+        <span
+          className="day-cell-pop-out interaction-ui"
+          role="button"
+          tabIndex={-1}
+          aria-label="더블클릭하여 퀵편집 열기"
+          onClick={(e) => e.stopPropagation()}
+          onDoubleClick={
+            !desktopEmbedded
+              ? (e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  openQuickEditFromCell(e.currentTarget)
+                }
+              : undefined
+          }
+        >
+          <TriangleRightIcon size={10} />
+        </span>
+      </div>
 
       <div className={cn('day-events', eventsHidden && 'is-hidden')}>
         {visibleSegments.map(({ event, segment, label, continuation, lane }) => {

@@ -11,8 +11,8 @@ export const PRIMARY_CALENDAR_ID = 'primary'
 export const PRIMARY_CALENDAR_COLOR = '#f6bf26'
 
 /** First-run / factory Neo chrome opacity (settings sliders + CSS vars). */
-export const DEFAULT_HEADER_OPACITY = 0.95
-export const DEFAULT_SHELL_OPACITY = 0.95
+export const DEFAULT_HEADER_OPACITY = 1
+export const DEFAULT_SHELL_OPACITY = 1
 
 /** Older factory pairs that should be upgraded to the current defaults. */
 const LEGACY_FACTORY_OPACITY_PAIRS: ReadonlyArray<{ header: number; shell: number }> = [

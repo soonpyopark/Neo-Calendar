@@ -160,6 +160,7 @@ export function EventEditor({
   const [attachBusy, setAttachBusy] = useState(false);
   const [completed, setCompleted] = useState(false);
   const titleInputRef = useRef(null);
+  const linkInputRef = useRef(null);
   /** Re-seed the form only when the editor opens for a different event (or create). */
   const formSeedKeyRef = useRef(null);
   /** Fingerprint of fields right after seed — used to detect unsaved edits on close. */
@@ -488,6 +489,23 @@ export function EventEditor({
     });
   };
 
+  const addLinkDraft = (): void => {
+    const url = normalizeEventLinkUrl(linkDraft)
+    if (!url) {
+      const input = linkInputRef.current
+      if (input instanceof HTMLInputElement) {
+        input.setCustomValidity(
+          '올바른 URL을 입력하세요. 예: example.com 또는 https://example.com'
+        )
+        input.reportValidity()
+        input.setCustomValidity('')
+      }
+      return
+    }
+    setLinks((prev) => appendEventLink(prev, url))
+    setLinkDraft('')
+  };
+
   return (
     <div
       className="interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4"
@@ -724,27 +742,9 @@ export function EventEditor({
           <div className="mb-3.5 flex items-start gap-2 text-sm text-gcal-muted">
             <span className="w-16 shrink-0 pt-2">바로가기</span>
             <div className="min-w-0 flex-1 space-y-2">
-              <form
-                className="flex items-center gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  const input = e.currentTarget.elements.namedItem('event-link-url')
-                  const url = normalizeEventLinkUrl(linkDraft)
-                  if (!url) {
-                    if (input instanceof HTMLInputElement) {
-                      input.setCustomValidity(
-                        '올바른 URL을 입력하세요. 예: example.com 또는 https://example.com'
-                      )
-                      input.reportValidity()
-                      input.setCustomValidity('')
-                    }
-                    return
-                  }
-                  setLinks((prev) => appendEventLink(prev, url))
-                  setLinkDraft('')
-                }}
-              >
+              <div className="flex items-center gap-2">
                 <input
+                  ref={linkInputRef}
                   type="text"
                   name="event-link-url"
                   className={cnField(fieldClass, 'min-w-0 flex-1')}
@@ -753,16 +753,24 @@ export function EventEditor({
                     e.target.setCustomValidity('')
                     setLinkDraft(e.target.value)
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      addLinkDraft()
+                    }
+                  }}
                   placeholder="example.com"
                 />
                 <button
-                  type="submit"
+                  type="button"
                   className={sideActionBtnClass}
                   disabled={!linkDraft.trim()}
+                  onClick={addLinkDraft}
                 >
                   추가
                 </button>
-              </form>
+              </div>
               {links.length > 0 && (
                 <ul className="m-0 list-none space-y-1 p-0">
                   {links.map((item) => (

@@ -18,7 +18,7 @@
       "allDay": true,
       "calendarId": "32496041-84de-4378-8562-e281f601992f",
       "color": null,
-      "completed": false,
+      "completed": true,
       "createdAt": "2026-07-13T06:53:31.590Z",
       "createdBy": "local",
       "description": "",
@@ -36,7 +36,16 @@
       "startTime": null,
       "tagIds": [],
       "title": "점심 식사(이진혁 주사님)",
-      "updatedAt": "2026-07-27T08:34:28.130Z"
+      "updatedAt": "2026-07-27T12:02:34.560Z",
+      "links": [
+        {
+          "id": "link-ms35iynv-6fyyxg",
+          "url": "https://naver.com"
+        }
+      ],
+      "link": "https://naver.com",
+      "markerShape": null,
+      "sortOrder": null
     },
     {
       "allDay": true,
@@ -207,7 +216,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "복무상신(장기재직휴가)",
-      "updatedAt": "2026-07-22T11:51:58.3562159Z"
+      "updatedAt": "2026-07-27T12:13:36.003Z"
     },
     {
       "allDay": true,
@@ -360,13 +369,13 @@
       "repeatUntil": null,
       "sortOrder": 6,
       "sortOrderByDay": {
-        "2026-07-20": 5
+        "2026-07-20": 2
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "테스트1",
-      "updatedAt": "2026-07-23T17:34:57.685Z"
+      "updatedAt": "2026-07-27T10:18:05.830Z"
     },
     {
       "allDay": true,
@@ -392,14 +401,43 @@
       "repeatUntil": null,
       "sortOrder": 7,
       "sortOrderByDay": {
-        "2026-07-20": 6
+        "2026-07-20": 3
       },
       "startDate": "2026-07-20",
       "startTime": null,
       "tagIds": [],
       "title": "테스트2",
-      "updatedAt": "2026-07-23T17:34:57.711Z"
+      "updatedAt": "2026-07-27T10:18:05.845Z"
+    },
+    {
+      "id": "c96632ba-e824-4652-a129-5ac6044016b7",
+      "calendarId": "32496041-84de-4378-8562-e281f601992f",
+      "title": "대체휴무",
+      "description": "",
+      "links": [],
+      "location": "",
+      "startDate": "2026-08-10",
+      "endDate": "2026-08-10",
+      "allDay": true,
+      "startTime": null,
+      "endTime": null,
+      "repeat": "none",
+      "repeatUntil": null,
+      "repeatCount": null,
+      "exdates": [],
+      "color": null,
+      "guests": [],
+      "completed": false,
+      "markerShape": null,
+      "tagIds": [],
+      "attachments": [],
+      "createdAt": "2026-07-27T10:34:09.403Z",
+      "updatedAt": "2026-07-27T10:34:44.589Z",
+      "createdBy": "local",
+      "link": "",
+      "sortOrder": null,
+      "ownerLoginId": "admin"
     }
   ],
-  "updatedAt": "2026-07-27T08:34:28.131Z"
+  "updatedAt": "2026-07-27T12:13:36.004Z"
 }

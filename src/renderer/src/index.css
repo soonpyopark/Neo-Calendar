@@ -34,11 +34,11 @@
 :root {
   color-scheme: light;
   /* MDC light palette (solid surfaces; Neo shell opacity stays on chrome wrappers) */
-  --gcal-page: #eef0f2;
-  --gcal-page-alt: #e9ecf2;
-  --gcal-surface: #e6e9ea;
-  --gcal-surface-2: #dfe2e4;
-  --gcal-page-solid: #eef0f2;
+  --gcal-page: #f4f6f8;
+  --gcal-page-alt: #f0f2f5;
+  --gcal-surface: #f2f4f5;
+  --gcal-surface-2: #eceef0;
+  --gcal-page-solid: #f4f6f8;
   --gcal-heading: #202124;
   --gcal-body: #3c4043;
   --gcal-muted: #70757a;
@@ -59,10 +59,10 @@
    * header/shell opacity % reads the same. Other-month / week chrome stay a
    * notch darker but use the same mix weight (single layer, no stacking).
    */
-  --neo-opacity-fill: #efefef;
+  --neo-opacity-fill: #fafbfc;
   --gcal-in-month-fill: var(--neo-opacity-fill);
-  --gcal-other-month-fill: #e6e9ea;
-  --gcal-week-chrome-fill: #d0d4d8;
+  --gcal-other-month-fill: #f2f4f6;
+  --gcal-week-chrome-fill: #e8eaed;
   --gcal-other-month-text: #9aa0a6;
   --gcal-in-month-bg: color-mix(
     in srgb,
@@ -79,7 +79,7 @@
     var(--gcal-week-chrome-fill) calc(var(--neo-shell-opacity) * 100%),
     transparent
   );
-  --gcal-hover-panel: #e3e6ea;
+  --gcal-hover-panel: #eef1f4;
   --gcal-day-number-muted: #5f6368;
   --gcal-day-number-dim: #bdc1c6;
   --gcal-focus-ring-inner: #ffffff;
@@ -89,8 +89,8 @@
   --event-lane-step: 20px;
   --day-event-gap: 6px;
   --event-more-offset: 4px;
-  --neo-header-opacity: 0.95;
-  --neo-shell-opacity: 0.95;
+  --neo-header-opacity: 1;
+  --neo-shell-opacity: 1;
   /* Window-mode resize grips / frame (Neo-only) */
   --neo-window-frame-color: var(--gcal-blue);
   --neo-window-frame-opacity: 0.85;
@@ -217,6 +217,11 @@ textarea {
   overflow: hidden;
 }
 
+/* Month grid week rows already draw the separator — avoid a double line above footer. */
+.month-view:not(.week-view) + .neo-mdc-chrome[data-shell-chrome='footer'] {
+  border-top: none;
+}
+
 /* Header/footer — same --neo-opacity-fill as in-month cells (matched opacity %). */
 .neo-mdc-chrome {
   background: color-mix(
@@ -248,6 +253,24 @@ textarea {
 .site-link:hover {
   color: var(--gcal-blue, #1a73e8);
   text-decoration: underline;
+}
+
+.neo-cal-footer-hint {
+  flex: 1 1 auto;
+}
+
+.neo-cal-footer-hint-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gcal-blue) 40%, var(--gcal-border));
+  background-color: var(--gcal-blue-soft);
+  color: var(--gcal-blue);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--gcal-blue) 14%, transparent);
 }
 
 .app-chrome-no-drag {
@@ -647,6 +670,52 @@ textarea {
 .day-cell.today.sunday:not(.other-month) .day-number .solar,
 .day-cell.today.holiday:not(.other-month) .day-number .solar {
   color: #fff;
+}
+
+.day-cell-pop-out {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: clamp(18px, 2.4vh, 22px);
+  height: clamp(18px, 2.4vh, 22px);
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--gcal-blue) 40%, var(--gcal-border));
+  background-color: var(--gcal-blue-soft);
+  color: var(--gcal-blue);
+  opacity: 0.88;
+  pointer-events: auto;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--gcal-blue) 14%, transparent);
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s, border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.day-cell-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: clamp(2px, 0.4vh, 4px);
+  min-height: clamp(20px, 3vh, 30px);
+  max-width: 100%;
+}
+
+.day-cell-header .day-number {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.day-cell:hover .day-cell-pop-out,
+.day-cell.selected .day-cell-pop-out {
+  opacity: 1;
+}
+
+.day-cell-pop-out:hover {
+  background-color: var(--gcal-blue);
+  border-color: var(--gcal-blue);
+  color: #fff;
+  opacity: 1;
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--gcal-blue) 28%, transparent);
 }
 
 .day-number {
@@ -2407,6 +2476,17 @@ body.is-resizing-window {
 .event-popover-check:disabled {
   cursor: not-allowed;
   opacity: 0.4;
+}
+
+.event-detail-schedule-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
 }
 
 .day-events-popover-item {

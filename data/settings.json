@@ -34,7 +34,7 @@
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 670,
+        "x": 690,
         "y": 10,
         "width": 1230,
         "height": 1020
@@ -53,7 +53,9 @@
       }
     },
     "dayColors": {},
-    "dayColorsByLoginId": {},
+    "dayColorsByLoginId": {
+      "admin": {}
+    },
     "hiddenCalendarIdsByLoginId": {
       "admin": [
         "cal-test",
@@ -70,15 +72,15 @@
         "description": "내 공유기 IP 주소"
       }
     ],
-    "headerOpacity": 0.9,
-    "shellOpacity": 0.9,
+    "headerOpacity": 0.95,
+    "shellOpacity": 0.95,
     "viewOptionsBySurface": {
       "native": {
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
         "colorScheme": "light",
-        "accentColor": "#1976d2",
+        "accentColor": "#795548",
         "eventsHidden": false,
         "completedHidden": false
       },
@@ -125,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-27T08:32:02.081Z"
+  "updatedAt": "2026-07-27T12:14:59.649Z"
 }

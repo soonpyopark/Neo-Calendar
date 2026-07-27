@@ -18,6 +18,85 @@ function formatShortDate(date: Date): string {
   return `${date.getMonth() + 1}월 ${date.getDate()}일`
 }
 
+function formatDetailDate(date: Date): string {
+  return `${date.getFullYear()}년 ${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAY_NAMES[date.getDay()]})`
+}
+
+export type EventScheduleRelativeBadge = 'today' | 'tomorrow' | 'dayAfter'
+
+export type EventScheduleParts = {
+  dateLine: string
+  timeLine: string | null
+  relativeBadge: EventScheduleRelativeBadge | null
+}
+
+function getRelativeDayBadge(date: Date, now = new Date()): EventScheduleRelativeBadge | null {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const diffDays = Math.round((target.getTime() - today.getTime()) / 86_400_000)
+  if (diffDays === 0) return 'today'
+  if (diffDays === 1) return 'tomorrow'
+  if (diffDays === 2) return 'dayAfter'
+  return null
+}
+
+export function formatEventScheduleParts(
+  event: {
+    startDate: string
+    endDate?: string
+    allDay?: boolean
+    startTime?: string | null
+    endTime?: string | null
+  },
+  dayKey?: string
+): EventScheduleParts {
+  const refKey = dayKey && eventOnDay(event, dayKey) ? dayKey : event.startDate
+  const refDate = parseDateKey(refKey)
+  const endDateKey = event.endDate || event.startDate
+  const multiDay = event.startDate !== endDateKey
+
+  if (multiDay) {
+    const start = parseDateKey(event.startDate)
+    const end = parseDateKey(endDateKey)
+    const rangePart =
+      start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
+        ? `${formatShortDate(start)}~${end.getDate()}일 (${WEEKDAY_NAMES[end.getDay()]})`
+        : `${formatShortDate(start)}~${formatShortDate(end)} (${WEEKDAY_NAMES[end.getDay()]})`
+    const yearPrefix =
+      start.getFullYear() === end.getFullYear() ? `${start.getFullYear()}년 ` : ''
+    const dateLine = `${yearPrefix}${rangePart}`
+
+    if (isTimedEvent(event)) {
+      return {
+        dateLine,
+        timeLine: `${formatTime24(event.startTime)} ~ ${formatShortDate(end)} ${formatTime24(event.endTime)}`,
+        relativeBadge: getRelativeDayBadge(refDate)
+      }
+    }
+
+    return {
+      dateLine,
+      timeLine: '종일',
+      relativeBadge: getRelativeDayBadge(refDate)
+    }
+  }
+
+  const dateLine = formatDetailDate(refDate)
+  if (isTimedEvent(event)) {
+    return {
+      dateLine,
+      timeLine: `${formatTime24(event.startTime)} ~ ${formatTime24(event.endTime)}`,
+      relativeBadge: getRelativeDayBadge(refDate)
+    }
+  }
+
+  return {
+    dateLine,
+    timeLine: '종일',
+    relativeBadge: getRelativeDayBadge(refDate)
+  }
+}
+
 /** Quick-edit / day-list label (plain title; tag icons render separately). */
 export function formatEventBarLabel(
   event: { title?: string; allDay?: boolean; startTime?: string | null },
@@ -45,32 +124,10 @@ export function formatEventPopoverSchedule(
   },
   dayKey?: string
 ): string {
-  const refKey = dayKey && eventOnDay(event, dayKey) ? dayKey : event.startDate
-  const date = parseDateKey(refKey)
-  const datePart = `${date.getMonth() + 1}월 ${date.getDate()}일 (${WEEKDAY_NAMES[date.getDay()]})`
-  const endDate = event.endDate || event.startDate
-
-  if (event.startDate !== endDate) {
-    const start = parseDateKey(event.startDate)
-    const end = parseDateKey(endDate)
-
-    if (isTimedEvent(event)) {
-      return `${formatShortDate(start)} ${formatTime24(event.startTime)} ~ ${formatShortDate(end)} ${formatTime24(event.endTime)}`
-    }
-
-    const rangePart =
-      start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()
-        ? `${formatShortDate(start)}~${end.getDate()}일`
-        : `${formatShortDate(start)}~${formatShortDate(end)}`
-
-    return `${rangePart} · 종일`
-  }
-
-  if (isTimedEvent(event)) {
-    return `${datePart} · ${formatTime24(event.startTime)}~${formatTime24(event.endTime)}`
-  }
-
-  return `${datePart} · 종일`
+  const parts = formatEventScheduleParts(event, dayKey)
+  if (!parts.timeLine) return parts.dateLine
+  if (parts.timeLine === '종일') return `${parts.dateLine} · 종일`
+  return `${parts.dateLine} · ${parts.timeLine.replace(' ~ ', '~')}`
 }
 
 export function formatRepeatLabel(

@@ -66,6 +66,7 @@ import {
   HideCompletedCheckIcon,
   HideEventsEyeIcon,
   MonthViewIcon,
+  TriangleRightIcon,
   WebBrowserIcon,
   WeekViewIcon,
   YearViewIcon
@@ -489,7 +490,7 @@ export function CalendarGrid({
       const vw = window.innerWidth
       const vh = window.innerHeight
       const dayZoneSelectors = [
-        '.neo-cal-shell .day-cell[data-date-key] .day-number',
+        '.neo-cal-shell .day-cell[data-date-key] .day-cell-header',
         '.neo-cal-shell .year-day[data-date-key]'
       ].join(', ')
       const dayZones = Array.from(
@@ -1601,8 +1602,8 @@ export function CalendarGrid({
                     'year-day',
                     'interaction-ui',
                     !cell.inMonth && 'other-month',
-                    cell.isToday && 'today',
-                    selectedKey === cell.dateKey && !cell.isToday && 'selected',
+                    cell.isToday && cell.inMonth && 'today',
+                    selectedKey === cell.dateKey && cell.inMonth && !cell.isToday && 'selected',
                     cell.weekday === 0 && cell.inMonth && 'sunday',
                     cell.weekday === 6 && cell.inMonth && 'saturday',
                     holidayKeys.has(cell.dateKey) && cell.inMonth && 'holiday'
@@ -1956,6 +1957,15 @@ export function CalendarGrid({
           event.stopPropagation()
         }}
       >
+        <p className="neo-cal-footer-hint m-0 min-w-0 flex flex-wrap items-center gap-1 text-xs leading-snug text-gcal-muted">
+          <span className="font-medium text-gcal-body">[참고]</span>
+          <span className="neo-cal-footer-hint-icon" aria-hidden="true">
+            <TriangleRightIcon size={8} />
+          </span>
+          <span>
+            를 더블클릭해서 일정을 추가하고, 일정바를 더블클릭하면 상세 편집기로 수정이 가능합니다.
+          </span>
+        </p>
         <SiteLink />
       </footer>
 
@@ -2050,7 +2060,9 @@ export function CalendarGrid({
               returnQuickEdit: quickEdit
             })
           }}
-          onOpenEvent={(event) => openEventDetail(event, quickEdit.anchorRect)}
+          onOpenEvent={(event) =>
+            openEventDetail(event, quickEdit.anchorRect, { dayKey: quickEdit.dateKey })
+          }
           onEditEvent={(event) => {
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event, {

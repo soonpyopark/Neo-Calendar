@@ -855,7 +855,7 @@ function bootApp(): void {
     getExcludeZones: () => dayDblClickExcludeZones,
     shouldProcessEmbeddedClick: (pt) => shouldProcessEmbeddedClickAtPoint(pt),
     onDebug: (msg, data) => sendDayDblClickLog(msg, data),
-    onDoubleClick: (payload) => {
+    onQuickEditClick: (payload) => {
       unlockAndOpenDayQuickEdit(payload)
     }
   })
