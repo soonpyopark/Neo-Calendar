@@ -34,6 +34,7 @@ export type DayEventsPopoverProps = {
   calendars: CalendarRecord[]
   tags?: TagRecord[]
   anchorRect: AnchorRect | null
+  surface?: 'inline' | 'floating'
   canEdit?: boolean
   onClose: () => void
   onEventDetail?: (
@@ -57,12 +58,14 @@ export function DayEventsPopover({
   calendars,
   tags = [],
   anchorRect,
+  surface = 'inline',
   canEdit = false,
   onClose,
   onEventDetail,
   onEventEdit,
   onReorderEvents
 }: DayEventsPopoverProps): ReactElement | null {
+  const isFloating = surface === 'floating'
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
   const [dragSeriesId, setDragSeriesId] = useState<string | null>(null)
   const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
@@ -170,26 +173,32 @@ export function DayEventsPopover({
 
   if (!date || !anchorRect) return null
 
-  const style = anchoredStyle ?? getAnchoredPopoverPosition(anchorRect, popoverOptions)
+  const style = isFloating
+    ? ({ top: 0, left: 0, width: '100%', height: '100%' } as CSSProperties)
+    : (anchoredStyle ?? getAnchoredPopoverPosition(anchorRect, popoverOptions))
 
   return (
     <>
-      <div
-        className="interaction-ui fixed inset-0 z-[24]"
-        onClick={onClose}
-        role="presentation"
-        onMouseEnter={() => setIgnoreMouseEvents(false)}
-        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
-      />
+      {!isFloating ? (
+        <div
+          className="interaction-ui fixed inset-0 z-[24]"
+          onClick={onClose}
+          role="presentation"
+          onMouseEnter={() => setIgnoreMouseEvents(false)}
+          onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+        />
+      ) : null}
       <div
         ref={ref}
-        className="day-events-popover interaction-ui fixed z-[46] flex w-[min(280px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl bg-gcal-surface shadow-g-lg"
+        className={`day-events-popover interaction-ui ${isFloating ? 'relative' : 'fixed'} z-[46] flex w-[min(280px,calc(100vw-24px))] flex-col overflow-hidden rounded-2xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
         style={style as CSSProperties}
         role="dialog"
         aria-label={`${date.getMonth() + 1}월 ${date.getDate()}일 일정`}
         onClick={(e) => e.stopPropagation()}
-        onMouseEnter={() => setIgnoreMouseEvents(false)}
-        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+        onMouseEnter={isFloating ? undefined : () => setIgnoreMouseEvents(false)}
+        onMouseLeave={
+          isFloating ? undefined : () => setIgnoreMouseEvents(true, { forwardToOverlay: true })
+        }
       >
         <div className="day-quick-edit-header">
           <h2 className="day-quick-edit-title">{formatDayHeaderTitle(date)}</h2>

@@ -608,7 +608,7 @@ export function DayQuickEditPopover({
       <InteractionUI
         ref={panelRef}
         captureOnHover={!isFloating}
-        className="day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg"
+        className={`day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
         style={style}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
@@ -750,6 +750,16 @@ export function DayQuickEditPopover({
                         if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
                         openEventDetailFromRow(item)
                       }}
+                      onDoubleClick={(e) => {
+                        if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
+                        e.preventDefault()
+                        e.stopPropagation()
+                        clearEventClickTimer()
+                        suppressEventClickRef.current = true
+                        setSelectedEvent(item)
+                        if (isHoliday) return
+                        onEditEvent?.(item)
+                      }}
                     >
                       <input
                         type="checkbox"
@@ -774,16 +784,6 @@ export function DayQuickEditPopover({
                         className="day-quick-edit-item-title"
                         role={isHoliday ? undefined : 'button'}
                         tabIndex={isHoliday ? undefined : 0}
-                        onDoubleClick={(e) => {
-                          e.preventDefault()
-                          e.stopPropagation()
-                          clearEventClickTimer()
-                          suppressEventClickRef.current = true
-                          setSelectedEvent(item)
-                          if (isHoliday) return
-                          onEditEvent?.(item)
-                          onOpenMore(item)
-                        }}
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter' && e.key !== ' ') return
                           e.preventDefault()

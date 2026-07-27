@@ -40,6 +40,7 @@ export type SearchSelectPayload = {
 
 export type SearchPanelProps = {
   open: boolean
+  surface?: 'inline' | 'floating'
   events: CalendarEvent[]
   calendars: CalendarRecord[]
   tags?: TagRecord[]
@@ -326,7 +327,7 @@ function SearchResourceDetail({
 
 function SearchResultLegend(): ReactElement {
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-gcal-border-light bg-gcal-surface-2 px-4 py-2.5 text-[11px] text-gcal-muted">
+    <div className="search-panel-line-t flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-gcal-surface-2 px-4 py-2.5 text-[11px] text-gcal-muted">
       <span className="inline-flex items-center gap-1">
         <CompletedGlyph />
         완료
@@ -364,12 +365,14 @@ function SearchResultLegend(): ReactElement {
 /** Google Calendar-style event search overlay (MDC SearchPanel). */
 export function SearchPanel({
   open,
+  surface = 'inline',
   events,
   calendars,
   tags = [],
   onClose,
   onSelectResult
 }: SearchPanelProps): ReactElement | null {
+  const isFloating = surface === 'floating'
   const [query, setQuery] = useState('')
   const [rangeStart, setRangeStart] = useState(() => getDefaultSearchRange().start)
   const [rangeEnd, setRangeEnd] = useState(() => getDefaultSearchRange().end)
@@ -471,19 +474,23 @@ export function SearchPanel({
 
   return (
     <div
-      className="interaction-ui fixed inset-0 z-[55] flex flex-col"
-      onClick={onClose}
+      className={
+        isFloating
+          ? 'flex h-full w-full flex-col'
+          : 'interaction-ui fixed inset-0 z-[55] flex flex-col'
+      }
+      onClick={isFloating ? undefined : onClose}
       role="presentation"
     >
       <div
-        className="mx-auto mt-3 w-full max-w-[880px] px-3 sm:mt-6 sm:px-4"
+        className={isFloating ? 'mx-auto flex h-full w-full max-w-[880px] flex-col px-1' : 'mx-auto mt-3 w-full max-w-[880px] px-3 sm:mt-6 sm:px-4'}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="일정 검색"
       >
-        <div className="shell-solid-surface overflow-hidden rounded-2xl shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
-          <div className="search-panel-query-row flex h-14 items-center gap-1 border-b border-gcal-border-light px-3">
+        <div className={`search-panel-shell shell-solid-surface overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+          <div className="search-panel-query-row search-panel-line-b flex h-14 items-center gap-1 px-3">
             <span
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-gcal-muted"
               aria-hidden="true"
@@ -537,7 +544,7 @@ export function SearchPanel({
             </button>
           </div>
 
-          <div className="flex items-center gap-2 border-b border-gcal-border-light bg-gcal-surface-2 px-3 py-2.5">
+          <div className="search-panel-line-b flex items-center gap-2 bg-gcal-surface-2 px-3 py-2.5">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2 pl-[10px]">
               <label className="flex min-w-0 items-center gap-1.5 text-xs text-gcal-muted">
                 <span className="shrink-0">기간</span>
@@ -634,13 +641,13 @@ export function SearchPanel({
 
             {trimmed && total > 0 ? (
               <>
-                <p className="border-b border-gcal-border-light px-4 py-2 text-xs text-gcal-muted">
+                <p className="search-panel-line-b px-4 py-2 text-xs text-gcal-muted">
                   전체 {total.toLocaleString('ko-KR')}건
                   {totalPages > 1 ? ` · ${safePage} / ${totalPages}페이지` : ''}
                 </p>
 
                 <div
-                  className="sticky top-0 z-[1] grid grid-cols-[5.5rem_5.5rem_minmax(0,1fr)] gap-2 border-b border-gcal-border-light bg-gcal-page px-4 py-2 text-[11px] font-medium text-gcal-muted"
+                  className="search-panel-line-b sticky top-0 z-[1] grid grid-cols-[5.5rem_5.5rem_minmax(0,1fr)] gap-2 bg-gcal-page px-4 py-2 text-[11px] font-medium text-gcal-muted"
                   aria-hidden="true"
                 >
                   <span>상태</span>
@@ -648,7 +655,7 @@ export function SearchPanel({
                   <span>일정</span>
                 </div>
 
-                <ul className="divide-y divide-gcal-border-light">
+                <ul className="search-panel-results divide-y divide-gcal-border-light">
                   {pageResults.map((event) => {
                     const calendar = calendarById.get(event.calendarId)
                     const dayKey = event.occurrenceDate ?? event.startDate
@@ -730,7 +737,7 @@ export function SearchPanel({
 
                 {totalPages > 1 ? (
                   <nav
-                    className="flex flex-wrap items-center justify-center gap-0.5 border-t border-gcal-border-light px-2 py-2.5"
+                    className="search-panel-line-t flex flex-wrap items-center justify-center gap-0.5 px-2 py-2.5"
                     aria-label="검색 결과 페이지"
                   >
                     <button

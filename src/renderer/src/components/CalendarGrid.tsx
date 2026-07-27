@@ -36,7 +36,8 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
-import { PERIOD_TOOLBAR_ACTIONS } from '../../../shared/ipc'
+import { EMBEDDED_FLOATING_CHROME_ACTIONS, PERIOD_TOOLBAR_ACTIONS } from '../../../shared/ipc'
+import type { OpenPanelWindowRequest, PanelAnchorRect, PanelWindowInit } from '../../../shared/panelWindows'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
@@ -95,6 +96,17 @@ export type ViewMode = 'year' | 'week' | 'month'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
 const PERIOD_TOOLBAR_ACTION_ID_SET = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
+
+function toPanelAnchor(anchor: EventPopoverAnchor): PanelAnchorRect | null {
+  if (!anchor) return null
+  if ('left' in anchor && 'top' in anchor && 'width' in anchor && 'height' in anchor) {
+    return anchor
+  }
+  if ('x' in anchor && 'y' in anchor) {
+    return { left: anchor.x - 12, top: anchor.y - 12, width: 24, height: 24 }
+  }
+  return null
+}
 const VIEW_MODE_OPTIONS: Array<{ value: ViewMode; label: string; Icon: () => ReactElement }> = [
   { value: 'year', label: '연', Icon: YearViewIcon },
   { value: 'week', label: '주', Icon: WeekViewIcon },
@@ -465,6 +477,17 @@ export function CalendarGrid({
   const modeEmbeddedRef = useRef({ mode, embedded })
   modeEmbeddedRef.current = { mode, embedded }
 
+  const openEmbeddedPanel = useCallback(
+    (init: PanelWindowInit, anchorClient?: PanelAnchorRect | null): void => {
+      const payload = {
+        ...init,
+        ...(anchorClient ? { anchorClient } : {})
+      } as OpenPanelWindowRequest
+      void window.neoCalendar.openPanelWindow?.(payload)
+    },
+    []
+  )
+
   const eventsHidden = store.settings.viewOptions.eventsHidden
   const completedHidden = store.settings.viewOptions.completedHidden
   const showWeekNumbers = store.settings.viewOptions.showWeekNumbers !== false
@@ -489,29 +512,49 @@ export function CalendarGrid({
       }
 
       const periodRoot = periodHeaderRef.current
-      if (!periodRoot) {
-        api.setClickForwardHitZones([])
-      } else {
-        const toolbarZones = Array.from(
-          periodRoot.querySelectorAll<HTMLElement>('[data-toolbar-action]')
-        ).flatMap((el) => {
-          if (el instanceof HTMLButtonElement && el.disabled) return []
-          const action = el.dataset.toolbarAction ?? ''
-          if (!action || !PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return []
-          const r = el.getBoundingClientRect()
-          if (r.width < 1 || r.height < 1) return []
-          return [
-            {
-              x: Math.round(r.left),
-              y: Math.round(r.top),
-              width: Math.round(r.width),
-              height: Math.round(r.height),
-              action
+      const toolbarZones = periodRoot
+        ? Array.from(periodRoot.querySelectorAll<HTMLElement>('[data-toolbar-action]')).flatMap(
+            (el) => {
+              if (el instanceof HTMLButtonElement && el.disabled) return []
+              const action = el.dataset.toolbarAction ?? ''
+              if (!action || !PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return []
+              const r = el.getBoundingClientRect()
+              if (r.width < 1 || r.height < 1) return []
+              return [
+                {
+                  x: Math.round(r.left),
+                  y: Math.round(r.top),
+                  width: Math.round(r.width),
+                  height: Math.round(r.height),
+                  action
+                }
+              ]
             }
-          ]
-        })
-        api.setClickForwardHitZones(toolbarZones)
-      }
+          )
+        : []
+
+      const chromeRoot = chromeRef.current
+      const chromeZones = chromeRoot
+        ? Array.from(chromeRoot.querySelectorAll<HTMLElement>('[data-toolbar-action]')).flatMap(
+            (el) => {
+              if (el instanceof HTMLButtonElement && el.disabled) return []
+              const action = el.dataset.toolbarAction ?? ''
+              if (!action || !EMBEDDED_FLOATING_CHROME_ACTIONS.has(action)) return []
+              const r = el.getBoundingClientRect()
+              if (r.width < 1 || r.height < 1) return []
+              return [
+                {
+                  x: Math.round(r.left),
+                  y: Math.round(r.top),
+                  width: Math.round(r.width),
+                  height: Math.round(r.height),
+                  action
+                }
+              ]
+            }
+          )
+        : []
+      api.setClickForwardHitZones([...toolbarZones, ...chromeZones])
 
       const vw = window.innerWidth
       const vh = window.innerHeight
@@ -1029,6 +1072,20 @@ export function CalendarGrid({
     } else if (eventOrRect) {
       anchorRect = rectFromTarget(eventOrRect.currentTarget)
     }
+    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+    if (currentMode === 'desktop' && isEmbedded) {
+      openEmbeddedPanel(
+        {
+          kind: 'quickEdit',
+          dateKey: cell.dateKey,
+          viewMode,
+          eventsHidden,
+          anchor: anchorRect
+        },
+        anchorRect
+      )
+      return
+    }
     setQuickEdit({
       dateKey: cell.dateKey,
       date: cell.date,
@@ -1113,7 +1170,9 @@ export function CalendarGrid({
     const api = window.neoCalendar
     if (!api?.onToolbarClick) return
     return api.onToolbarClick(({ action }) => {
-      if (!PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return
+      const toolbarActionSet = PERIOD_TOOLBAR_ACTION_ID_SET
+      const chromeActionSet = EMBEDDED_FLOATING_CHROME_ACTIONS
+      if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       const btn = document.querySelector<HTMLElement>(
         `.neo-cal-shell [data-toolbar-action="${action}"]`
       )
@@ -1333,11 +1392,28 @@ export function CalendarGrid({
     opts?: { dayKey?: string; keepDayList?: boolean; fromSearch?: boolean }
   ): void => {
     detailFromSearchRef.current = Boolean(opts?.fromSearch)
+    const panelAnchor = toPanelAnchor(anchorRect)
+    const dayKey = opts?.dayKey ?? event.occurrenceDate ?? event.startDate
+    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+    if (currentMode === 'desktop' && isEmbedded) {
+      if (!opts?.keepDayList) setDayList(null)
+      openEmbeddedPanel(
+        {
+          kind: 'eventDetail',
+          eventId: event.id,
+          dayKey,
+          anchor: panelAnchor,
+          fromSearch: opts?.fromSearch
+        },
+        panelAnchor
+      )
+      return
+    }
     if (!opts?.keepDayList) setDayList(null)
     setEventPopover({
       event,
       anchorRect,
-      dayKey: opts?.dayKey ?? event.occurrenceDate ?? event.startDate
+      dayKey
     })
   }
 
@@ -1389,8 +1465,28 @@ export function CalendarGrid({
     }
   ): void => {
     if (!canEdit && event === null) return
-    // Holidays are read-only — never open the full editor (MDC).
     if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
+    if (currentMode === 'desktop' && isEmbedded) {
+      setEventPopover(null)
+      setDayList(null)
+      setScopeDialog(null)
+      setPendingDelete(null)
+      setQuickEdit(null)
+      openEmbeddedPanel({
+        kind: 'eventEditor',
+        eventId: event?.id ?? null,
+        defaultDate: opts?.defaultDate,
+        occurrenceDate: opts?.defaultDate ?? null,
+        returnQuickEdit: opts?.returnQuickEdit
+          ? {
+              dateKey: opts.returnQuickEdit.dateKey,
+              anchor: opts.returnQuickEdit.anchorRect
+            }
+          : null
+      })
+      return
+    }
     setEventPopover(null)
     setDayList(null)
     setScopeDialog(null)
@@ -1615,18 +1711,30 @@ export function CalendarGrid({
           openEventEditor(event, { defaultDate: dayKey })
         }}
         onMoreOpen={(date, dayKey, _segments, rect) => {
-          // MDC onCloseEventDetail: "더보기" list opening closes bar detail.
           setSelectedKey(dayKey)
           setQuickEdit(null)
           clearEventDetail()
+          const anchorRect = {
+            top: rect.top,
+            left: rect.left,
+            width: rect.width,
+            height: rect.height
+          }
+          if (embedded) {
+            openEmbeddedPanel(
+              {
+                kind: 'dayList',
+                dateKey: dayKey,
+                anchor: anchorRect,
+                eventsHidden
+              },
+              anchorRect
+            )
+            return
+          }
           setDayList({
             dateKey: dayKey,
-            anchorRect: {
-              top: rect.top,
-              left: rect.left,
-              width: rect.width,
-              height: rect.height
-            }
+            anchorRect
           })
           void date
         }}
@@ -1741,10 +1849,18 @@ export function CalendarGrid({
           switchReady={switchReady}
           chromeRef={chromeRef}
           onOpenSearch={() => {
+            if (embedded) {
+              openEmbeddedPanel({ kind: 'search', eventsHidden })
+              return
+            }
             setSettingsOpen(false)
             setSearchOpen(true)
           }}
           onOpenSettings={() => {
+            if (embedded) {
+              openEmbeddedPanel({ kind: 'settings' })
+              return
+            }
             setSearchOpen(false)
             setSettingsOpen(true)
           }}
@@ -2030,40 +2146,43 @@ export function CalendarGrid({
         <SiteLink />
       </footer>
 
-      <SearchPanel
-        open={searchOpen}
-        // Match grid/quick-edit: all-hidden → nothing; completed-hidden via visibleEvents.
-        events={eventsHidden ? [] : visibleEvents}
-        calendars={store.calendars}
-        tags={store.tags}
-        onClose={() => setSearchOpen(false)}
-        onSelectResult={handleSearchSelect}
-      />
-      <SettingsPanel
-        open={settingsOpen}
-        settings={settings}
-        store={store}
-        user={user}
-        onClose={() => setSettingsOpen(false)}
-        onSave={onSettingsSaved}
-        onPatchStore={patchStoreSettings}
-        onCreateCalendar={createCalendar}
-        onPatchCalendar={patchCalendar}
-        onReorderCalendars={reorderCalendars}
-        onDeleteCalendar={deleteCalendar}
-        onClearCalendarEvents={clearCalendarEvents}
-        onImportIntoCalendar={importEventsIntoCalendar}
-        onCreateTag={createTag}
-        onUpdateTag={patchTag}
-        onDeleteTag={deleteTag}
-        onReplaceStore={replaceStore}
-        onImportStore={importStore}
-        onAddEvent={addEvent}
-        onListMembers={listMembers}
-        onSaveMembers={saveMembers}
-        onSyncHolidays={syncHolidays}
-        onRefresh={refresh}
-      />
+      {!embedded ? (
+        <SearchPanel
+          open={searchOpen}
+          events={eventsHidden ? [] : visibleEvents}
+          calendars={store.calendars}
+          tags={store.tags}
+          onClose={() => setSearchOpen(false)}
+          onSelectResult={handleSearchSelect}
+        />
+      ) : null}
+      {!embedded ? (
+        <SettingsPanel
+          open={settingsOpen}
+          settings={settings}
+          store={store}
+          user={user}
+          onClose={() => setSettingsOpen(false)}
+          onSave={onSettingsSaved}
+          onPatchStore={patchStoreSettings}
+          onCreateCalendar={createCalendar}
+          onPatchCalendar={patchCalendar}
+          onReorderCalendars={reorderCalendars}
+          onDeleteCalendar={deleteCalendar}
+          onClearCalendarEvents={clearCalendarEvents}
+          onImportIntoCalendar={importEventsIntoCalendar}
+          onCreateTag={createTag}
+          onUpdateTag={patchTag}
+          onDeleteTag={deleteTag}
+          onReplaceStore={replaceStore}
+          onImportStore={importStore}
+          onAddEvent={addEvent}
+          onListMembers={listMembers}
+          onSaveMembers={saveMembers}
+          onSyncHolidays={syncHolidays}
+          onRefresh={refresh}
+        />
+      ) : null}
       <LoginDialog
         open={loginOpen}
         busy={loginBusy}
@@ -2073,7 +2192,7 @@ export function CalendarGrid({
         onSubmit={handleLogin}
       />
 
-      {quickEdit ? (
+      {!embedded && quickEdit ? (
         <DayQuickEditPopover
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
@@ -2155,7 +2274,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {eventPopover ? (
+      {!embedded && eventPopover ? (
         <EventPopover
           event={eventPopover.event}
           calendar={calendarsById.get(eventPopover.event.calendarId) ?? null}
@@ -2214,7 +2333,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {dayList && dayListDate ? (
+      {!embedded && dayList && dayListDate ? (
         <DayEventsPopover
           date={dayListDate}
           dayKey={dayList.dateKey}
@@ -2244,7 +2363,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {editor ? (
+      {!embedded && editor ? (
         <EventEditor
           open
           event={editor.event}

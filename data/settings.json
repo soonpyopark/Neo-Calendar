@@ -34,9 +34,9 @@
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 600,
+        "x": 800,
         "y": 10,
-        "width": 1320,
+        "width": 1120,
         "height": 1020
       },
       "chromeBottomInset": 0,
@@ -127,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-27T14:43:07.185Z"
+  "updatedAt": "2026-07-27T15:15:43.811Z"
 }

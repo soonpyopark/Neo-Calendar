@@ -916,6 +916,30 @@ input[type='search']::-ms-clear,
   appearance: none;
 }
 
+/* Search panel — match day-quick-edit outer border and section lines. */
+.search-panel-shell {
+  border: 1px solid var(--gcal-border);
+  background-color: var(--gcal-page-solid);
+}
+
+.search-panel-line-b {
+  border-bottom: 1px solid #cccccc;
+}
+
+.search-panel-line-t {
+  border-top: 1px solid #cccccc;
+}
+
+.search-panel-results > :not([hidden]) ~ :not([hidden]) {
+  border-top-color: #cccccc;
+}
+
+/* Event detail popover — match day-quick-edit outer border and section lines. */
+.event-detail-shell {
+  border: 1px solid var(--gcal-border);
+  background: var(--gcal-surface);
+}
+
 .panel-backdrop {
   position: fixed;
   inset: 0;
@@ -1730,6 +1754,19 @@ html.neo-quick-edit-window .day-quick-edit {
   width: 100%;
   height: 100%;
   max-height: 100%;
+  box-shadow: none;
+}
+
+/* Floating panel BrowserWindows (panel.html) — flat chrome, no drop shadow. */
+html.neo-panel-window .day-quick-edit,
+html.neo-panel-window .day-events-popover,
+html.neo-panel-window .settings-panel-shell,
+html.neo-panel-window .search-panel-shell,
+html.neo-panel-window .event-detail-shell,
+html.neo-panel-window .shell-solid-surface,
+html.neo-panel-window .interaction-ui.rounded-xl.bg-gcal-surface,
+html.neo-panel-window .app-dialog-root .shell-solid-surface {
+  box-shadow: none !important;
 }
 
 .quick-edit-calendar-root {
@@ -2893,8 +2930,13 @@ button.is-primary:hover:not(:disabled) {
   height: 100%;
   max-height: 100%;
   min-height: 0;
+  border: 1px solid var(--gcal-border);
   background-color: var(--gcal-page-solid, #eef0f2);
   color: var(--gcal-heading);
+}
+
+.settings-panel-line-r {
+  border-right: 1px solid #cccccc;
 }
 .settings-overlay {
   align-items: stretch;

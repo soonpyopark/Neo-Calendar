@@ -21,6 +21,26 @@ export type EventDetailContentProps = {
   dayKey?: string
   tags?: TagRecord[]
   onTitleDoubleClick?: () => void
+  /** Omit calendar name row (e.g. when pinned outside a floating panel scroll area). */
+  hideCalendarFooter?: boolean
+}
+
+export function EventDetailCalendarFooter({
+  calendar
+}: {
+  calendar?: CalendarRecord | null
+}): ReactElement {
+  return (
+    <div className="search-panel-line-t mt-5 flex items-center gap-2 pt-4 text-sm text-gcal-muted">
+      <svg viewBox="0 0 24 24" width="16" height="16" className="shrink-0" aria-hidden="true">
+        <path
+          fill="currentColor"
+          d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"
+        />
+      </svg>
+      <span>{calendar?.name ?? '기본 캘린더'}</span>
+    </div>
+  )
 }
 
 const RELATIVE_BADGE_LABEL: Record<EventScheduleRelativeBadge, string> = {
@@ -34,7 +54,8 @@ export function EventDetailContent({
   calendar,
   dayKey,
   tags = [],
-  onTitleDoubleClick
+  onTitleDoubleClick,
+  hideCalendarFooter = false
 }: EventDetailContentProps): ReactElement {
   const calendarColor = calendar?.color ?? event.color ?? '#039be5'
   const theme = getCalendarTheme(calendarColor)
@@ -232,15 +253,7 @@ export function EventDetailContent({
         </div>
       </div>
 
-      <div className="mt-5 flex items-center gap-2 border-t border-gcal-border-light pt-4 text-sm text-gcal-muted">
-        <svg viewBox="0 0 24 24" width="16" height="16" className="shrink-0" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"
-          />
-        </svg>
-        <span>{calendar?.name ?? '기본 캘린더'}</span>
-      </div>
+      {hideCalendarFooter ? null : <EventDetailCalendarFooter calendar={calendar} />}
     </>
   )
 }

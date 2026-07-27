@@ -8,7 +8,7 @@ import { EventAttachmentService } from './calendarStore/eventAttachments'
 import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
 import { DesktopIdleEmbedBridge } from './desktopIdleEmbedBridge'
-import { QuickEditWindowManager } from './quickEditWindowManager'
+import { PanelWindowManager } from './panelWindowManager'
 import { DesktopOutsideClickEmbedBridge } from './desktopOutsideClickEmbedBridge'
 import {
   DayCellDblClickBridge,
@@ -55,7 +55,7 @@ import type {
   QuickEditDeferToMainPayload,
   ToolbarClickPayload
 } from '../shared/ipc'
-import { PERIOD_TOOLBAR_ACTIONS } from '../shared/ipc'
+import { EMBEDDED_FLOATING_CHROME_ACTIONS, PERIOD_TOOLBAR_ACTIONS } from '../shared/ipc'
 import {
   getShellRunAtStartup,
   projectViewOptionsForClient
@@ -130,7 +130,7 @@ let desktopQuickEditContext: DesktopQuickEditContext = {
   viewMode: 'month',
   eventsHidden: false
 }
-let quickEditWindowManager: QuickEditWindowManager | null = null
+let panelWindowManager: PanelWindowManager | null = null
 /** Period toolbar footprints for WorkerW embedded click → action (stay embedded). */
 let clickForwardHitZones: ClickForwardClientZone[] = []
 
@@ -240,8 +240,8 @@ function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
 /** WorkerW embedded: open quick edit in a top-level window above desktop icons. */
 function openFloatingDayQuickEdit(payload: OpenDayQuickEditPayload): void {
   const win = mainWindow
-  if (!win || win.isDestroyed() || !quickEditWindowManager) return
-  quickEditWindowManager.openFromEmbeddedDblClick(
+  if (!win || win.isDestroyed() || !panelWindowManager) return
+  panelWindowManager.openQuickEditFromEmbeddedDblClick(
     win,
     payload,
     desktopQuickEditContext,
@@ -267,7 +267,12 @@ function deferQuickEditToMain(payload: QuickEditDeferToMainPayload): void {
 
 /** WorkerW embedded: run period-toolbar action in renderer without undocking. */
 function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
-  if (!PERIOD_TOOLBAR_ACTION_IDS.has(payload.action)) return
+  if (
+    !PERIOD_TOOLBAR_ACTION_IDS.has(payload.action) &&
+    !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action)
+  ) {
+    return
+  }
   const win = mainWindow
   if (!win || win.isDestroyed()) return
   win.webContents.send('toolbar-click', payload)
@@ -275,7 +280,7 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
 
 function broadcastMode(status: ModeStatus): void {
   if (status.mode === 'desktop' && status.embedded) {
-    quickEditWindowManager?.close()
+    panelWindowManager?.closeAll()
   }
   mainWindow?.webContents.send('mode-changed', status)
   tray?.rebuildMenu?.()
@@ -459,10 +464,10 @@ function registerIpc(): void {
   ipcMain.on('set-interaction-busy', () => undefined)
 
   ipcMain.on('focus-for-text-input', (event) => {
-    if (quickEditWindowManager?.isQuickEditWebContents(event.sender.id)) {
-      const qeWin = quickEditWindowManager.getWindow()
-      if (qeWin && !qeWin.isDestroyed()) {
-        focusWindowForTextInput(qeWin)
+    if (panelWindowManager?.isPanelWebContents(event.sender.id)) {
+      const panelWin = panelWindowManager.getWindowForWebContents(event.sender.id)
+      if (panelWin && !panelWin.isDestroyed()) {
+        focusWindowForTextInput(panelWin)
       }
       return
     }
@@ -855,7 +860,21 @@ function bootApp(): void {
 
   createWindow()
 
-  quickEditWindowManager = new QuickEditWindowManager((payload) => deferQuickEditToMain(payload))
+  panelWindowManager = new PanelWindowManager(
+    () => mainWindow,
+    () => {
+      if (desktopMode.getLaunchMode() === 'desktop') {
+        const locked = desktopMode.getLockedBounds()
+        if (locked && locked.width > 0 && locked.height > 0) return locked
+        const saved = settingsStore.getWidgetBounds()
+        if (saved.width > 0 && saved.height > 0) return saved
+      }
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        return getWindowDipScreenBounds(mainWindow)
+      }
+      return desktopMode.getLockedBounds()
+    }
+  )
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
   const idleEmbed = new DesktopIdleEmbedBridge({

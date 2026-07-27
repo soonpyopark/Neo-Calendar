@@ -12,7 +12,9 @@ import type {
   DayDblClickLogPayload,
   QuickEditDeferToMainPayload,
   ToolbarClickPayload,
-  SetIgnoreMouseOptions
+  SetIgnoreMouseOptions,
+  OpenPanelWindowRequest,
+  PanelWindowInit
 } from '../shared/ipc'
 import type {
   CalendarEvent,
@@ -89,6 +91,15 @@ const api: NeoCalendarApi = {
   },
   deferQuickEditToMain: (payload: QuickEditDeferToMainPayload) =>
     ipcRenderer.invoke('quick-edit-defer-to-main', payload) as Promise<boolean>,
+  getPanelInit: () =>
+    ipcRenderer.invoke('panel-get-init') as ReturnType<NeoCalendarApi['getPanelInit']>,
+  openPanelWindow: (request) =>
+    ipcRenderer.invoke('panel-open', request) as ReturnType<NeoCalendarApi['openPanelWindow']>,
+  closePanelWindow: () => {
+    ipcRenderer.send('panel-close')
+  },
+  routePanelWindow: (init) =>
+    ipcRenderer.invoke('panel-route', init) as ReturnType<NeoCalendarApi['routePanelWindow']>,
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

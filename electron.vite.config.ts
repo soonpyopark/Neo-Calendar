@@ -42,10 +42,11 @@ export default defineConfig({
     },
     build: {
       rollupOptions: {
-        input: {
-          index: resolve('src/renderer/index.html'),
-          quickEdit: resolve('src/renderer/quickEdit.html')
-        }
+          input: {
+            index: resolve('src/renderer/index.html'),
+            quickEdit: resolve('src/renderer/quickEdit.html'),
+            panel: resolve('src/renderer/panel.html')
+          }
       }
     },
     plugins: [react(), tailwindcss()],

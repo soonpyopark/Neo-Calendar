@@ -5,7 +5,7 @@ import {
   type RefObject
 } from 'react'
 import { useAppDialog } from './AppDialogProvider'
-import { EventDetailContent } from './EventDetailContent'
+import { EventDetailCalendarFooter, EventDetailContent } from './EventDetailContent'
 import {
   getAnchoredPopoverPosition,
   getCenteredPanelStyle,
@@ -27,6 +27,7 @@ export type EventPopoverProps = {
   tags?: TagRecord[]
   dayKey?: string
   anchorRect: EventPopoverAnchor
+  surface?: 'inline' | 'floating'
   canEdit?: boolean
   onClose: () => void
   onEdit: (event: CalendarEvent) => void
@@ -40,19 +41,21 @@ export function EventPopover({
   tags = [],
   dayKey,
   anchorRect,
+  surface = 'inline',
   canEdit = false,
   onClose,
   onEdit,
   onDelete,
   onToggleCompleted
 }: EventPopoverProps): ReactElement | null {
+  const isFloating = surface === 'floating'
   const { confirm } = useAppDialog()
   const popoverOptions = { width: 418, estimatedHeight: 360, padding: 12 }
   const resolvedAnchor = resolvePopoverAnchor(anchorRect)
   const { ref, style: anchoredStyle } = useAnchoredPopoverStyle(anchorRect, popoverOptions)
 
   useEffect(() => {
-    if (!event) return undefined
+    if (!event || isFloating) return undefined
     const handlePointerDown = (e: MouseEvent): void => {
       const target = e.target
       if (!(target instanceof Node)) return
@@ -64,7 +67,7 @@ export function EventPopover({
     }
     document.addEventListener('mousedown', handlePointerDown, true)
     return () => document.removeEventListener('mousedown', handlePointerDown, true)
-  }, [event, onClose, ref])
+  }, [event, isFloating, onClose, ref])
 
   if (!event) return null
 
@@ -81,34 +84,40 @@ export function EventPopover({
     })()
   }
 
-  const panelStyle = resolvedAnchor
-    ? (anchoredStyle ??
-      getAnchoredPopoverPosition(resolvedAnchor.rect, {
-        ...popoverOptions,
-        anchorMode: resolvedAnchor.mode
-      }))
-    : getCenteredPanelStyle({ padding: 16, maxWidth: 418 })
+  const panelStyle = isFloating
+    ? ({ top: 0, left: 0, width: '100%', height: '100%' } as CSSProperties)
+    : resolvedAnchor
+      ? (anchoredStyle ??
+        getAnchoredPopoverPosition(resolvedAnchor.rect, {
+          ...popoverOptions,
+          anchorMode: resolvedAnchor.mode
+        }))
+      : getCenteredPanelStyle({ padding: 16, maxWidth: 418 })
 
   return (
     <div
       className={
-        anchorRect
-          ? 'pointer-events-none fixed inset-0 z-[50]'
-          : 'pointer-events-none fixed inset-0 z-[50] flex items-center justify-center overflow-y-auto p-4'
+        isFloating
+          ? 'h-full w-full'
+          : anchorRect
+            ? 'pointer-events-none fixed inset-0 z-[50]'
+            : 'pointer-events-none fixed inset-0 z-[50] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"
     >
       <div
         ref={ref as RefObject<HTMLDivElement | null>}
-        className={`interaction-ui ${resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex w-[418px] max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg`}
+        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex w-[418px] max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
         style={panelStyle as CSSProperties}
         onClick={(e) => e.stopPropagation()}
-        onMouseEnter={() => setIgnoreMouseEvents(false)}
-        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+        onMouseEnter={isFloating ? undefined : () => setIgnoreMouseEvents(false)}
+        onMouseLeave={
+          isFloating ? undefined : () => setIgnoreMouseEvents(true, { forwardToOverlay: true })
+        }
         role="dialog"
         aria-label="일정 상세"
       >
-        <div className="flex shrink-0 items-center justify-between gap-2 pl-5 pr-3 pt-2">
+        <div className="search-panel-line-b flex shrink-0 items-center justify-between gap-2 pl-5 pr-3 pt-2">
           <label
             className="inline-flex h-[34px] cursor-pointer items-center"
             title={completed ? '완료 해제' : '완료로 표시'}
@@ -167,15 +176,23 @@ export function EventPopover({
           </div>
         </div>
 
-        <div className="settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">
+        <div
+          className={`settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pt-1${isFloating ? ' pb-0' : ' pb-5'}`}
+        >
           <EventDetailContent
             event={event}
             calendar={calendar}
             dayKey={dayKey}
             tags={tags}
+            hideCalendarFooter={isFloating}
             onTitleDoubleClick={canEdit ? () => onEdit(event) : undefined}
           />
         </div>
+        {isFloating ? (
+          <div className="shrink-0 px-5 pb-4">
+            <EventDetailCalendarFooter calendar={calendar} />
+          </div>
+        ) : null}
       </div>
     </div>
   )

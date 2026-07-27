@@ -339,16 +339,30 @@ export function QuickEditWindowApp(): ReactElement | null {
     }
   }
 
-  const deferToMain = useCallback(
+  const routeFromQuickEdit = useCallback(
     (kind: 'editor' | 'detail', event?: CalendarEvent | null): void => {
       if (!init?.dateKey) return
-      void window.neoCalendar.deferQuickEditToMain?.({
-        kind,
-        dateKey: init.dateKey,
-        eventId: event?.id
+      const returnQuickEdit = { dateKey: init.dateKey, anchor: init.anchor ?? null }
+      if (kind === 'detail') {
+        if (!event?.id) return
+        void window.neoCalendar.routePanelWindow?.({
+          kind: 'eventDetail',
+          eventId: event.id,
+          dayKey: init.dateKey,
+          anchor: init.anchor ?? null
+        })
+        return
+      }
+      if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+      void window.neoCalendar.routePanelWindow?.({
+        kind: 'eventEditor',
+        eventId: event?.id ?? null,
+        defaultDate: init.dateKey,
+        occurrenceDate: init.dateKey,
+        returnQuickEdit
       })
     },
-    [init?.dateKey]
+    [init?.anchor, init?.dateKey]
   )
 
   const handleClose = useCallback((): void => {
@@ -420,9 +434,9 @@ export function QuickEditWindowApp(): ReactElement | null {
             '바로가기를 변경하지 못했습니다.'
           )
         }}
-        onOpenMore={(event) => deferToMain('editor', event)}
-        onOpenEvent={(event) => deferToMain('detail', event)}
-        onEditEvent={(event) => deferToMain('editor', event)}
+        onOpenMore={(event) => routeFromQuickEdit('editor', event)}
+        onOpenEvent={(event) => routeFromQuickEdit('detail', event)}
+        onEditEvent={(event) => routeFromQuickEdit('editor', event)}
         onAttachFiles={async (event) => {
           if (!canEdit) {
             await alert('관리자 로그인 후 파일을 첨부할 수 있습니다.')

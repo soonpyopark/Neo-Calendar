@@ -9,6 +9,7 @@ export type EventEditorProps = {
   calendars: CalendarRecord[]
   tags?: TagRecord[]
   defaultDate?: string
+  surface?: 'inline' | 'floating'
   onClose: () => void
   onSave: (payload: Record<string, unknown>) => void | Promise<void>
   onDelete?: (event: CalendarEvent) => void | Promise<void>
@@ -132,11 +133,13 @@ export function EventEditor({
   calendars,
   tags = [],
   defaultDate,
+  surface = 'inline',
   onClose,
   onSave,
   onDelete,
   onEventRefresh
 }: EventEditorProps) {
+  const isFloating = surface === 'floating'
   const { alert, confirm } = useAppDialog()
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -508,12 +511,20 @@ export function EventEditor({
 
   return (
     <div
-      className="interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4"
+      className={
+        isFloating
+          ? 'flex h-full w-full items-center justify-center overflow-y-auto'
+          : 'interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4'
+      }
       role="presentation"
-      onClick={handleCloseRequest}
+      onClick={isFloating ? undefined : handleCloseRequest}
     >
       <InteractionUI
-        className="relative z-30 my-auto w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-32px)]"
+        className={
+          isFloating
+            ? 'relative z-30 mx-auto w-full max-h-full max-w-[720px]'
+            : 'relative z-30 my-auto w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-32px)]'
+        }
         role="dialog"
         aria-modal="true"
         aria-label={event?.id ? '일정 편집' : '일정 추가'}
@@ -521,7 +532,11 @@ export function EventEditor({
         onMouseDown={(e) => e.stopPropagation()}
       >
       <form
-        className="settings-scroll shell-solid-surface max-h-[calc(100vh-32px)] overflow-auto rounded-lg shadow-g-lg"
+        className={
+          isFloating
+            ? 'settings-scroll shell-solid-surface max-h-full overflow-auto rounded-lg'
+            : 'settings-scroll shell-solid-surface max-h-[calc(100vh-32px)] overflow-auto rounded-lg shadow-g-lg'
+        }
         onSubmit={handleSubmit}
       >
         <div className="h-1" style={{ background: calendarTheme.base }} />

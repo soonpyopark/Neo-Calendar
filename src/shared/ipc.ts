@@ -3,6 +3,8 @@ import type {
   QuickEditDeferToMainPayload,
   QuickEditWindowInit
 } from './quickEditLayout'
+import type { OpenPanelWindowRequest, PanelWindowInit } from './panelWindows'
+export type { OpenPanelWindowRequest, PanelWindowInit }
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -95,6 +97,12 @@ export const CHROME_TOOLBAR_ACTIONS = {
   enterWindow: 'enter-window'
 } as const
 
+/** Header actions that open floating panels while WorkerW-embedded. */
+export const EMBEDDED_FLOATING_CHROME_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.search,
+  CHROME_TOOLBAR_ACTIONS.settings
+])
+
 export type ToolbarClickPayload = {
   action: string
 }
@@ -145,6 +153,11 @@ export type NeoCalendarApi = {
   closeQuickEditWindow: () => void
   /** Close floating quick edit and unlock main for editor/detail. */
   deferQuickEditToMain: (payload: QuickEditDeferToMainPayload) => Promise<boolean>
+  /** Floating panel window (all panel kinds). */
+  getPanelInit: () => Promise<PanelWindowInit | null>
+  openPanelWindow: (request: OpenPanelWindowRequest) => Promise<boolean>
+  closePanelWindow: () => void
+  routePanelWindow: (init: PanelWindowInit) => Promise<boolean>
   /** Main → renderer: open editor/detail after floating quick edit defers. */
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => () => void
   /** Main → renderer: run period toolbar action after embedded click unlock. */

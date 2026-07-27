@@ -70,6 +70,7 @@ type SettingsSection =
 
 export type SettingsPanelProps = {
   open: boolean
+  surface?: 'inline' | 'floating'
   settings: AppSettings | null
   store: CalendarStoreSnapshot
   user: AuthUser | null
@@ -1032,6 +1033,7 @@ function CalendarSettingsPanel({
 
 export function SettingsPanel({
   open,
+  surface = 'inline',
   settings,
   store,
   user,
@@ -1055,6 +1057,7 @@ export function SettingsPanel({
   onSyncHolidays,
   onRefresh
 }: SettingsPanelProps): ReactElement | null {
+  const isFloating = surface === 'floating'
   const [section, setSection] = useState<SettingsSection>('general')
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null)
   const [newCalName, setNewCalName] = useState('')
@@ -1081,28 +1084,8 @@ export function SettingsPanel({
     }
   }, [isSuperAdmin, section])
 
-  /** Keep settings below AppChrome; fill remaining window height (MDC). */
-  const measureChromeOffset = (): number => {
-    let bottom = 0
-    for (const role of ['header-actions', 'titlebar', 'header']) {
-      const el = document.querySelector(`[data-shell-chrome="${role}"]`)
-      if (!el) continue
-      bottom = Math.max(bottom, el.getBoundingClientRect().bottom)
-    }
-    return Math.max(0, Math.ceil(bottom))
-  }
-
+  /** Trap wheel so only `.settings-scroll` scrolls (calendar underneath stays put). */
   const overlayRef = useRef<HTMLDivElement | null>(null)
-  const [, forceRemeasure] = useState(0)
-  useEffect(() => {
-    if (!open) return undefined
-    const onResize = (): void => forceRemeasure((n) => n + 1)
-    window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
-  }, [open])
-  const chromeOffset = open ? measureChromeOffset() : 0
-
-  // Trap wheel so only `.settings-scroll` scrolls (calendar underneath stays put).
   useEffect(() => {
     if (!open) return undefined
     const root = overlayRef.current
@@ -1149,18 +1132,21 @@ export function SettingsPanel({
 
   return (
     <div
-      className="interaction-ui fixed inset-0 z-[55]"
+      className={isFloating ? 'h-full w-full' : 'interaction-ui fixed inset-0 z-[55]'}
       role="presentation"
-      onClick={requestClose}
+      onClick={isFloating ? undefined : requestClose}
     >
       <div
         ref={overlayRef}
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[56] flex justify-center pb-[2.5%]"
-        style={{ top: chromeOffset }}
+        className={
+          isFloating
+            ? 'flex h-full w-full'
+            : 'pointer-events-none fixed inset-0 z-[56] flex items-center justify-center'
+        }
         role="presentation"
       >
         <InteractionUI
-          className="shell-solid-surface settings-panel-shell pointer-events-auto relative z-[1] flex h-full max-h-full w-[min(77%,1100px)] min-h-0 overflow-hidden rounded-xl shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+          className={`shell-solid-surface settings-panel-shell pointer-events-auto relative z-[1] flex min-h-0 overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'h-full w-full max-h-full' : 'h-[90%] w-[90%] max-h-[90%]'}`}
           role="dialog"
           aria-label="설정"
           onClick={(e) => e.stopPropagation()}
@@ -1182,7 +1168,7 @@ export function SettingsPanel({
           </button>
 
           <aside
-            className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-gcal-border-light py-4"
+            className="settings-panel-line-r flex w-72 shrink-0 flex-col overflow-hidden py-4"
             style={{ backgroundColor: 'var(--gcal-page-solid)' }}
           >
             <nav className="settings-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-2">
