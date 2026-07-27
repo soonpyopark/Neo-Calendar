@@ -66,7 +66,6 @@ import {
   HideCompletedCheckIcon,
   HideEventsEyeIcon,
   MonthViewIcon,
-  TriangleRightIcon,
   WebBrowserIcon,
   WeekViewIcon,
   YearViewIcon
@@ -490,7 +489,7 @@ export function CalendarGrid({
       const vw = window.innerWidth
       const vh = window.innerHeight
       const dayZoneSelectors = [
-        '.neo-cal-shell .day-cell[data-date-key] .day-cell-header',
+        '.neo-cal-shell .day-cell[data-date-key] .day-number',
         '.neo-cal-shell .year-day[data-date-key]'
       ].join(', ')
       const dayZones = Array.from(
@@ -1957,14 +1956,9 @@ export function CalendarGrid({
           event.stopPropagation()
         }}
       >
-        <p className="neo-cal-footer-hint m-0 min-w-0 flex flex-wrap items-center gap-1 text-xs leading-snug text-gcal-muted">
-          <span className="font-medium text-gcal-body">[참고]</span>
-          <span className="neo-cal-footer-hint-icon" aria-hidden="true">
-            <TriangleRightIcon size={8} />
-          </span>
-          <span>
-            를 더블클릭해서 일정을 추가하고, 일정바를 더블클릭하면 상세 편집기로 수정이 가능합니다.
-          </span>
+        <p className="neo-cal-footer-hint m-0 min-w-0">
+          [참고] 날짜 영역을 더블클릭해서 일정을 추가하고, 일정바를 더블클릭하면 상세 편집기로 수정
+          가능합니다.
         </p>
         <SiteLink />
       </footer>

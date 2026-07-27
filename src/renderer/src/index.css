@@ -257,20 +257,10 @@ textarea {
 
 .neo-cal-footer-hint {
   flex: 1 1 auto;
-}
-
-.neo-cal-footer-hint-icon {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--gcal-blue) 40%, var(--gcal-border));
-  background-color: var(--gcal-blue-soft);
-  color: var(--gcal-blue);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--gcal-blue) 14%, transparent);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-weight: 400;
+  color: var(--gcal-muted, #70757a);
 }
 
 .app-chrome-no-drag {
@@ -670,52 +660,6 @@ textarea {
 .day-cell.today.sunday:not(.other-month) .day-number .solar,
 .day-cell.today.holiday:not(.other-month) .day-number .solar {
   color: #fff;
-}
-
-.day-cell-pop-out {
-  display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  width: clamp(18px, 2.4vh, 22px);
-  height: clamp(18px, 2.4vh, 22px);
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--gcal-blue) 40%, var(--gcal-border));
-  background-color: var(--gcal-blue-soft);
-  color: var(--gcal-blue);
-  opacity: 0.88;
-  pointer-events: auto;
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--gcal-blue) 14%, transparent);
-  transition: opacity 0.15s, color 0.15s, background-color 0.15s, border-color 0.15s,
-    box-shadow 0.15s;
-}
-
-.day-cell-header {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  gap: clamp(2px, 0.4vh, 4px);
-  min-height: clamp(20px, 3vh, 30px);
-  max-width: 100%;
-}
-
-.day-cell-header .day-number {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-}
-
-.day-cell:hover .day-cell-pop-out,
-.day-cell.selected .day-cell-pop-out {
-  opacity: 1;
-}
-
-.day-cell-pop-out:hover {
-  background-color: var(--gcal-blue);
-  border-color: var(--gcal-blue);
-  color: #fff;
-  opacity: 1;
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--gcal-blue) 28%, transparent);
 }
 
 .day-number {

@@ -1,10 +1,12 @@
-import { useCallback, useLayoutEffect, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent, type ReactElement } from 'react'
 
 export type DayNumberProps = {
   solar: number
   lunarLabel: string | null
   lunarDay: number | null
   solarTerm: string | null
+  onClick?: (event: MouseEvent<HTMLDivElement>) => void
+  onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void
 }
 
 /** MDC DayNumber — 양력 + 음력(+좁은 칸 축약) + 절기/삼복. */
@@ -12,7 +14,9 @@ export function DayNumber({
   solar,
   lunarLabel,
   lunarDay,
-  solarTerm
+  solarTerm,
+  onClick,
+  onDoubleClick
 }: DayNumberProps): ReactElement {
   const rootRef = useRef<HTMLDivElement | null>(null)
   const measureRef = useRef<HTMLSpanElement | null>(null)
@@ -55,7 +59,7 @@ export function DayNumber({
   }, [measure, solar, lunarLabel, termSuffix])
 
   return (
-    <div className="day-number" ref={rootRef}>
+    <div className="day-number" ref={rootRef} onClick={onClick} onDoubleClick={onDoubleClick}>
       <span className="solar">{solar}</span>
       {lunarLabel != null && lunarDay != null ? (
         <>

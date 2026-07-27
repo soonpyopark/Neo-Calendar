@@ -17,7 +17,6 @@ import { getDayParts } from '../lib/lunar'
 import { getEventLinks } from '../lib/eventLinks'
 import { buildDayReorderPayload, commitDayReorder, type DayReorderItem } from '../lib/dayReorder'
 import { resolveDayVisibleEventLimit } from '../hooks/useMaxVisibleEvents'
-import { TriangleRightIcon } from './CalendarHeaderIcons'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
@@ -189,8 +188,11 @@ export function MonthDayCell({
       role={interactive ? 'button' : undefined}
       tabIndex={interactive ? 0 : undefined}
     >
-      <div
-        className="day-cell-header"
+      <DayNumber
+        solar={solar}
+        lunarLabel={lunar}
+        lunarDay={lunarDay}
+        solarTerm={solarTerm}
         onClick={(e) => e.stopPropagation()}
         onDoubleClick={
           !desktopEmbedded
@@ -201,32 +203,7 @@ export function MonthDayCell({
               }
             : undefined
         }
-      >
-        <DayNumber
-          solar={solar}
-          lunarLabel={lunar}
-          lunarDay={lunarDay}
-          solarTerm={solarTerm}
-        />
-        <span
-          className="day-cell-pop-out interaction-ui"
-          role="button"
-          tabIndex={-1}
-          aria-label="더블클릭하여 퀵편집 열기"
-          onClick={(e) => e.stopPropagation()}
-          onDoubleClick={
-            !desktopEmbedded
-              ? (e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  openQuickEditFromCell(e.currentTarget)
-                }
-              : undefined
-          }
-        >
-          <TriangleRightIcon size={10} />
-        </span>
-      </div>
+      />
 
       <div className={cn('day-events', eventsHidden && 'is-hidden')}>
         {visibleSegments.map(({ event, segment, label, continuation, lane }) => {
