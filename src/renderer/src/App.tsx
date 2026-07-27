@@ -58,8 +58,7 @@ export default function App(): ReactElement {
     applyOpacitySettings(next)
   }
 
-  // Undocked desktop must behave like window mode for mouse/scroll/IME.
-  // Click-through only while actually under icons.
+  // Undocked desktop: inline overlays. Embedded desktop + window mode: floating panel windows.
   const clickThrough = mode === 'desktop' && embedded
 
   return (

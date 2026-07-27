@@ -1146,7 +1146,7 @@ export function SettingsPanel({
         role="presentation"
       >
         <InteractionUI
-          className={`shell-solid-surface settings-panel-shell pointer-events-auto relative z-[1] flex min-h-0 overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'h-full w-full max-h-full' : 'h-[90%] w-[90%] max-h-[90%]'}`}
+          className={`shell-solid-surface settings-panel-shell pointer-events-auto relative z-[1] flex min-h-0 overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'h-full w-full max-h-full' : 'h-[80%] w-[90%] max-h-[80%]'}`}
           role="dialog"
           aria-label="설정"
           onClick={(e) => e.stopPropagation()}

@@ -311,7 +311,7 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'eventEditor') {
-    return centeredBounds({
+    return centerInMainWindow({
       mainOrigin,
       mainSize,
       workArea,
@@ -326,7 +326,7 @@ export function computePanelWindowBounds(options: {
       mainSize,
       workArea,
       width: Math.round(mainSize.width * 0.9),
-      height: Math.min(Math.round(mainSize.height * 0.9), workArea.height - VIEWPORT_PAD * 2)
+      height: Math.min(Math.round(mainSize.height * 0.8), workArea.height - VIEWPORT_PAD * 2)
     })
   }
 

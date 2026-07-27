@@ -11,7 +11,7 @@
     "custom": true,
     "ownerLoginId": "admin",
     "ownerName": "박순표",
-    "sortOrder": 2
+    "sortOrder": 3
   },
   "events": [
     {
@@ -242,5 +242,5 @@
       "updatedAt": "2026-07-16T01:29:05.1998775Z"
     }
   ],
-  "updatedAt": "2026-07-25T09:52:18.728Z"
+  "updatedAt": "2026-07-27T15:46:07.306Z"
 }

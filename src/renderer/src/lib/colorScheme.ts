@@ -26,6 +26,15 @@ export function applyColorScheme(scheme: ColorScheme): void {
   )
 }
 
+/** Apply light/dark + accent from calendar store settings (panel / quick-edit windows). */
+export function applyThemeFromStoreSettings(settings: {
+  accentColor?: string
+  viewOptions?: { colorScheme?: string } | null
+}): void {
+  applyColorScheme(getColorScheme(settings))
+  applyAccentColor(normalizeAccentColor(settings.accentColor))
+}
+
 export function normalizeAccentColor(value: unknown, fallback = '#1a73e8'): string {
   const s = String(value ?? '').trim()
   return HEX_PATTERN.test(s) ? s.toLowerCase() : fallback

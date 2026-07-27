@@ -36,12 +36,7 @@ import {
   type QuickEditWindowInit
 } from '../../../shared/quickEditLayout'
 import type { DayReorderItem } from '../lib/dayReorder'
-import {
-  applyAccentColor,
-  applyColorScheme,
-  getColorScheme,
-  normalizeAccentColor
-} from '../lib/colorScheme'
+import { usePanelTheme } from '../panel/usePanelEventHelpers'
 
 function parseDateKey(dateKey: string): Date | null {
   const [y, m, d] = dateKey.split('-').map(Number)
@@ -119,34 +114,7 @@ export function QuickEditWindowApp(): ReactElement | null {
     }
   }, [])
 
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const settings = await window.neoCalendar.getSettings()
-        if (cancelled) return
-        document.documentElement.style.setProperty(
-          '--neo-header-opacity',
-          String(settings.headerOpacity)
-        )
-        document.documentElement.style.setProperty(
-          '--neo-shell-opacity',
-          String(settings.shellOpacity)
-        )
-      } catch {
-        /* ignore */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  useEffect(() => {
-    const scheme = getColorScheme(store.settings)
-    applyColorScheme(scheme)
-    applyAccentColor(normalizeAccentColor(store.settings.accentColor))
-  }, [store.settings])
+  usePanelTheme(store.settings)
 
   const date = useMemo(() => {
     if (!init?.dateKey) return null

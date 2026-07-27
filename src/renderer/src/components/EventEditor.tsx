@@ -513,7 +513,7 @@ export function EventEditor({
     <div
       className={
         isFloating
-          ? 'h-full w-full overflow-y-auto'
+          ? 'flex h-full min-h-full w-full items-center justify-center overflow-y-auto p-2'
           : 'interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"
@@ -522,7 +522,7 @@ export function EventEditor({
       <InteractionUI
         className={
           isFloating
-            ? 'relative z-30 mx-auto w-full max-h-full max-w-[720px]'
+            ? 'relative z-30 my-auto w-full max-h-full max-w-[720px] shrink-0'
             : 'relative z-30 my-auto w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-32px)]'
         }
         role="dialog"
@@ -534,7 +534,7 @@ export function EventEditor({
       <form
         className={
           isFloating
-            ? 'settings-scroll shell-solid-surface max-h-full overflow-auto rounded-lg'
+            ? 'settings-scroll shell-solid-surface max-h-full overflow-auto rounded-lg border border-[var(--gcal-border)]'
             : 'settings-scroll shell-solid-surface max-h-[calc(100vh-32px)] overflow-auto rounded-lg shadow-g-lg'
         }
         onSubmit={handleSubmit}

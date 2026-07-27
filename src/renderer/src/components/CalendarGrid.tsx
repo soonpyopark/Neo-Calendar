@@ -309,9 +309,19 @@ function toWeekStartKey(week: DayCell[]): string {
   return week[0]?.dateKey ?? ''
 }
 
+/** WorkerW embedded + window mode — floating panel windows above the shell. */
+function usesFloatingPanels(mode: LaunchMode, embedded: boolean): boolean {
+  return mode === 'window' || embedded
+}
+
+/** Unlocked desktop only — inline popovers inside the main renderer. */
+function usesInlineOverlays(mode: LaunchMode, embedded: boolean): boolean {
+  return mode === 'desktop' && !embedded
+}
+
 export type CalendarGridProps = {
   mode: LaunchMode
-  /** True only while WorkerW-embedded. Undocked desktop should interact like window mode. */
+  /** True only while WorkerW-embedded (not while temporarily undocked). */
   embedded?: boolean
   switchReady?: boolean
   user: AuthUser | null
@@ -479,8 +489,18 @@ export function CalendarGrid({
   const monthBodyRef = useRef<HTMLDivElement | null>(null)
   const publishHitZonesRef = useRef<(() => void) | null>(null)
   const lastDayZoneCountRef = useRef(-1)
-  const modeEmbeddedRef = useRef({ mode, embedded })
-  modeEmbeddedRef.current = { mode, embedded }
+  const modeEmbeddedRef = useRef({
+    mode,
+    embedded,
+    floatingPanels: usesFloatingPanels(mode, embedded)
+  })
+  modeEmbeddedRef.current = {
+    mode,
+    embedded,
+    floatingPanels: usesFloatingPanels(mode, embedded)
+  }
+  const inlineOverlays = usesInlineOverlays(mode, embedded)
+  const floatingPanels = usesFloatingPanels(mode, embedded)
 
   const openEmbeddedPanel = useCallback(
     (init: PanelWindowInit, anchorClient?: PanelAnchorRect | null): void => {
@@ -796,8 +816,8 @@ export function CalendarGrid({
       const next = new Date(nextYear, nextMonth1 - 1, 1)
       setViewDate(next)
     },
-    // Desktop mode: never navigate month/week by wheel (wallpaper layer).
-    wheelLocked: wheelLocked || mode === 'desktop'
+    // Desktop / window mode: never navigate month/week by wheel (wallpaper layer).
+    wheelLocked: wheelLocked || mode === 'desktop' || mode === 'window'
   })
 
   const scrollToMonthRef = useRef(scrollToMonth)
@@ -1083,8 +1103,8 @@ export function CalendarGrid({
     } else if (eventOrRect) {
       anchorRect = rectFromTarget(eventOrRect.currentTarget)
     }
-    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
-    if (currentMode === 'desktop' && isEmbedded) {
+    const { floatingPanels } = modeEmbeddedRef.current
+    if (floatingPanels) {
       openEmbeddedPanel(
         {
           kind: 'quickEdit',
@@ -1413,8 +1433,8 @@ export function CalendarGrid({
     detailFromSearchRef.current = Boolean(opts?.fromSearch)
     const panelAnchor = toPanelAnchor(anchorRect)
     const dayKey = opts?.dayKey ?? event.occurrenceDate ?? event.startDate
-    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
-    if (currentMode === 'desktop' && isEmbedded) {
+    const { floatingPanels } = modeEmbeddedRef.current
+    if (floatingPanels) {
       if (!opts?.keepDayList) setDayList(null)
       openEmbeddedPanel(
         {
@@ -1485,8 +1505,8 @@ export function CalendarGrid({
   ): void => {
     if (!canEdit && event === null) return
     if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
-    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
-    if (currentMode === 'desktop' && isEmbedded) {
+    const { floatingPanels } = modeEmbeddedRef.current
+    if (floatingPanels) {
       setEventPopover(null)
       setQuickEdit(null)
       setDayList(null)
@@ -1662,8 +1682,8 @@ export function CalendarGrid({
     if (!canEdit || exporting) return
     const exportYear = viewDate.getFullYear()
     const exportMonth = viewDate.getMonth() + 1
-    const { mode: currentMode, embedded: isEmbedded } = modeEmbeddedRef.current
-    if (currentMode === 'desktop' && isEmbedded) {
+    const { floatingPanels } = modeEmbeddedRef.current
+    if (floatingPanels) {
       openEmbeddedPanel({
         kind: 'exportConfirm',
         format,
@@ -1748,7 +1768,7 @@ export function CalendarGrid({
             width: rect.width,
             height: rect.height
           }
-          if (embedded) {
+          if (floatingPanels) {
             openEmbeddedPanel(
               {
                 kind: 'dayList',
@@ -1877,7 +1897,7 @@ export function CalendarGrid({
           switchReady={switchReady}
           chromeRef={chromeRef}
           onOpenSearch={() => {
-            if (embedded) {
+            if (floatingPanels) {
               openEmbeddedPanel({ kind: 'search', eventsHidden })
               return
             }
@@ -1885,7 +1905,7 @@ export function CalendarGrid({
             setSearchOpen(true)
           }}
           onOpenSettings={() => {
-            if (embedded) {
+            if (floatingPanels) {
               openEmbeddedPanel({ kind: 'settings' })
               return
             }
@@ -2174,7 +2194,7 @@ export function CalendarGrid({
         <SiteLink />
       </footer>
 
-      {!embedded ? (
+      {inlineOverlays ? (
         <SearchPanel
           open={searchOpen}
           events={eventsHidden ? [] : visibleEvents}
@@ -2184,7 +2204,7 @@ export function CalendarGrid({
           onSelectResult={handleSearchSelect}
         />
       ) : null}
-      {!embedded ? (
+      {inlineOverlays ? (
         <SettingsPanel
           open={settingsOpen}
           settings={settings}
@@ -2220,7 +2240,7 @@ export function CalendarGrid({
         onSubmit={handleLogin}
       />
 
-      {!embedded && quickEdit ? (
+      {inlineOverlays && quickEdit ? (
         <DayQuickEditPopover
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
@@ -2306,7 +2326,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {!embedded && eventPopover ? (
+      {inlineOverlays && eventPopover ? (
         <EventPopover
           event={eventPopover.event}
           calendar={calendarsById.get(eventPopover.event.calendarId) ?? null}
@@ -2364,7 +2384,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {!embedded && dayList && dayListDate ? (
+      {inlineOverlays && dayList && dayListDate ? (
         <DayEventsPopover
           date={dayListDate}
           dayKey={dayList.dateKey}
@@ -2394,7 +2414,7 @@ export function CalendarGrid({
         />
       ) : null}
 
-      {!embedded && editor ? (
+      {inlineOverlays && editor ? (
         <EventEditor
           open
           event={editor.event}

@@ -10,10 +10,8 @@ import type { CalendarEvent, EventInput } from '../../../shared/calendarTypes'
 import type { AuthUser } from '../../../shared/ipc'
 import type { PanelWindowInit } from '../../../shared/panelWindows'
 import {
-  applyAccentColor,
-  applyColorScheme,
-  getColorScheme,
-  normalizeAccentColor
+  applyThemeFromStoreSettings,
+  getColorScheme
 } from '../lib/colorScheme'
 import type { StoreSettings } from '../../../shared/calendarTypes'
 
@@ -161,7 +159,7 @@ export function usePanelAuth(): {
   return { authReady, canEdit, user }
 }
 
-export function usePanelTheme(settings: Pick<StoreSettings, 'accentColor'> & object): void {
+export function usePanelTheme(settings: Pick<StoreSettings, 'accentColor' | 'viewOptions'>): void {
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -186,8 +184,26 @@ export function usePanelTheme(settings: Pick<StoreSettings, 'accentColor'> & obj
   }, [])
 
   useEffect(() => {
-    const scheme = getColorScheme(settings)
-    applyColorScheme(scheme)
-    applyAccentColor(normalizeAccentColor(settings.accentColor))
-  }, [settings])
+    applyThemeFromStoreSettings(settings)
+  }, [settings, settings.viewOptions?.colorScheme, settings.accentColor])
+
+  useEffect(() => {
+    if (getColorScheme(settings) !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const onChange = (): void => {
+      applyThemeFromStoreSettings(settings)
+    }
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [settings, settings.viewOptions?.colorScheme])
+
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onStoreChanged) return
+    return api.onStoreChanged(() => {
+      void api.getCalendarStore().then((snap) => {
+        applyThemeFromStoreSettings(snap.settings)
+      })
+    })
+  }, [])
 }

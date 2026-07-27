@@ -142,7 +142,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
   if (loading || !authReady) return null
 
   return (
-    <div className="neo-panel-shell h-screen w-screen overflow-hidden p-2">
+    <div className="neo-panel-shell flex h-screen w-screen items-center justify-center overflow-hidden">
       <EventEditor
         surface="floating"
         open

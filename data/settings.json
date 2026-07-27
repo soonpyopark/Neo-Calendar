@@ -79,10 +79,10 @@
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
-        "colorScheme": "light",
+        "colorScheme": "dark",
         "accentColor": "#795548",
         "eventsHidden": false,
-        "completedHidden": true
+        "completedHidden": false
       },
       "browser": {
         "showWeekNumbers": true,
@@ -127,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-27T15:35:54.009Z"
+  "updatedAt": "2026-07-27T15:45:47.860Z"
 }

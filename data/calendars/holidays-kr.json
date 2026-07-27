@@ -12,7 +12,8 @@
     "password": "",
     "timezone": "Asia/Seoul",
     "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
-    "visible": true
+    "visible": true,
+    "sortOrder": 1
   },
   "events": [
     {
@@ -1381,5 +1382,5 @@
       "updatedAt": "2026-07-11T01:54:05.095Z"
     }
   ],
-  "updatedAt": "2026-07-25T09:52:18.729Z"
+  "updatedAt": "2026-07-27T15:44:38.886Z"
 }

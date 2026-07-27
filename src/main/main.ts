@@ -290,7 +290,7 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
 }
 
 function broadcastMode(status: ModeStatus): void {
-  if (status.mode === 'desktop' && status.embedded) {
+  if (status.mode === 'desktop') {
     panelWindowManager?.closeAll()
   }
   mainWindow?.webContents.send('mode-changed', status)
