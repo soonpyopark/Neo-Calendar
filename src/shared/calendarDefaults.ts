@@ -10,6 +10,10 @@ export const HOLIDAYS_KR_CALENDAR_ID = 'holidays-kr'
 export const PRIMARY_CALENDAR_ID = 'primary'
 export const PRIMARY_CALENDAR_COLOR = '#f6bf26'
 
+export function isProtectedCalendarId(id: string): boolean {
+  return id === PRIMARY_CALENDAR_ID || id === HOLIDAYS_KR_CALENDAR_ID
+}
+
 /** First-run / factory Neo chrome opacity (settings sliders + CSS vars). */
 export const DEFAULT_HEADER_OPACITY = 1
 export const DEFAULT_SHELL_OPACITY = 1

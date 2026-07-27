@@ -428,7 +428,7 @@
     {
       "id": "d8f44da7-46ff-4241-853c-c9893bb448a3",
       "calendarId": "primary",
-      "title": "특수교육",
+      "title": "(유특과) 개별화교육 관련 출장",
       "description": "",
       "links": [],
       "location": "",
@@ -450,12 +450,14 @@
       ],
       "attachments": [],
       "createdAt": "2026-07-27T12:13:28.032Z",
-      "updatedAt": "2026-07-27T12:13:36.020Z",
+      "updatedAt": "2026-07-27T12:24:52.016Z",
       "createdBy": "local",
       "sortOrderByDay": {
         "2026-07-30": 1
-      }
+      },
+      "link": "",
+      "sortOrder": null
     }
   ],
-  "updatedAt": "2026-07-27T12:13:36.020Z"
+  "updatedAt": "2026-07-27T12:24:52.017Z"
 }
