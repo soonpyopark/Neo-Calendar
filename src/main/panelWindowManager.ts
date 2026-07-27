@@ -218,7 +218,6 @@ export class PanelWindowManager {
     if (slot === 'quickEdit') {
       this.evictSlot('eventDetail')
       this.evictSlot('eventEditor')
-      this.evictSlot('dayList')
     }
     this.evictSlot(slot)
   }
@@ -338,10 +337,8 @@ export class PanelWindowManager {
     })
 
     const resolvedAnchor =
-      init.kind === 'dayList'
-        ? init.anchor
-        : anchorClient ??
-          (init.kind === 'quickEdit' || init.kind === 'eventDetail' ? (init.anchor ?? null) : null)
+      anchorClient ??
+      (init.kind === 'quickEdit' || init.kind === 'eventDetail' ? (init.anchor ?? null) : null)
 
     const windowBounds = this.computeWindowBounds({
       init,

@@ -60,7 +60,7 @@ export function EventMoreButton({
     <button
       ref={containerRef}
       type="button"
-      className="event-more"
+      className="event-more interaction-ui"
       style={{ '--event-lane': lane } as CSSProperties}
       aria-label={fullLabel}
       title={useShortLabel ? fullLabel : undefined}

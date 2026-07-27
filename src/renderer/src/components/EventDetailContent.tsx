@@ -69,7 +69,6 @@ export function EventDetailContent({
   const title = event.title ?? ''
   const eventTags = resolveEventTags(event, tags)
   const titleEditable = typeof onTitleDoubleClick === 'function'
-  const isAllDay = schedule.timeLine === '종일'
   const scheduleAccent = completed ? 'var(--gcal-muted)' : (theme.accent ?? theme.base)
   const scheduleInk = completed ? 'var(--gcal-body)' : theme.text
 
@@ -165,12 +164,7 @@ export function EventDetailContent({
                       />
                     </svg>
                   </span>
-                  <p
-                    className={cn(
-                      'm-0 tabular-nums leading-snug',
-                      isAllDay ? 'text-sm font-medium opacity-90' : 'text-lg font-semibold'
-                    )}
-                  >
+                  <p className="m-0 text-sm tabular-nums leading-snug opacity-90">
                     {schedule.timeLine}
                   </p>
                 </div>

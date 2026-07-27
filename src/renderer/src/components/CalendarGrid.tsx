@@ -19,7 +19,6 @@ import {
   getWeeksInMonth
 } from '../lib/calendarUtils'
 import { useMonthWeekScroll } from '../hooks/useMonthWeekScroll.js'
-import { buildDayDisplayEvents, DayEventsPopover } from './DayEventsPopover'
 import { EventEditor } from './EventEditor'
 import { EventPopover, type EventPopoverAnchor } from './EventPopover'
 import { MonthDayCell, type DaySegment } from './MonthDayCell'
@@ -402,10 +401,6 @@ export function CalendarGrid({
     event: CalendarEvent
     anchorRect: EventPopoverAnchor
     dayKey?: string
-  } | null>(null)
-  const [dayList, setDayList] = useState<{
-    dateKey: string
-    anchorRect: AnchorRect | null
   } | null>(null)
   const [editor, setEditor] = useState<{
     event: CalendarEvent | null
@@ -797,7 +792,6 @@ export function CalendarGrid({
       settingsOpen ||
       loginOpen ||
       eventPopover ||
-      dayList ||
       editor ||
       scopeDialog
   )
@@ -896,7 +890,6 @@ export function CalendarGrid({
     setQuickEdit(null)
     detailFromSearchRef.current = false
     setEventPopover(null)
-    setDayList(null)
     setEditor(null)
     setScopeDialog(null)
     setPendingEdit(null)
@@ -1090,7 +1083,6 @@ export function CalendarGrid({
     eventOrRect?: MouseEvent | DOMRect | null
   ): void => {
     setEventPopover(null)
-    setDayList(null)
     setSelectedKey(cell.dateKey)
     let anchorRect: AnchorRect | null = null
     if (eventOrRect instanceof DOMRect) {
@@ -1428,14 +1420,13 @@ export function CalendarGrid({
   const openEventDetail = (
     event: CalendarEvent,
     anchorRect: EventPopoverAnchor = null,
-    opts?: { dayKey?: string; keepDayList?: boolean; fromSearch?: boolean }
+    opts?: { dayKey?: string; fromSearch?: boolean }
   ): void => {
     detailFromSearchRef.current = Boolean(opts?.fromSearch)
     const panelAnchor = toPanelAnchor(anchorRect)
     const dayKey = opts?.dayKey ?? event.occurrenceDate ?? event.startDate
     const { floatingPanels } = modeEmbeddedRef.current
     if (floatingPanels) {
-      if (!opts?.keepDayList) setDayList(null)
       openEmbeddedPanel(
         {
           kind: 'eventDetail',
@@ -1448,7 +1439,6 @@ export function CalendarGrid({
       )
       return
     }
-    if (!opts?.keepDayList) setDayList(null)
     setEventPopover({
       event,
       anchorRect,
@@ -1509,7 +1499,6 @@ export function CalendarGrid({
     if (floatingPanels) {
       setEventPopover(null)
       setQuickEdit(null)
-      setDayList(null)
       setScopeDialog(null)
       setPendingDelete(null)
       openEmbeddedPanel({
@@ -1528,7 +1517,6 @@ export function CalendarGrid({
     }
     setEventPopover(null)
     setQuickEdit(null)
-    setDayList(null)
     setScopeDialog(null)
     setPendingDelete(null)
 
@@ -1758,34 +1746,6 @@ export function CalendarGrid({
           setSelectedKey(dayKey)
           openEventEditor(event, { defaultDate: dayKey })
         }}
-        onMoreOpen={(date, dayKey, _segments, rect) => {
-          setSelectedKey(dayKey)
-          setQuickEdit(null)
-          clearEventDetail()
-          const anchorRect = {
-            top: rect.top,
-            left: rect.left,
-            width: rect.width,
-            height: rect.height
-          }
-          if (floatingPanels) {
-            openEmbeddedPanel(
-              {
-                kind: 'dayList',
-                dateKey: dayKey,
-                anchor: anchorRect,
-                eventsHidden
-              },
-              anchorRect
-            )
-            return
-          }
-          setDayList({
-            dateKey: dayKey,
-            anchorRect
-          })
-          void date
-        }}
         onReorderEvents={handleReorderEvents}
       />
     )
@@ -1861,17 +1821,6 @@ export function CalendarGrid({
     </div>
   )
 
-  const dayListEvents = useMemo(() => {
-    if (!dayList) return []
-    const raw = expandEventsForRange(
-      eventsHidden ? [] : visibleEvents,
-      dayList.dateKey,
-      dayList.dateKey
-    )
-    return buildDayDisplayEvents(raw, dayList.dateKey, store.tags)
-  }, [dayList, eventsHidden, visibleEvents, store.tags])
-
-  const dayListDate = dayList ? parseDateKeyLocal(dayList.dateKey) : null
   const captureToolbarOnHover = !embedded
 
   return (
@@ -2381,36 +2330,6 @@ export function CalendarGrid({
             })
             setScopeDialog({ mode: 'complete' })
           }}
-        />
-      ) : null}
-
-      {inlineOverlays && dayList && dayListDate ? (
-        <DayEventsPopover
-          date={dayListDate}
-          dayKey={dayList.dateKey}
-          events={dayListEvents}
-          calendars={store.calendars}
-          tags={store.tags}
-          anchorRect={dayList.anchorRect}
-          canEdit={canEdit}
-          onClose={() => {
-            setDayList(null)
-            clearEventDetail()
-          }}
-          onEventDetail={(event, _x, _y, dayKey, pointerAnchor) => {
-            // MDC: list-row click → detail anchored at the mouse pointer; keep day list.
-            if (quickEdit || editor) return
-            openEventDetail(event, pointerAnchor ?? { x: _x, y: _y }, {
-              dayKey,
-              keepDayList: true
-            })
-          }}
-          onEventEdit={(event, dayKey) => {
-            if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
-            setDayList(null)
-            openEventEditor(event, { defaultDate: dayKey })
-          }}
-          onReorderEvents={handleReorderEvents}
         />
       ) : null}
 

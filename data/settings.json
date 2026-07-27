@@ -34,7 +34,7 @@
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 800,
+        "x": 790,
         "y": 10,
         "width": 1120,
         "height": 1020
@@ -79,8 +79,8 @@
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
-        "colorScheme": "dark",
-        "accentColor": "#795548",
+        "colorScheme": "light",
+        "accentColor": "#c62828",
         "eventsHidden": false,
         "completedHidden": false
       },
@@ -127,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-27T15:45:47.860Z"
+  "updatedAt": "2026-07-27T15:55:21.499Z"
 }

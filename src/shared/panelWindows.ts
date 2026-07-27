@@ -11,7 +11,6 @@ export type PanelKind =
   | 'settings'
   | 'search'
   | 'eventDetail'
-  | 'dayList'
   | 'exportConfirm'
 
 export type PanelAnchorRect = QuickEditAnchorRect
@@ -51,12 +50,6 @@ export type PanelWindowInit =
       /** Screen DIP pointer — used when opening from another floating panel window. */
       pointerScreen?: { x: number; y: number } | null
       fromSearch?: boolean
-    }
-  | {
-      kind: 'dayList'
-      dateKey: string
-      anchor: PanelAnchorRect
-      eventsHidden: boolean
     }
   | {
       kind: 'exportConfirm'
@@ -239,23 +232,6 @@ export function computePanelWindowBounds(options: {
     })
   }
 
-  if (init.kind === 'dayList') {
-    const anchorScreen = {
-      top: mainOrigin.y + init.anchor.top,
-      left: mainOrigin.x + init.anchor.left,
-      width: init.anchor.width,
-      height: init.anchor.height
-    }
-    const itemCount = 6
-    const bodyHeight = 48 + itemCount * 36
-    return anchoredBounds({
-      anchorScreen,
-      panelWidth: 280,
-      panelHeight: Math.min(bodyHeight + 56, workArea.height - VIEWPORT_PAD * 2),
-      workArea
-    })
-  }
-
   if (init.kind === 'eventDetail') {
     const detailInit = init
     if (detailInit.pointerScreen) {
@@ -361,11 +337,7 @@ export function computePanelWindowBounds(options: {
 }
 
 export function panelInitUsesAnchorClient(init: PanelWindowInit): boolean {
-  return (
-    init.kind === 'quickEdit' ||
-    init.kind === 'eventDetail' ||
-    (init.kind === 'dayList' && false)
-  )
+  return init.kind === 'quickEdit' || init.kind === 'eventDetail'
 }
 
 export function quickEditPanelSizeForInit(init: Extract<PanelWindowInit, { kind: 'quickEdit' }>): {

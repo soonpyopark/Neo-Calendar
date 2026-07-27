@@ -63,7 +63,6 @@ export type MonthDayCellProps = {
     dayKey: string
   ) => void
   onEventEdit: (event: CalendarEvent, dayKey: string) => void
-  onMoreOpen: (date: Date, dayKey: string, segments: DaySegment[], rect: DOMRect) => void
   onReorderEvents?: (ordered: DayReorderItem[], dayKey: string) => void | Promise<void>
 }
 
@@ -93,7 +92,6 @@ export function MonthDayCell({
   onDayQuickEdit,
   onEventDetail,
   onEventEdit,
-  onMoreOpen,
   onReorderEvents
 }: MonthDayCellProps): ReactElement {
   const interactive = true
@@ -102,7 +100,6 @@ export function MonthDayCell({
   const [dragDayKey, setDragDayKey] = useState<string | null>(null)
   const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
   const eventClickTimerRef = useRef<number | null>(null)
-  const moreClickTimerRef = useRef<number | null>(null)
   const suppressEventClickRef = useRef(false)
 
   const clearEventClickTimer = (): void => {
@@ -112,17 +109,9 @@ export function MonthDayCell({
     }
   }
 
-  const clearMoreClickTimer = (): void => {
-    if (moreClickTimerRef.current != null) {
-      window.clearTimeout(moreClickTimerRef.current)
-      moreClickTimerRef.current = null
-    }
-  }
-
   useEffect(
     () => () => {
       clearEventClickTimer()
-      clearMoreClickTimer()
     },
     []
   )
@@ -318,7 +307,6 @@ export function MonthDayCell({
                 e.preventDefault()
                 e.stopPropagation()
                 clearEventClickTimer()
-                clearMoreClickTimer()
                 if (!canEdit) return
                 if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
                 onEventEdit(event, dayKey)
@@ -355,18 +343,8 @@ export function MonthDayCell({
             count={hiddenEventCount}
             lane={visibleSegments.length}
             onClick={(e) => {
-              e.stopPropagation()
-              const rect = e.currentTarget.getBoundingClientRect()
-              clearMoreClickTimer()
-              moreClickTimerRef.current = window.setTimeout(() => {
-                moreClickTimerRef.current = null
-                onMoreOpen(cell.date, dayKey, uiSegments, rect)
-              }, 250)
-            }}
-            onDoubleClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
-              clearMoreClickTimer()
               openQuickEditFromCell(e.currentTarget)
             }}
           />
