@@ -8,6 +8,7 @@ import type {
   LoginResult,
   ModeStatus,
   NeoCalendarApi,
+  OpacityPreviewPatch,
   OpenDayQuickEditPayload,
   FocusDayCellPayload,
   DayDblClickLogPayload,
@@ -156,6 +157,18 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('store-changed', handler)
     return () => {
       ipcRenderer.removeListener('store-changed', handler)
+    }
+  },
+  applyMainOpacityPreview: (patch) => {
+    ipcRenderer.send('apply-main-opacity-preview', patch)
+  },
+  onMainOpacityPreview: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, patch: OpacityPreviewPatch): void => {
+      listener(patch)
+    }
+    ipcRenderer.on('main-opacity-preview', handler)
+    return () => {
+      ipcRenderer.removeListener('main-opacity-preview', handler)
     }
   },
   getAuth: () => ipcRenderer.invoke('get-auth'),

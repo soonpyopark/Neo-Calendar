@@ -3,13 +3,8 @@ import { WallpaperContainer } from './components/WallpaperContainer'
 import { CalendarGrid } from './components/CalendarGrid'
 import { WindowResizeHandles } from './components/WindowResizeHandles'
 import { isBrowserNeoCalendarHost } from './lib/browserNeoCalendar'
+import { applyOpacitySettings } from './lib/opacitySettings'
 import type { AppSettings, AuthUser, LaunchMode, ModeStatus } from '../../shared/ipc'
-
-function applyOpacitySettings(settings: AppSettings): void {
-  const root = document.documentElement
-  root.style.setProperty('--neo-header-opacity', String(settings.headerOpacity))
-  root.style.setProperty('--neo-shell-opacity', String(settings.shellOpacity))
-}
 
 export default function App(): ReactElement {
   const [mode, setMode] = useState<LaunchMode>('window')
@@ -45,11 +40,28 @@ export default function App(): ReactElement {
       applyOpacitySettings(next)
     })
 
-    return api.onModeChanged((status) => {
+    const refreshOpacityFromStore = (): void => {
+      void api.getSettings().then((next) => {
+        setSettings(next)
+        applyOpacitySettings(next)
+      })
+    }
+
+    const unsubMode = api.onModeChanged((status) => {
       setMode(status.mode)
       setEmbedded(status.embedded)
       setSwitchReady(status.switchReady !== false)
     })
+    const unsubOpacity = api.onMainOpacityPreview?.((patch) => {
+      applyOpacitySettings(patch)
+    })
+    const unsubStore = api.onStoreChanged(refreshOpacityFromStore)
+
+    return () => {
+      unsubMode()
+      unsubOpacity?.()
+      unsubStore()
+    }
   }, [])
 
   const handleSettingsSaved = async (patch: Partial<AppSettings>): Promise<void> => {

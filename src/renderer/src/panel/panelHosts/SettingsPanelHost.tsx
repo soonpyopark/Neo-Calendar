@@ -78,6 +78,9 @@ export function SettingsPanelHost(): ReactElement | null {
         onSaveMembers={saveMembers}
         onSyncHolidays={syncHolidays}
         onRefresh={refresh}
+        onMainOpacityPreview={(patch) => {
+          window.neoCalendar.applyMainOpacityPreview?.(patch)
+        }}
       />
     </div>
   )

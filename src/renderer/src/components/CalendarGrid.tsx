@@ -35,6 +35,7 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
+import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 import {
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
@@ -308,13 +309,15 @@ function toWeekStartKey(week: DayCell[]): string {
   return week[0]?.dateKey ?? ''
 }
 
-/** WorkerW embedded + window mode — floating panel windows above the shell. */
+/** Electron window mode + WorkerW embedded — floating panel BrowserWindows. */
 function usesFloatingPanels(mode: LaunchMode, embedded: boolean): boolean {
+  if (isBrowserNeoCalendarHost()) return false
   return mode === 'window' || embedded
 }
 
-/** Unlocked desktop only — inline popovers inside the main renderer. */
+/** Unlocked desktop + HTTP browser — inline popovers inside the main renderer. */
 function usesInlineOverlays(mode: LaunchMode, embedded: boolean): boolean {
+  if (isBrowserNeoCalendarHost()) return true
   return mode === 'desktop' && !embedded
 }
 
@@ -2210,7 +2213,7 @@ export function CalendarGrid({
         open={loginOpen}
         busy={loginBusy}
         error={loginError}
-        dismissible
+        dismissible={!isBrowserNeoCalendarHost() || Boolean(user)}
         onClose={() => setLoginOpen(false)}
         onSubmit={handleLogin}
       />

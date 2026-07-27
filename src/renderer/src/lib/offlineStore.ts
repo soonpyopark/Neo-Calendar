@@ -85,6 +85,17 @@ export async function clearOfflineQueue(): Promise<void> {
   db.close()
 }
 
+export async function clearOfflineSnapshot(): Promise<void> {
+  const db = await openDb()
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    tx.objectStore(STORE_NAME).delete('latest')
+    tx.oncomplete = () => resolve()
+    tx.onerror = () => reject(tx.error ?? new Error('snapshot clear failed'))
+  })
+  db.close()
+}
+
 export function isOfflineRequestError(err: unknown, browserHost: boolean): boolean {
   if (browserHost && typeof navigator !== 'undefined' && navigator.onLine === false) {
     return true

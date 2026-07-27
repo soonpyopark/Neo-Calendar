@@ -46,7 +46,7 @@ import type {
   TagRecord,
   ViewOptions
 } from '../../../shared/calendarTypes'
-import type { AppSettings, AuthUser } from '../../../shared/ipc'
+import type { AppSettings, AuthUser, OpacityPreviewPatch } from '../../../shared/ipc'
 import {
   applyAccentColor,
   applyColorScheme,
@@ -101,6 +101,8 @@ export type SettingsPanelProps = {
   onSaveMembers: (members: MemberSaveInput[]) => Promise<MemberRecord[]>
   onSyncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>
   onRefresh: () => Promise<void>
+  /** When set (floating panel), opacity sliders preview on the main calendar window. */
+  onMainOpacityPreview?: (patch: OpacityPreviewPatch) => void
 }
 
 function cn(...parts: Array<string | false | null | undefined>): string {
@@ -185,13 +187,15 @@ function ViewOptionsPanel({
   appSettings,
   currentLoginId,
   onPatchStore,
-  onSaveApp
+  onSaveApp,
+  onMainOpacityPreview
 }: {
   storeSettings: StoreSettings
   appSettings: AppSettings | null
   currentLoginId: string
   onPatchStore: (patch: Partial<StoreSettings>) => Promise<void>
   onSaveApp: (patch: Partial<AppSettings>) => void | Promise<void>
+  onMainOpacityPreview?: (patch: OpacityPreviewPatch) => void
 }): ReactElement {
   const browserHost = isBrowserNeoCalendarHost()
   const vo = storeSettings.viewOptions
@@ -381,7 +385,11 @@ function ViewOptionsPanel({
             onChange={(e) => {
               const next = Number(e.target.value)
               setHeaderOpacity(next)
-              document.documentElement.style.setProperty('--neo-header-opacity', String(next))
+              if (onMainOpacityPreview) {
+                onMainOpacityPreview({ headerOpacity: next })
+              } else {
+                document.documentElement.style.setProperty('--neo-header-opacity', String(next))
+              }
             }}
             onMouseUp={(e) => {
               const next = Number((e.target as HTMLInputElement).value)
@@ -405,7 +413,11 @@ function ViewOptionsPanel({
             onChange={(e) => {
               const next = Number(e.target.value)
               setShellOpacity(next)
-              document.documentElement.style.setProperty('--neo-shell-opacity', String(next))
+              if (onMainOpacityPreview) {
+                onMainOpacityPreview({ shellOpacity: next })
+              } else {
+                document.documentElement.style.setProperty('--neo-shell-opacity', String(next))
+              }
             }}
             onMouseUp={(e) => {
               const next = Number((e.target as HTMLInputElement).value)
@@ -1055,7 +1067,8 @@ export function SettingsPanel({
   onListMembers,
   onSaveMembers,
   onSyncHolidays,
-  onRefresh
+  onRefresh,
+  onMainOpacityPreview
 }: SettingsPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const [section, setSection] = useState<SettingsSection>('general')
@@ -1250,6 +1263,7 @@ export function SettingsPanel({
               currentLoginId={currentLoginId}
               onPatchStore={onPatchStore}
               onSaveApp={onSave}
+              onMainOpacityPreview={onMainOpacityPreview}
             />
           )}
 

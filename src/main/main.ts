@@ -561,6 +561,10 @@ function registerIpc(): void {
   ipcMain.handle('patch-settings', (_event, patch: Partial<AppSettings>) =>
     settingsStore.patchSettings(patch ?? {})
   )
+  ipcMain.on('apply-main-opacity-preview', (_event, patch: Partial<AppSettings>) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    mainWindow.webContents.send('main-opacity-preview', patch ?? {})
+  })
 
   ipcMain.handle('calendar:get-store', () => {
     const snap = calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)

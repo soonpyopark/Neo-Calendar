@@ -8,6 +8,7 @@ import type {
   StoreSettings,
   TagRecord
 } from '../../../shared/calendarTypes'
+import { clearOfflineQueue, clearOfflineSnapshot } from './offlineStore'
 
 const TOKEN_KEY = 'neo-calendar-auth-token'
 const TOKEN_KEY_SESSION = 'neo-calendar-auth-token-session'
@@ -36,6 +37,22 @@ function setToken(token: string | null, remember: boolean): void {
   }
 }
 
+export class HttpRequestError extends Error {
+  readonly status: number
+
+  constructor(message: string, status: number) {
+    super(message)
+    this.name = 'HttpRequestError'
+    this.status = status
+  }
+}
+
+export function isAuthRequestError(err: unknown): boolean {
+  if (err instanceof HttpRequestError) return err.status === 401
+  const message = err instanceof Error ? err.message : String(err ?? '')
+  return message === '로그인이 필요합니다.' || message === '로그인에 실패했습니다.'
+}
+
 async function http<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' }
   const token = getToken()
@@ -61,7 +78,7 @@ async function http<T>(method: string, path: string, body?: unknown): Promise<T>
       data && typeof data === 'object' && data !== null && 'error' in data
         ? String((data as { error: unknown }).error)
         : `HTTP ${res.status}`
-    throw new Error(err)
+    throw new HttpRequestError(err, res.status)
   }
   return data as T
 }
@@ -87,7 +104,7 @@ async function httpForm<T>(path: string, form: FormData): Promise<T> {
       data && typeof data === 'object' && data !== null && 'error' in data
         ? String((data as { error: unknown }).error)
         : `HTTP ${res.status}`
-    throw new Error(err)
+    throw new HttpRequestError(err, res.status)
   }
   return data as T
 }
@@ -241,6 +258,8 @@ export function installBrowserNeoCalendar(): void {
     onDayDblClickLog: () => () => undefined,
     // Browser already refreshes via WebSocket → neo-store-changed.
     onStoreChanged: () => () => undefined,
+    applyMainOpacityPreview: () => undefined,
+    onMainOpacityPreview: () => () => undefined,
 
     getAuth: async () => {
       const result = await http<{ user: { loginId: string; role: 'admin' } | null }>(
@@ -272,6 +291,12 @@ export function installBrowserNeoCalendar(): void {
         await http('POST', '/api/auth/logout')
       } finally {
         setToken(null, false)
+        await clearOfflineSnapshot().catch(() => {
+          /* best-effort */
+        })
+        await clearOfflineQueue().catch(() => {
+          /* best-effort */
+        })
       }
     },
 

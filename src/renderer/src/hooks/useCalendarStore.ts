@@ -18,10 +18,11 @@ import {
   getColorScheme,
   normalizeAccentColor
 } from '../lib/colorScheme'
-import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
+import { isBrowserNeoCalendarHost, isAuthRequestError } from '../lib/browserNeoCalendar'
 import { calendarToPatch, eventToMutationPayload } from '../lib/eventMutation'
 import {
   clearOfflineQueue,
+  clearOfflineSnapshot,
   drainOfflineQueue,
   enqueueOfflineAction,
   isOfflineRequestError,
@@ -95,7 +96,17 @@ export function useCalendarStore(): UseCalendarStoreResult {
       const next = await api.getCalendarStore()
       await applyStore(next)
     } catch (err) {
-      if (isBrowserNeoCalendarHost()) {
+      if (!isBrowserNeoCalendarHost()) {
+        throw err
+      }
+      if (isAuthRequestError(err)) {
+        await clearOfflineSnapshot().catch(() => {
+          /* best-effort */
+        })
+        await applyStore(createEmptySnapshot())
+        return
+      }
+      if (isOfflineRequestError(err, true)) {
         const cached = await loadOfflineSnapshot<CalendarStoreSnapshot>()
         if (cached) {
           storeRef.current = cached

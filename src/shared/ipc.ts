@@ -44,6 +44,8 @@ export type AppSettings = {
   shellOpacity: number
 }
 
+export type OpacityPreviewPatch = Pick<Partial<AppSettings>, 'headerOpacity' | 'shellOpacity'>
+
 export type AuthUser = {
   loginId: string
   role: 'admin'
@@ -183,6 +185,10 @@ export type NeoCalendarApi = {
   onDayDblClickLog?: (listener: (payload: DayDblClickLogPayload) => void) => () => void
   /** Fired when calendar store mutates (web API or another client). */
   onStoreChanged: (listener: () => void) => () => void
+  /** Floating panel → main window live opacity preview while dragging sliders. */
+  applyMainOpacityPreview: (patch: OpacityPreviewPatch) => void
+  /** Main window: receive opacity preview from floating settings panel. */
+  onMainOpacityPreview: (listener: (patch: OpacityPreviewPatch) => void) => () => void
   getAuth: () => Promise<AuthUser | null>
   /** Local/LAN HTTP editor status (MDC /api/sync-info). */
   getSyncInfo: () => Promise<{
