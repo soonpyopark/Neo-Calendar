@@ -406,8 +406,9 @@ export class CalendarStore {
    * MDC-compatible import:
    * - `{ calendars, events }` → replace (preserve holidays-kr calendar/events/settings.holidaysKr)
    * - `{ calendar, events }` → upsert that calendar and replace its events
+   * Reassigns imported personal data to `importerLoginId` so getSnapshotForLogin shows it.
    */
-  importStore(payload: unknown): CalendarStoreSnapshot {
+  importStore(payload: unknown, importerLoginId?: string | null): CalendarStoreSnapshot {
     if (!payload || typeof payload !== 'object') {
       throw new Error(
         '지원하지 않는 JSON 형식입니다. 전체 내보내기 또는 개별 캘린더 내보내기 파일을 사용해 주세요.'
@@ -422,7 +423,8 @@ export class CalendarStore {
         data as Partial<CalendarStoreSnapshot> & {
           calendars: CalendarRecord[]
           events: CalendarEvent[]
-        }
+        },
+        importerLoginId
       )
     }
 
@@ -430,7 +432,8 @@ export class CalendarStore {
     if (single && typeof single === 'object' && eventsArr) {
       return this.importMergeCalendar(
         single as Partial<CalendarRecord>,
-        eventsArr as CalendarEvent[]
+        eventsArr as CalendarEvent[],
+        importerLoginId
       )
     }
 
@@ -439,11 +442,78 @@ export class CalendarStore {
     )
   }
 
+  private normalizeImporterLoginId(loginId: string | null | undefined): string {
+    return String(loginId ?? '').trim()
+  }
+
+  private applyImporterOwnership(
+    calendars: CalendarRecord[],
+    events: CalendarEvent[],
+    importerLoginId: string | null | undefined
+  ): { calendars: CalendarRecord[]; events: CalendarEvent[] } {
+    const owner = this.normalizeImporterLoginId(importerLoginId)
+    if (!owner) return { calendars, events }
+    return {
+      calendars: calendars.map((cal) =>
+        cal.id === HOLIDAYS_KR_CALENDAR_ID
+          ? cal
+          : {
+              ...cal,
+              ownerLoginId: owner,
+              ownerName: owner,
+              visible: true
+            }
+      ),
+      events: events.map((ev) =>
+        ev.calendarId === HOLIDAYS_KR_CALENDAR_ID ? ev : { ...ev, ownerLoginId: owner }
+      )
+    }
+  }
+
+  private prepareImportedSettings(
+    payloadSettings: Partial<StoreSettings> | undefined,
+    current: CalendarStoreSnapshot,
+    importerLoginId: string | null | undefined
+  ): StoreSettings {
+    const settings = deepMergeSettings(createDefaultSettings(), payloadSettings ?? {})
+    settings.holidaysKr = { ...current.settings.holidaysKr }
+    settings.viewOptions = {
+      ...settings.viewOptions,
+      eventsHidden: false,
+      completedHidden: false
+    }
+
+    const owner = this.normalizeImporterLoginId(importerLoginId)
+    if (!owner) return settings
+
+    const hiddenByLogin = { ...(settings.hiddenCalendarIdsByLoginId ?? {}) }
+    for (const key of Object.keys(hiddenByLogin)) {
+      if (key.toLowerCase() === owner.toLowerCase()) {
+        delete hiddenByLogin[key]
+      }
+    }
+    settings.hiddenCalendarIdsByLoginId = hiddenByLogin
+
+    const dayColorsByLogin = settings.dayColorsByLoginId ?? {}
+    const mergedDayColors = Object.values(dayColorsByLogin).reduce<Record<string, string>>(
+      (acc, map) => ({ ...acc, ...(map ?? {}) }),
+      {}
+    )
+    if (Object.keys(mergedDayColors).length > 0) {
+      const ownerKey =
+        Object.keys(dayColorsByLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? owner
+      settings.dayColorsByLoginId = { [ownerKey]: mergedDayColors }
+    }
+
+    return settings
+  }
+
   private importReplace(
     payload: Partial<CalendarStoreSnapshot> & {
       calendars: CalendarRecord[]
       events: CalendarEvent[]
-    }
+    },
+    importerLoginId?: string | null
   ): CalendarStoreSnapshot {
     const current = this.getSnapshot()
     const preservedHolidayCalendar =
@@ -472,8 +542,8 @@ export class CalendarStore {
       events.push({ ...ev })
     }
 
-    const settings = deepMergeSettings(createDefaultSettings(), payload.settings ?? {})
-    settings.holidaysKr = { ...current.settings.holidaysKr }
+    const owned = this.applyImporterOwnership(calendars, events, importerLoginId)
+    const settings = this.prepareImportedSettings(payload.settings, current, importerLoginId)
 
     const tags =
       Array.isArray(payload.tags) && payload.tags.length > 0 ? payload.tags : [...current.tags]
@@ -481,8 +551,8 @@ export class CalendarStore {
     return this.replaceStore({
       version: typeof payload.version === 'number' ? payload.version : current.version,
       settings,
-      calendars,
-      events,
+      calendars: owned.calendars,
+      events: owned.events,
       tags,
       updatedAt: new Date().toISOString()
     })
@@ -490,7 +560,8 @@ export class CalendarStore {
 
   private importMergeCalendar(
     calendarInput: Partial<CalendarRecord>,
-    eventsInput: CalendarEvent[]
+    eventsInput: CalendarEvent[],
+    importerLoginId?: string | null
   ): CalendarStoreSnapshot {
     if (
       calendarInput.id === HOLIDAYS_KR_CALENDAR_ID ||
@@ -531,12 +602,19 @@ export class CalendarStore {
         title: String(e.title ?? '').trim() || '(제목 없음)',
         startDate: e.startDate,
         endDate: e.endDate ?? e.startDate,
-        allDay: e.allDay !== false
+        allDay: e.allDay !== false,
+        ownerLoginId: this.normalizeImporterLoginId(importerLoginId) || e.ownerLoginId
       }))
 
+    const owner = this.normalizeImporterLoginId(importerLoginId)
+    const ownedCalendar =
+      owner && calendar.id !== HOLIDAYS_KR_CALENDAR_ID
+        ? { ...calendar, ownerLoginId: owner, ownerName: owner, visible: true }
+        : calendar
+
     const calendars = [
-      ...current.calendars.filter((c) => c.id !== calendar.id),
-      calendar
+      ...current.calendars.filter((c) => c.id !== ownedCalendar.id),
+      ownedCalendar
     ]
     const events = [
       ...current.events.filter((e) => e.calendarId !== calendar.id),

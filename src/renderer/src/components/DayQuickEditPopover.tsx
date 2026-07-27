@@ -21,13 +21,16 @@ import { QuickEditCalendarButton } from './QuickEditCalendarButton'
 import { QuickEditTagButton } from './QuickEditTagButton'
 import { EventAttachIcon } from './EventAttachIcon'
 import { EventLinkIcon } from './EventLinkIcon'
-import { getEventLinks } from '../lib/eventLinks'
+import { getEventLinks, normalizeEventLinksArray } from '../lib/eventLinks'
+import { normalizeTagIds } from '../../../shared/mdcExport/eventTags.js'
 import { insertTextAtCursor } from '../lib/insertAtCursor'
+import { toDateKey } from '../lib/calendarUtils'
 import { formatDayHeaderTitle } from '../lib/dayHeaderFormat'
 import { setClickThroughEnabled, setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { clampFixedPosition, clampRectToViewport } from '../lib/popoverPosition'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
-import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
+import { getSeriesId, expandEventsForRange } from '../../../shared/mdcExport/eventOccurrences.js'
+import { compareEventsForDayDisplay } from '../../../shared/mdcExport/eventBarFormat.js'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
 import type { DayReorderItem } from '../lib/dayReorder'
 
@@ -60,7 +63,7 @@ export type DayQuickEditPopoverProps = {
   expandBody?: boolean
   onClose: () => void
   onCreate: (title: string, calendarId: string, tagIds?: string[], links?: EventLink[]) => void
-  onToggleCompleted: (id: string, completed: boolean) => void
+  onToggleCompleted: (event: CalendarEvent, completed: boolean) => void
   onRemove?: (id: string) => void
   onDayColorChange: (color: string | null) => void
   onEventCalendarChange?: (event: CalendarEvent, calendarId: string) => void
@@ -261,7 +264,14 @@ export function DayQuickEditPopover({
     }
   }, [anchorRect, bodyExtra])
 
-  const storeDayEvents = events
+  const resolvedDayKey = dateKey || (date ? toDateKey(date) : '')
+
+  const storeDayEvents = useMemo(() => {
+    if (!resolvedDayKey) return []
+    return expandEventsForRange(events, resolvedDayKey, resolvedDayKey)
+      .slice()
+      .sort((a, b) => compareEventsForDayDisplay(a, b, resolvedDayKey))
+  }, [events, resolvedDayKey])
   const dayEvents = useMemo(() => {
     if (!orderOverride?.length) return storeDayEvents
     const holidays = storeDayEvents.filter((event) => event.calendarId === HOLIDAYS_KR_CALENDAR_ID)
@@ -281,8 +291,14 @@ export function DayQuickEditPopover({
 
   const displayDayColor = optimisticDayColor
 
-  const activeCalendarId = selectedEvent?.calendarId ?? draftCalendarId
-  const activeTagIds = selectedEvent?.tagIds ?? draftTagIds
+  const activeCalendarId =
+    selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID
+      ? selectedEvent.calendarId
+      : draftCalendarId
+  const activeTagIds =
+    selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID
+      ? normalizeTagIds(selectedEvent.tagIds)
+      : draftTagIds
   const linkList = selectedEvent ? getEventLinks(selectedEvent) : draftLinks
 
   useEffect(() => {
@@ -302,7 +318,7 @@ export function DayQuickEditPopover({
     }, 30)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed only when day/focus changes
-  }, [dateKey, focusEvent])
+  }, [resolvedDayKey, focusEvent])
 
   useEffect(() => {
     setOptimisticDayColor(dayColor)
@@ -335,9 +351,32 @@ export function DayQuickEditPopover({
     setSelectedEvent(moved)
     void onReorderEvents?.(
       next.map((event, index) => ({ event, sortOrder: index })),
-      dateKey
+      resolvedDayKey
     )
   }
+
+  // Keep selected row in sync when store patches the same occurrence (MDC).
+  useEffect(() => {
+    if (!selectedEvent) return
+    const sid = getSeriesId(selectedEvent) || selectedEvent.id
+    const live = dayEvents.find((event) => (getSeriesId(event) || event.id) === sid)
+    if (!live) {
+      setSelectedEvent(null)
+      return
+    }
+    const prevCount = Array.isArray(selectedEvent.attachments) ? selectedEvent.attachments.length : 0
+    const nextCount = Array.isArray(live.attachments) ? live.attachments.length : 0
+    const prevTags = normalizeTagIds(selectedEvent.tagIds).join('\0')
+    const nextTags = normalizeTagIds(live.tagIds).join('\0')
+    if (
+      prevCount !== nextCount ||
+      selectedEvent.completed !== live.completed ||
+      selectedEvent.calendarId !== live.calendarId ||
+      prevTags !== nextTags
+    ) {
+      setSelectedEvent(live)
+    }
+  }, [dayEvents, selectedEvent])
 
   useEffect(() => {
     if (!selectedEvent) return
@@ -440,7 +479,7 @@ export function DayQuickEditPopover({
   }
 
   const handleCalendarChange = (calendarId: string): void => {
-    if (selectedEvent) {
+    if (selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID) {
       onEventCalendarChange?.(selectedEvent, calendarId)
       return
     }
@@ -448,19 +487,21 @@ export function DayQuickEditPopover({
   }
 
   const handleTagChange = (tagIds: string[]): void => {
-    if (selectedEvent) {
-      onEventTagChange?.(selectedEvent, tagIds)
+    const next = normalizeTagIds(tagIds)
+    if (selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID) {
+      onEventTagChange?.(selectedEvent, next)
       return
     }
-    setDraftTagIds(tagIds)
+    setDraftTagIds(next)
   }
 
   const handleLinksChange = (links: EventLink[]): void => {
-    if (selectedEvent) {
-      onEventLinkChange?.(selectedEvent, links)
+    const normalized = normalizeEventLinksArray(links)
+    if (selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID) {
+      onEventLinkChange?.(selectedEvent, normalized)
       return
     }
-    setDraftLinks(links)
+    setDraftLinks(normalized)
   }
 
   const insertEmoji = (emoji: string): void => {
@@ -582,7 +623,7 @@ export function DayQuickEditPopover({
                   (Array.isArray(item.attachments) && item.attachments.length > 0)
                 return (
                   <li
-                    key={`${seriesId}-${dateKey}`}
+                    key={`${seriesId}-${resolvedDayKey}`}
                     className={`day-quick-edit-item${isDragging ? ' is-dragging' : ''}${
                       isDropTarget ? ' is-drop-target' : ''
                     }`}
@@ -633,7 +674,7 @@ export function DayQuickEditPopover({
                         onChange={(e) => {
                           if (isHoliday) return
                           setSelectedEvent(item)
-                          onToggleCompleted(item.id, e.target.checked)
+                          onToggleCompleted(item, e.target.checked)
                         }}
                       />
                       <EventAccentGlyph

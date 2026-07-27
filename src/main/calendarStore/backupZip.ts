@@ -13,6 +13,7 @@ import {
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 import { dialog, type BrowserWindow } from 'electron'
+import { withNativeDialog } from '../nativeDialogGuard'
 import type { CalendarStore } from './CalendarStore'
 import type { CalendarStoreSnapshot } from '../../shared/calendarTypes'
 
@@ -178,7 +179,11 @@ export function createBackupZipBuffer(store: CalendarStore): {
   }
 }
 
-function restoreFromExtractedDir(store: CalendarStore, extractDir: string): BackupZipResult {
+function restoreFromExtractedDir(
+  store: CalendarStore,
+  extractDir: string,
+  importerLoginId?: string | null
+): BackupZipResult {
   const storePath = findStoreJson(extractDir)
   if (!storePath) {
     throw new Error('ZIP에 store.json이 없습니다. 이 앱의 백업 ZIP인지 확인해 주세요.')
@@ -193,7 +198,7 @@ function restoreFromExtractedDir(store: CalendarStore, extractDir: string): Back
     )
   }
 
-  const imported = store.importStore(payload)
+  const imported = store.importStore(payload, importerLoginId)
   const zipAttachments = join(dirname(storePath), 'attachments')
   const fileCount = replaceAttachmentsFrom(join(store.dataRoot, 'attachments'), zipAttachments)
 
@@ -206,7 +211,11 @@ function restoreFromExtractedDir(store: CalendarStore, extractDir: string): Back
 }
 
 /** Browser / HTTP: restore from uploaded ZIP bytes. */
-export function restoreBackupZipBuffer(store: CalendarStore, zipBuffer: Buffer): BackupZipResult {
+export function restoreBackupZipBuffer(
+  store: CalendarStore,
+  zipBuffer: Buffer,
+  importerLoginId?: string | null
+): BackupZipResult {
   const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
   try {
     const zipPath = join(extractDir, 'upload.zip')
@@ -214,7 +223,7 @@ export function restoreBackupZipBuffer(store: CalendarStore, zipBuffer: Buffer):
     const unpackDir = join(extractDir, 'unpacked')
     mkdirSync(unpackDir, { recursive: true })
     extractZipSafe(zipPath, unpackDir)
-    return restoreFromExtractedDir(store, unpackDir)
+    return restoreFromExtractedDir(store, unpackDir, importerLoginId)
   } finally {
     tryDeleteDir(extractDir)
   }
@@ -230,10 +239,11 @@ export async function exportBackupZip(
     defaultPath: `my-calendar-backup-${stamp}.zip`,
     filters: [{ name: 'ZIP 백업', extensions: ['zip'] }]
   }
-  const result =
+  const result = await withNativeDialog(async () =>
     ownerWindow && !ownerWindow.isDestroyed()
-      ? await dialog.showSaveDialog(ownerWindow, saveOpts)
-      : await dialog.showSaveDialog(saveOpts)
+      ? dialog.showSaveDialog(ownerWindow, saveOpts)
+      : dialog.showSaveDialog(saveOpts)
+  )
   if (result.canceled || !result.filePath) {
     return { ok: true, cancelled: true }
   }
@@ -250,17 +260,19 @@ export async function exportBackupZip(
 
 export async function importBackupZip(
   store: CalendarStore,
-  ownerWindow?: BrowserWindow | null
+  ownerWindow?: BrowserWindow | null,
+  importerLoginId?: string | null
 ): Promise<BackupZipResult> {
   const openOpts: Electron.OpenDialogOptions = {
     title: '일정 + 첨부 백업 가져오기',
     filters: [{ name: 'ZIP 백업', extensions: ['zip'] }],
     properties: ['openFile']
   }
-  const result =
+  const result = await withNativeDialog(async () =>
     ownerWindow && !ownerWindow.isDestroyed()
-      ? await dialog.showOpenDialog(ownerWindow, openOpts)
-      : await dialog.showOpenDialog(openOpts)
+      ? dialog.showOpenDialog(ownerWindow, openOpts)
+      : dialog.showOpenDialog(openOpts)
+  )
   if (result.canceled || result.filePaths.length === 0) {
     return { ok: true, cancelled: true }
   }
@@ -269,7 +281,7 @@ export async function importBackupZip(
   const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
   try {
     extractZipSafe(zipPath, extractDir)
-    const restored = restoreFromExtractedDir(store, extractDir)
+    const restored = restoreFromExtractedDir(store, extractDir, importerLoginId)
     return { ...restored, path: zipPath }
   } finally {
     tryDeleteDir(extractDir)

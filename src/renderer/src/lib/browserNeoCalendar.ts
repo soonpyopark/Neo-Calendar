@@ -325,6 +325,12 @@ export function installBrowserNeoCalendar(): void {
         store: result.store
       }
     },
+    pickCalendarImportFile: async () => {
+      const file = await pickSingleFile('.json,.ics,.csv,application/json,text/calendar,text/csv')
+      if (!file) return { cancelled: true as const }
+      const content = await file.text()
+      return { cancelled: false as const, content, filename: file.name }
+    },
 
     addEvent: (input: EventInput) => http<CalendarEvent>('POST', '/api/events', input),
     editEvent: (id, patch) =>

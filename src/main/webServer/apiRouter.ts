@@ -94,7 +94,10 @@ export async function handleApiRequest(
   }
 
   if (p === '/api/store/import' && m === 'POST') {
-    calendarStore.importStore(body)
+    if (!loginId) {
+      return { status: 401, body: { ok: false, error: '로그인이 필요합니다.' } }
+    }
+    calendarStore.importStore(body, loginId)
     onStoreMutated()
     return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
   }

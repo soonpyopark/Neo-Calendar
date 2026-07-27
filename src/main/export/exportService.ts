@@ -1,5 +1,6 @@
 import { writeFileSync } from 'node:fs'
 import { BrowserWindow, dialog } from 'electron'
+import { withNativeDialog } from '../nativeDialogGuard'
 import type { CalendarStoreSnapshot } from '../../shared/calendarTypes'
 import {
   buildExcelBuffer,
@@ -67,9 +68,9 @@ export async function exportCalendarMonth(
         ? [{ name: 'Excel', extensions: ['xlsx'] }]
         : [{ name: 'PDF', extensions: ['pdf'] }]
     }
-    const result = parent
-      ? await dialog.showSaveDialog(parent, dialogOpts)
-      : await dialog.showSaveDialog(dialogOpts)
+    const result = await withNativeDialog(async () =>
+      parent ? dialog.showSaveDialog(parent, dialogOpts) : dialog.showSaveDialog(dialogOpts)
+    )
 
     if (result.canceled || !result.filePath) {
       return { ok: false, canceled: true }

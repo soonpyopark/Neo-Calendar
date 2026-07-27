@@ -174,6 +174,10 @@ export type NeoCalendarApi = {
     attachmentFiles?: number
     store?: CalendarStoreSnapshot
   }>
+  pickCalendarImportFile: () => Promise<
+    | { cancelled: true }
+    | { cancelled: false; content: string; filename: string }
+  >
   addEvent: (input: EventInput) => Promise<CalendarEvent>
   editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
   removeEvent: (id: string) => Promise<void>

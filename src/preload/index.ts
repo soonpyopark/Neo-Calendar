@@ -142,6 +142,10 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('calendar:import-backup-zip') as ReturnType<
       NeoCalendarApi['importBackupZip']
     >,
+  pickCalendarImportFile: () =>
+    ipcRenderer.invoke('calendar:pick-import-file') as ReturnType<
+      NeoCalendarApi['pickCalendarImportFile']
+    >,
   addEvent: (input: EventInput) =>
     ipcRenderer.invoke('calendar:add-event', input) as Promise<CalendarEvent>,
   editEvent: (id: string, patch: Partial<CalendarEvent>) =>

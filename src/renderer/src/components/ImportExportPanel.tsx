@@ -1,4 +1,4 @@
-import { useRef, useState, type ChangeEvent, type ReactElement } from 'react'
+import { useState, type ReactElement } from 'react'
 import {
   detectCalendarFileFormat,
   downloadCalendarFile,
@@ -8,10 +8,7 @@ import {
 import { getJsonExportTimestamp } from '../../../shared/exportTimestamp'
 import type { CalendarStoreSnapshot } from '../../../shared/calendarTypes'
 import { useAppDialog } from './AppDialogProvider'
-import {
-  CalendarFileFormatButton,
-  getAllImportAcceptAttribute
-} from './CalendarFileFormatButton'
+import { CalendarFileFormatButton } from './CalendarFileFormatButton'
 
 export type ImportExportPanelProps = {
   store: CalendarStoreSnapshot
@@ -25,8 +22,8 @@ export function ImportExportPanel({
   onRefresh
 }: ImportExportPanelProps): ReactElement {
   const { alert, confirm } = useAppDialog()
-  const importInputRef = useRef<HTMLInputElement>(null)
   const [statusMessage, setStatusMessage] = useState('')
+  const [importBusy, setImportBusy] = useState(false)
   const [zipBusy, setZipBusy] = useState(false)
 
   const handleExport = async (format: 'json' | 'ics' | 'csv'): Promise<void> => {
@@ -67,26 +64,22 @@ export function ImportExportPanel({
     }
   }
 
-  const openImportPicker = (): void => {
-    importInputRef.current?.click()
-  }
-
-  const handleImport = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
-
-    const format = detectCalendarFileFormat(file.name)
-    if (!format) {
-      await alert('JSON, ICS, CSV 파일만 가져올 수 있습니다.')
-      return
-    }
-
+  const handleImportFile = async (): Promise<void> => {
+    if (importBusy) return
+    setImportBusy(true)
     try {
-      const text = await file.text()
-      const parsed = parseImportPayload(text, format, file.name)
+      const picked = await window.neoCalendar.pickCalendarImportFile()
+      if (picked.cancelled) return
+
+      const format = detectCalendarFileFormat(picked.filename)
+      if (!format) {
+        await alert('JSON, ICS, CSV 파일만 가져올 수 있습니다.')
+        return
+      }
+
+      const parsed = parseImportPayload(picked.content, format, picked.filename)
       await onImport(parsed.data)
-      const message = `「${file.name}」 가져오기가 완료되었습니다.`
+      const message = `「${picked.filename}」 가져오기가 완료되었습니다.`
       setStatusMessage(message)
       await alert(message, { title: '가져오기 완료' })
     } catch (err) {
@@ -96,6 +89,8 @@ export function ImportExportPanel({
           ? err.message
           : '가져오기에 실패했습니다. 파일 형식을 확인해 주세요.'
       await alert(message)
+    } finally {
+      setImportBusy(false)
     }
   }
 
@@ -141,10 +136,11 @@ export function ImportExportPanel({
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              className="settings-btn-primary rounded-full px-5 py-2 text-sm font-medium"
-              onClick={openImportPicker}
+              disabled={importBusy}
+              className="settings-btn-primary rounded-full px-5 py-2 text-sm font-medium disabled:opacity-60"
+              onClick={() => void handleImportFile()}
             >
-              파일 선택
+              {importBusy ? '처리 중…' : '파일 선택'}
             </button>
             <button
               type="button"
@@ -155,13 +151,6 @@ export function ImportExportPanel({
               {zipBusy ? '처리 중…' : 'ZIP 백업 가져오기'}
             </button>
           </div>
-          <input
-            ref={importInputRef}
-            type="file"
-            className="hidden"
-            accept={getAllImportAcceptAttribute()}
-            onChange={(e) => void handleImport(e)}
-          />
         </div>
         <div className="rounded-lg border border-gcal-border bg-gcal-surface p-5">
           <h3 className="mb-2 text-base font-medium text-gcal-heading">내보내기</h3>
@@ -181,44 +170,15 @@ export function ImportExportPanel({
               className="settings-btn-secondary rounded-full px-5 py-2 text-sm font-medium disabled:opacity-60"
               onClick={() => void handleExportBackupZip()}
             >
-              {zipBusy ? '처리 중…' : '일정 + 첨부 (ZIP)'}
+              {zipBusy ? '처리 중…' : 'ZIP 백업 내보내기'}
             </button>
           </div>
         </div>
         {statusMessage ? (
-          <p className="rounded-lg border border-[#ceead6] bg-[#e6f4ea] px-4 py-3 text-sm text-[#137333]">
+          <p className="text-sm text-gcal-muted" role="status">
             {statusMessage}
           </p>
         ) : null}
-        <div className="rounded-lg border border-gcal-border bg-gcal-surface p-5">
-          <h3 className="mb-4 text-base font-medium text-gcal-heading">파일 형식 안내</h3>
-          <div className="space-y-2.5 text-sm text-gcal-muted">
-            <p>
-              <span className="font-medium text-gcal-heading">JSON</span>
-              {' — '}
-              이 앱 전용 백업 형식입니다. 캘린더·일정·설정을 그대로 저장하고, 나중에 이 앱에서 다시
-              불러올 수 있습니다. 첨부 파일 본체는 포함되지 않습니다.
-            </p>
-            <p>
-              <span className="font-medium text-gcal-heading">ZIP</span>
-              {' — '}
-              일정 데이터(JSON)와 첨부 파일을 함께 담는 전체 백업입니다. 데스크톱 앱에서만 내보내고
-              가져올 수 있습니다.
-            </p>
-            <p>
-              <span className="font-medium text-gcal-heading">ICS</span>
-              {' — '}
-              iCalendar 표준 형식입니다. Google Calendar, Outlook 등 다른 캘린더 앱으로 가져와
-              사용할 수 있습니다.
-            </p>
-            <p>
-              <span className="font-medium text-gcal-heading">CSV</span>
-              {' — '}
-              표 형식 파일입니다. Google Calendar 가져오기나 Excel에서 열어 확인·편집하기에
-              적합합니다.
-            </p>
-          </div>
-        </div>
       </div>
     </div>
   )

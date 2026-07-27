@@ -1,4 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { readFile } from 'node:fs/promises'
+import { basename } from 'node:path'
 import { join } from 'node:path'
 import { AuthService } from './auth'
 import { CalendarStore } from './calendarStore/CalendarStore'
@@ -23,6 +25,7 @@ import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
 import { focusWindowForTextInput } from './windowFocus'
 import { isForeignAppAtPoint, shouldProcessEmbeddedGlobalClick } from './windowAtPoint'
+import { isNativeDialogOpen, withNativeDialog } from './nativeDialogGuard'
 import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
@@ -482,9 +485,13 @@ function registerIpc(): void {
     return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId) ?? next
   })
   ipcMain.handle('calendar:import-store', (_event, payload: unknown) => {
-    calendarStore.importStore(payload)
+    const loginId = auth.getUser()?.loginId
+    if (!loginId) {
+      throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
+    }
+    calendarStore.importStore(payload, loginId)
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
+    return calendarStore.getSnapshotForLogin(loginId)
   })
   ipcMain.handle('calendar:export-backup-zip', async () => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
@@ -492,7 +499,31 @@ function registerIpc(): void {
   })
   ipcMain.handle('calendar:import-backup-zip', async () => {
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
-    return importBackupZip(calendarStore, win)
+    const loginId = auth.getUser()?.loginId
+    if (!loginId) {
+      throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
+    }
+    return importBackupZip(calendarStore, win, loginId)
+  })
+  ipcMain.handle('calendar:pick-import-file', async () => {
+    const options: Electron.OpenDialogOptions = {
+      title: '캘린더 가져오기',
+      filters: [
+        { name: '캘린더 파일', extensions: ['json', 'ics', 'csv'] },
+        { name: '모든 파일', extensions: ['*'] }
+      ],
+      properties: ['openFile']
+    }
+    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+    const result = await withNativeDialog(async () =>
+      win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+    )
+    if (result.canceled || result.filePaths.length === 0) {
+      return { cancelled: true as const }
+    }
+    const filePath = result.filePaths[0]
+    const content = await readFile(filePath, 'utf8')
+    return { cancelled: false as const, content, filename: basename(filePath) }
   })
   ipcMain.handle('calendar:add-event', (_event, input: EventInput) => {
     const created = calendarStore.addEvent(input)
@@ -516,9 +547,9 @@ function registerIpc(): void {
       buttonLabel: '첨부'
     }
     const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
-    const result = win
-      ? await dialog.showOpenDialog(win, options)
-      : await dialog.showOpenDialog(options)
+    const result = await withNativeDialog(async () =>
+      win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+    )
     if (result.canceled || result.filePaths.length === 0) {
       const current = calendarStore.getSnapshot().events.find((item) => item.id === eventId)
       if (!current) throw new Error('일정을 찾을 수 없습니다.')

@@ -106,7 +106,7 @@ export async function tryHandleBrowserFileRequest(options: {
         sendJson(res, 400, { ok: false, error: 'ZIP 파일이 없습니다.' })
         return true
       }
-      const result = restoreBackupZipBuffer(calendarStore, zipBuffer)
+      const result = restoreBackupZipBuffer(calendarStore, zipBuffer, user.loginId)
       onStoreMutated()
       sendJson(res, 200, {
         ok: true,

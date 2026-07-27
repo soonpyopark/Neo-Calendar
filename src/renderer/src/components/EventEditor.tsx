@@ -729,14 +729,12 @@ export function EventEditor({
                 onSubmit={(e) => {
                   e.preventDefault()
                   const input = e.currentTarget.elements.namedItem('event-link-url')
-                  if (input instanceof HTMLInputElement && !input.checkValidity()) {
-                    input.reportValidity()
-                    return
-                  }
                   const url = normalizeEventLinkUrl(linkDraft)
                   if (!url) {
                     if (input instanceof HTMLInputElement) {
-                      input.setCustomValidity('올바른 URL을 입력하세요. 예: https://example.com')
+                      input.setCustomValidity(
+                        '올바른 URL을 입력하세요. 예: example.com 또는 https://example.com'
+                      )
                       input.reportValidity()
                       input.setCustomValidity('')
                     }
@@ -747,7 +745,7 @@ export function EventEditor({
                 }}
               >
                 <input
-                  type="url"
+                  type="text"
                   name="event-link-url"
                   className={cnField(fieldClass, 'min-w-0 flex-1')}
                   value={linkDraft}
@@ -755,7 +753,7 @@ export function EventEditor({
                     e.target.setCustomValidity('')
                     setLinkDraft(e.target.value)
                   }}
-                  placeholder="https://example.com"
+                  placeholder="example.com"
                 />
                 <button
                   type="submit"

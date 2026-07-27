@@ -48,8 +48,16 @@ import {
   getOccurrenceDate,
   getSeriesId,
   isRecurringEvent,
+  expandEventsForRange,
   truncateSeriesBefore
 } from '../../../shared/mdcExport/eventOccurrences.js'
+import { eventToMutationPayload } from '../lib/eventMutation'
+import {
+  getPrimaryEventLinkUrl,
+  normalizeEventLinksArray
+} from '../lib/eventLinks'
+import { normalizeTagIds } from '../../../shared/mdcExport/eventTags.js'
+import type { EventLink } from '../../../shared/calendarTypes'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -704,8 +712,8 @@ export function CalendarGrid({
       const next = new Date(nextYear, nextMonth1 - 1, 1)
       setViewDate(next)
     },
-    // Lock wheel only while under icons — undocked desktop scrolls like window mode.
-    wheelLocked: wheelLocked || (mode === 'desktop' && embedded)
+    // Desktop mode: never navigate month/week by wheel (wallpaper layer).
+    wheelLocked: wheelLocked || mode === 'desktop'
   })
 
   const scrollToMonthRef = useRef(scrollToMonth)
@@ -1085,15 +1093,6 @@ export function CalendarGrid({
     })
   }, [])
 
-  const toggleCompleted = async (id: string, completed?: boolean): Promise<void> => {
-    if (!canEdit) return
-    const current = store.events.find((e) => e.id === id)
-    if (!current) return
-    await editEvent(id, {
-      completed: typeof completed === 'boolean' ? completed : !current.completed
-    })
-  }
-
   /** Resolve a display occurrence (`id::date`) back to the stored series master. */
   const findMasterEvent = useCallback(
     (eventOrId: CalendarEvent | string | null | undefined): CalendarEvent | null => {
@@ -1104,6 +1103,110 @@ export function CalendarGrid({
       return store.events.find((item) => item.id === seriesId) ?? null
     },
     [store.events]
+  )
+
+  /** MDC openEditEvent — show occurrence dates/times in the full editor. */
+  const mergeOccurrenceForEditor = useCallback(
+    (master: CalendarEvent, occurrence: CalendarEvent): CalendarEvent => ({
+      ...master,
+      startDate: occurrence.startDate ?? master.startDate,
+      endDate: occurrence.endDate ?? master.endDate,
+      startTime: occurrence.startTime ?? master.startTime,
+      endTime: occurrence.endTime ?? master.endTime,
+      allDay: occurrence.allDay ?? master.allDay
+    }),
+    []
+  )
+
+  const handleQuickEditToggleCompleted = useCallback(
+    async (event: CalendarEvent, completed: boolean): Promise<void> => {
+      if (!canEdit) return
+      const master = findMasterEvent(event)
+      if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+      const nextCompleted = Boolean(completed)
+      try {
+        if (!isRecurringEvent(master)) {
+          await editEvent(master.id, { completed: nextCompleted })
+          return
+        }
+        const occurrenceDate =
+          getOccurrenceDate(event, quickEdit?.dateKey) ?? master.startDate
+        setPendingComplete({
+          master,
+          occurrenceDate,
+          completed: nextCompleted
+        })
+        setScopeDialog({ mode: 'complete' })
+      } catch (error) {
+        await alert(
+          error instanceof Error ? error.message : '완료 상태를 변경하지 못했습니다.'
+        )
+      }
+    },
+    [alert, canEdit, editEvent, findMasterEvent, quickEdit?.dateKey]
+  )
+
+  /** MDC DayQuickEditPopover — resolve occurrence id to series master before patch. */
+  const handleQuickEditEventPatch = useCallback(
+    async (
+      event: CalendarEvent,
+      patch: Partial<CalendarEvent>,
+      errorMessage: string
+    ): Promise<void> => {
+      if (!canEdit) return
+      const master = findMasterEvent(event)
+      if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+      try {
+        await editEvent(master.id, patch)
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : errorMessage)
+      }
+    },
+    [alert, canEdit, editEvent, findMasterEvent]
+  )
+
+  const handleQuickEditCalendarChange = useCallback(
+    (event: CalendarEvent, calendarId: string): void => {
+      void handleQuickEditEventPatch(event, { calendarId }, '캘린더를 변경하지 못했습니다.')
+    },
+    [handleQuickEditEventPatch]
+  )
+
+  const handleQuickEditTagChange = useCallback(
+    (event: CalendarEvent, tagIds: string[]): void => {
+      void handleQuickEditEventPatch(
+        event,
+        { tagIds: normalizeTagIds(tagIds) },
+        '태그를 변경하지 못했습니다.'
+      )
+    },
+    [handleQuickEditEventPatch]
+  )
+
+  const handleQuickEditMarkerShapeChange = useCallback(
+    (event: CalendarEvent, markerShape: string | null): void => {
+      void handleQuickEditEventPatch(
+        event,
+        { markerShape },
+        '표시 도형을 변경하지 못했습니다.'
+      )
+    },
+    [handleQuickEditEventPatch]
+  )
+
+  const handleQuickEditLinkChange = useCallback(
+    (event: CalendarEvent, links: EventLink[]): void => {
+      const normalized = normalizeEventLinksArray(links)
+      void handleQuickEditEventPatch(
+        event,
+        {
+          links: normalized,
+          link: getPrimaryEventLinkUrl({ links: normalized })
+        },
+        '바로가기를 변경하지 못했습니다.'
+      )
+    },
+    [handleQuickEditEventPatch]
   )
 
   useEffect(() => {
@@ -1276,7 +1379,7 @@ export function CalendarGrid({
         needsScope: isRecurringEvent(master)
       })
       setEditor({
-        event: master,
+        event: mergeOccurrenceForEditor(master, event),
         defaultDate: opts?.defaultDate,
         occurrenceDate,
         returnQuickEdit: opts?.returnQuickEdit ?? null
@@ -1321,24 +1424,10 @@ export function CalendarGrid({
           occurrenceEnd.getDate()
         )
         const payload = {
-          calendarId: master.calendarId,
-          title: master.title,
-          description: master.description ?? '',
-          location: master.location ?? '',
+          ...eventToMutationPayload(master),
           startDate: occurrenceDate,
           endDate: occurrenceEndDate,
-          allDay: master.allDay,
-          startTime: master.startTime,
-          endTime: master.endTime,
-          repeat: master.repeat ?? 'none',
-          repeatUntil: master.repeatUntil ?? null,
-          repeatCount: master.repeatCount ?? null,
-          color: master.color ?? null,
-          completed: nextCompleted,
-          markerShape: master.markerShape ?? null,
-          tagIds: master.tagIds,
-          links: master.links,
-          link: master.link
+          completed: nextCompleted
         }
         await applyRecurringEdit(master, payload, occurrenceDate, scope)
         setPendingComplete(null)
@@ -1546,9 +1635,13 @@ export function CalendarGrid({
 
   const dayListEvents = useMemo(() => {
     if (!dayList) return []
-    const raw = eventsByDate.get(dayList.dateKey) ?? []
+    const raw = expandEventsForRange(
+      eventsHidden ? [] : visibleEvents,
+      dayList.dateKey,
+      dayList.dateKey
+    )
     return buildDayDisplayEvents(raw, dayList.dateKey, store.tags)
-  }, [dayList, eventsByDate, store.tags])
+  }, [dayList, eventsHidden, visibleEvents, store.tags])
 
   const dayListDate = dayList ? parseDateKeyLocal(dayList.dateKey) : null
   const captureToolbarOnHover = !embedded
@@ -1909,17 +2002,19 @@ export function CalendarGrid({
         <DayQuickEditPopover
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
-          // Match month grid: eye-hide clears bars (+ day tint); completed-hide
-          // is already applied via visibleEvents → eventsByDate.
-          events={eventsHidden ? [] : (eventsByDate.get(quickEdit.dateKey) ?? [])}
+          // MDC: pass store masters; DayQuickEditPopover expands recurrence per day.
+          events={eventsHidden ? [] : visibleEvents}
           calendars={store.calendars}
           tags={store.tags}
-          dayColor={eventsHidden ? null : (dayColors[quickEdit.dateKey] ?? null)}
+          dayColor={dayColors[quickEdit.dateKey] ?? null}
           anchorRect={quickEdit.anchorRect}
           canEdit={canEdit}
           expandBody={viewMode === 'month'}
           onReorderEvents={handleReorderEvents}
-          onClose={() => setQuickEdit(null)}
+          onClose={() => {
+            if (scopeDialog) return
+            setQuickEdit(null)
+          }}
           onCreate={(title, calendarId, tagIds, links) =>
             void addEvent({
               title,
@@ -1931,20 +2026,19 @@ export function CalendarGrid({
               links
             })
           }
-          onToggleCompleted={(id, completed) => void toggleCompleted(id, completed)}
-          onRemove={(id) => void removeEvent(id)}
+          onToggleCompleted={(event, completed) => {
+            void handleQuickEditToggleCompleted(event, completed)
+          }}
           onDayColorChange={(color) => {
             const next = { ...dayColors }
             if (!color) delete next[quickEdit.dateKey]
             else next[quickEdit.dateKey] = color
             void patchStoreSettings({ dayColors: next })
           }}
-          onEventCalendarChange={(event, calendarId) => void editEvent(event.id, { calendarId })}
-          onEventTagChange={(event, tagIds) => void editEvent(event.id, { tagIds })}
-          onEventMarkerShapeChange={(event, markerShape) =>
-            void editEvent(event.id, { markerShape })
-          }
-          onEventLinkChange={(event, links) => void editEvent(event.id, { links })}
+          onEventCalendarChange={handleQuickEditCalendarChange}
+          onEventTagChange={handleQuickEditTagChange}
+          onEventMarkerShapeChange={handleQuickEditMarkerShapeChange}
+          onEventLinkChange={handleQuickEditLinkChange}
           onOpenMore={(event) => {
             if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event ?? null, {
@@ -1955,7 +2049,10 @@ export function CalendarGrid({
           onOpenEvent={(event) => openEventDetail(event, quickEdit.anchorRect)}
           onEditEvent={(event) => {
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
-            openEventEditor(event)
+            openEventEditor(event, {
+              defaultDate: quickEdit.dateKey,
+              returnQuickEdit: quickEdit
+            })
           }}
           onAttachFiles={async (event) => {
             if (!canEdit) {
@@ -2144,11 +2241,12 @@ export function CalendarGrid({
         open={Boolean(scopeDialog)}
         mode={scopeDialog?.mode ?? 'edit'}
         onClose={() => {
-          const mode = scopeDialog?.mode
           setScopeDialog(null)
-          if (mode === 'edit') {
-            setPendingEdit((prev) => (prev ? { ...prev, payload: undefined } : prev))
-          } else if (mode === 'complete') {
+          if (scopeDialog?.mode === 'edit') {
+            /* keep editor open so user can cancel scope and continue editing */
+            return
+          }
+          if (scopeDialog?.mode === 'complete') {
             setPendingComplete(null)
           } else {
             setPendingDelete(null)

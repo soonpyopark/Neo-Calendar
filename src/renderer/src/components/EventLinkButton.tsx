@@ -73,14 +73,10 @@ export function EventLinkButton({
       form instanceof HTMLFormElement
         ? form.elements.namedItem('event-link-url')
         : null
-    if (input instanceof HTMLInputElement && !input.checkValidity()) {
-      input.reportValidity()
-      return
-    }
     const url = normalizeEventLinkUrl(draft)
     if (!url) {
       if (input instanceof HTMLInputElement) {
-        input.setCustomValidity('올바른 URL을 입력하세요. 예: https://example.com')
+        input.setCustomValidity('올바른 URL을 입력하세요. 예: example.com 또는 https://example.com')
         input.reportValidity()
         input.setCustomValidity('')
       }
@@ -123,10 +119,10 @@ export function EventLinkButton({
             >
               <form className="event-link-flyout-form" onSubmit={addDraft}>
                 <input
-                  type="url"
+                  type="text"
                   name="event-link-url"
                   className="event-link-flyout-input"
-                  placeholder="https://"
+                  placeholder="example.com"
                   value={draft}
                   onChange={(e) => {
                     e.target.setCustomValidity('')

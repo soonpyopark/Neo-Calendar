@@ -270,10 +270,6 @@ textarea {
   display: none;
 }
 
-.month-view.is-events-hidden .day-cell.has-day-color::before {
-  opacity: 0;
-}
-
 .month-view.is-completed-hidden .event-bar.is-completed {
   display: none;
 }
