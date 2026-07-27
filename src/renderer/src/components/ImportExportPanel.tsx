@@ -175,10 +175,42 @@ export function ImportExportPanel({
           </div>
         </div>
         {statusMessage ? (
-          <p className="text-sm text-gcal-muted" role="status">
+          <p
+            className="rounded-lg border border-[#ceead6] bg-[#e6f4ea] px-4 py-3 text-sm text-[#137333]"
+            role="status"
+          >
             {statusMessage}
           </p>
         ) : null}
+        <div className="rounded-lg border border-gcal-border bg-gcal-surface p-5">
+          <h3 className="mb-4 text-base font-medium text-gcal-heading">파일 형식 안내</h3>
+          <div className="space-y-2.5 text-sm text-gcal-muted">
+            <p>
+              <span className="font-medium text-gcal-heading">JSON</span>
+              {' — '}
+              이 앱 전용 백업 형식입니다. 캘린더·일정·설정을 그대로 저장하고, 나중에 이 앱에서 다시
+              불러올 수 있습니다. 첨부 파일 본체는 포함되지 않습니다.
+            </p>
+            <p>
+              <span className="font-medium text-gcal-heading">ZIP</span>
+              {' — '}
+              일정 데이터(JSON)와 첨부 파일을 함께 담는 전체 백업입니다. 데스크톱 앱에서만 내보내고
+              가져올 수 있습니다.
+            </p>
+            <p>
+              <span className="font-medium text-gcal-heading">ICS</span>
+              {' — '}
+              iCalendar 표준 형식입니다. Google Calendar, Outlook 등 다른 캘린더 앱으로 가져와
+              사용할 수 있습니다.
+            </p>
+            <p>
+              <span className="font-medium text-gcal-heading">CSV</span>
+              {' — '}
+              표 형식 파일입니다. Google Calendar 가져오기나 Excel에서 열어 확인·편집하기에
+              적합합니다.
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   )
