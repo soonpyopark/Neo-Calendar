@@ -4,11 +4,13 @@ import type {
   ClickForwardHitZone,
   ClientHitRect,
   DayCellHitZone,
+  DesktopQuickEditContext,
   LoginResult,
   ModeStatus,
   NeoCalendarApi,
   OpenDayQuickEditPayload,
   DayDblClickLogPayload,
+  QuickEditDeferToMainPayload,
   ToolbarClickPayload,
   SetIgnoreMouseOptions
 } from '../shared/ipc'
@@ -75,6 +77,28 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('open-day-quick-edit', handler)
     return () => {
       ipcRenderer.removeListener('open-day-quick-edit', handler)
+    }
+  },
+  setDesktopQuickEditContext: (context: DesktopQuickEditContext) => {
+    ipcRenderer.send('set-desktop-quick-edit-context', context)
+  },
+  getQuickEditInit: () =>
+    ipcRenderer.invoke('quick-edit-get-init') as ReturnType<NeoCalendarApi['getQuickEditInit']>,
+  closeQuickEditWindow: () => {
+    ipcRenderer.send('quick-edit-close')
+  },
+  deferQuickEditToMain: (payload: QuickEditDeferToMainPayload) =>
+    ipcRenderer.invoke('quick-edit-defer-to-main', payload) as Promise<boolean>,
+  onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: QuickEditDeferToMainPayload
+    ): void => {
+      listener(payload)
+    }
+    ipcRenderer.on('quick-edit-deferred', handler)
+    return () => {
+      ipcRenderer.removeListener('quick-edit-deferred', handler)
     }
   },
   onToolbarClick: (listener: (payload: ToolbarClickPayload) => void) => {

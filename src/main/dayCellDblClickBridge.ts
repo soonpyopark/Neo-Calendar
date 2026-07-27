@@ -6,7 +6,7 @@ import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
 const DEFAULT_DBLCLICK_MS = 500
 const COOLDOWN_MS = 400
 /** Second click may jitter over desktop icons above WorkerW. */
-const CLICK_JITTER_PX = 20
+const CLICK_JITTER_PX = 32
 
 export type DayCellClientZone = {
   x: number
@@ -154,7 +154,7 @@ export class DayCellDblClickBridge {
       this.lastPress = null
       this.lastOpenAt = now
       this.lastOpenedKey = hit.dateKey
-      this.debug('[day-dblclick] confirmed → unlock + quick edit', { dateKey: hit.dateKey })
+      this.debug('[day-dblclick] confirmed → floating quick edit', { dateKey: hit.dateKey })
       this.options.onQuickEditClick({
         dateKey: hit.dateKey,
         clientX: hit.clientX,
@@ -179,7 +179,7 @@ export class DayCellDblClickBridge {
         width: zone.width,
         height: zone.height
       }
-      if (contains(screenZone, pt)) return true
+      if (contains(screenZone, pt, 0)) return true
     }
     return false
   }
@@ -189,6 +189,8 @@ export class DayCellDblClickBridge {
     origin: { x: number; y: number },
     zones: DayCellClientZone[]
   ): { dateKey: string; clientX: number; clientY: number } | null {
+    let best: { dateKey: string; clientX: number; clientY: number } | null = null
+    let bestArea = Infinity
     for (const zone of zones) {
       const screenZone: WidgetBounds = {
         x: origin.x + zone.x,
@@ -197,14 +199,18 @@ export class DayCellDblClickBridge {
         height: zone.height
       }
       if (contains(screenZone, pt)) {
-        return {
-          dateKey: zone.dateKey,
-          clientX: Math.round(pt.x - origin.x),
-          clientY: Math.round(pt.y - origin.y)
+        const area = screenZone.width * screenZone.height
+        if (area < bestArea) {
+          bestArea = area
+          best = {
+            dateKey: zone.dateKey,
+            clientX: Math.round(pt.x - origin.x),
+            clientY: Math.round(pt.y - origin.y)
+          }
         }
       }
     }
-    return null
+    return best
   }
 }
 

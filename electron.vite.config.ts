@@ -40,6 +40,14 @@ export default defineConfig({
         '@renderer': resolve('src/renderer/src')
       }
     },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve('src/renderer/index.html'),
+          quickEdit: resolve('src/renderer/quickEdit.html')
+        }
+      }
+    },
     plugins: [react(), tailwindcss()],
     // Browser "인터넷" editor: open Vite directly (fast). Proxy API/WS to the
     // CalendarWebServer — do NOT load the UI through that server's Vite proxy

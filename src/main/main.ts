@@ -8,6 +8,7 @@ import { EventAttachmentService } from './calendarStore/eventAttachments'
 import { MembersStore } from './calendarStore/membersStore'
 import { DesktopModeController } from './desktopMode'
 import { DesktopIdleEmbedBridge } from './desktopIdleEmbedBridge'
+import { QuickEditWindowManager } from './quickEditWindowManager'
 import { DesktopOutsideClickEmbedBridge } from './desktopOutsideClickEmbedBridge'
 import {
   DayCellDblClickBridge,
@@ -48,8 +49,10 @@ import type {
   ClientHitRect,
   ClickForwardHitZone,
   DayCellHitZone,
+  DesktopQuickEditContext,
   ModeStatus,
   OpenDayQuickEditPayload,
+  QuickEditDeferToMainPayload,
   ToolbarClickPayload
 } from '../shared/ipc'
 import {
@@ -120,6 +123,12 @@ let tray: AppTray | null = null
 let dayCellHitZones: DayCellClientZone[] = []
 /** Header/shell rects where day double-click must not fire. */
 let dayDblClickExcludeZones: ClientHitRect[] = []
+/** View context for WorkerW embedded floating quick edit. */
+let desktopQuickEditContext: DesktopQuickEditContext = {
+  viewMode: 'month',
+  eventsHidden: false
+}
+let quickEditWindowManager: QuickEditWindowManager | null = null
 /** Period toolbar footprints for WorkerW click → unlock + action. */
 let clickForwardHitZones: ClickForwardClientZone[] = []
 
@@ -226,6 +235,34 @@ function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
   }, 60)
 }
 
+/** WorkerW embedded: open quick edit in a top-level window above desktop icons. */
+function openFloatingDayQuickEdit(payload: OpenDayQuickEditPayload): void {
+  const win = mainWindow
+  if (!win || win.isDestroyed() || !quickEditWindowManager) return
+  quickEditWindowManager.openFromEmbeddedDblClick(
+    win,
+    payload,
+    desktopQuickEditContext,
+    dayCellHitZones
+  )
+}
+
+function deferQuickEditToMain(payload: QuickEditDeferToMainPayload): void {
+  desktopMode.suspendForInteraction()
+  const win = mainWindow
+  if (!win || win.isDestroyed()) return
+
+  focusWindowForTextInput(win)
+  win.setIgnoreMouseEvents(false)
+
+  setTimeout(() => {
+    if (win.isDestroyed()) return
+    win.setIgnoreMouseEvents(false)
+    win.webContents.send('quick-edit-deferred', payload)
+    focusWindowForTextInput(win)
+  }, 60)
+}
+
 /** Unlock WorkerW embed, then dispatch a period-toolbar action in renderer. */
 function unlockAndTriggerToolbar(payload: ToolbarClickPayload): void {
   desktopMode.suspendForInteraction()
@@ -244,6 +281,9 @@ function unlockAndTriggerToolbar(payload: ToolbarClickPayload): void {
 }
 
 function broadcastMode(status: ModeStatus): void {
+  if (status.mode === 'desktop' && status.embedded) {
+    quickEditWindowManager?.close()
+  }
   mainWindow?.webContents.send('mode-changed', status)
   tray?.rebuildMenu?.()
 }
@@ -413,9 +453,26 @@ function registerIpc(): void {
   ipcMain.on('set-day-dblclick-exclude-zones', (_event, zones: ClientHitRect[]) => {
     dayDblClickExcludeZones = sanitizeClientHitRects(zones)
   })
+  ipcMain.on('set-desktop-quick-edit-context', (_event, context: DesktopQuickEditContext) => {
+    const viewMode = context?.viewMode
+    desktopQuickEditContext = {
+      viewMode:
+        viewMode === 'year' || viewMode === 'week' || viewMode === 'month'
+          ? viewMode
+          : desktopQuickEditContext.viewMode,
+      eventsHidden: Boolean(context?.eventsHidden)
+    }
+  })
   ipcMain.on('set-interaction-busy', () => undefined)
 
-  ipcMain.on('focus-for-text-input', () => {
+  ipcMain.on('focus-for-text-input', (event) => {
+    if (quickEditWindowManager?.isQuickEditWebContents(event.sender.id)) {
+      const qeWin = quickEditWindowManager.getWindow()
+      if (qeWin && !qeWin.isDestroyed()) {
+        focusWindowForTextInput(qeWin)
+      }
+      return
+    }
     desktopMode.focusForTextInput()
   })
 
@@ -805,6 +862,8 @@ function bootApp(): void {
 
   createWindow()
 
+  quickEditWindowManager = new QuickEditWindowManager((payload) => deferQuickEditToMain(payload))
+
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
   const idleEmbed = new DesktopIdleEmbedBridge({
     isArmed: () =>
@@ -856,7 +915,7 @@ function bootApp(): void {
     shouldProcessEmbeddedClick: (pt) => shouldProcessEmbeddedClickAtPoint(pt),
     onDebug: (msg, data) => sendDayDblClickLog(msg, data),
     onQuickEditClick: (payload) => {
-      unlockAndOpenDayQuickEdit(payload)
+      openFloatingDayQuickEdit(payload)
     }
   })
   dayDblClick.start()

@@ -228,6 +228,12 @@ export function installBrowserNeoCalendar(): void {
     focusForTextInput: () => undefined,
     onModeChanged: () => () => undefined,
     onOpenDayQuickEdit: () => () => undefined,
+    setDesktopQuickEditContext: () => undefined,
+    getQuickEditInit: async () => null,
+    closeQuickEditWindow: () => undefined,
+    deferQuickEditToMain: async () => false,
+    onQuickEditDeferred: () => () => undefined,
+    onDayDblClickLog: () => () => undefined,
     // Browser already refreshes via WebSocket → neo-store-changed.
     onStoreChanged: () => () => undefined,
 

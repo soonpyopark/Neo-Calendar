@@ -106,6 +106,30 @@ function toDateKey(year: number, month: number, day: number): string {
   return `${year}-${mm}-${dd}`
 }
 
+/** WorkerW embedded: inflate client hit rects — Sunday column gets extra outer-edge slack. */
+function publishDayCellHitRect(
+  el: HTMLElement,
+  rect: DOMRect,
+  weekStartsOn: 0 | 1
+): { x: number; y: number; width: number; height: number } {
+  const pad = 6
+  let x = Math.round(rect.left) - pad
+  let y = Math.round(rect.top) - pad
+  let width = Math.round(rect.width) + pad * 2
+  let height = Math.round(rect.height) + pad * 2
+
+  if (el.classList.contains('sunday')) {
+    if (weekStartsOn === 0) {
+      x -= 12
+      width += 12
+    } else {
+      width += 12
+    }
+  }
+
+  return { x, y, width, height }
+}
+
 function parseDateKey(dateKey: string): Date | null {
   const [y, m, d] = dateKey.split('-').map(Number)
   if (!y || !m || !d) return null
@@ -501,12 +525,10 @@ export function CalendarGrid({
         const r = el.getBoundingClientRect()
         if (r.width < 1 || r.height < 1) return []
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
+        const hit = publishDayCellHitRect(el, r, weekStartsOn)
         return [
           {
-            x: Math.round(r.left),
-            y: Math.round(r.top),
-            width: Math.round(r.width),
-            height: Math.round(r.height),
+            ...hit,
             dateKey
           }
         ]
@@ -530,6 +552,7 @@ export function CalendarGrid({
         ]
       })
       api.setDayDblClickExcludeZones(excludeZones)
+      api.setDesktopQuickEditContext?.({ viewMode, eventsHidden })
 
       if (dayZones.length !== lastDayZoneCountRef.current) {
         lastDayZoneCountRef.current = dayZones.length
@@ -562,6 +585,7 @@ export function CalendarGrid({
     embedded,
     viewMode,
     viewDate,
+    weekStartsOn,
     eventsHidden,
     completedHidden,
     webEditUrl,
@@ -590,6 +614,7 @@ export function CalendarGrid({
     embedded,
     viewMode,
     viewDate,
+    weekStartsOn,
     eventsHidden,
     completedHidden,
     webEditUrl,
@@ -1045,12 +1070,13 @@ export function CalendarGrid({
   const openQuickEditFromDateRef = useRef(openQuickEditFromDate)
   openQuickEditFromDateRef.current = openQuickEditFromDate
 
-  // WorkerW double-click unlock → open quick edit + HWND focus for IME.
+  // WorkerW embedded: main opens floating quick-edit window (no full unlock).
   useEffect(() => {
     const api = window.neoCalendar
     if (!api?.onOpenDayQuickEdit) return
     return api.onOpenDayQuickEdit((payload) => {
-      console.log('[day-dblclick] renderer open quick edit', payload)
+      // Legacy inline unlock path (non-embedded fallback).
+      console.log('[day-dblclick] renderer open quick edit (inline)', payload)
       const date =
         parseDateKeyLocal(payload.dateKey) ?? parseDateKey(payload.dateKey)
       if (!date) return
@@ -1397,6 +1423,42 @@ export function CalendarGrid({
       returnQuickEdit: opts?.returnQuickEdit ?? null
     })
   }
+
+  const openEventEditorRef = useRef(openEventEditor)
+  openEventEditorRef.current = openEventEditor
+  const openEventDetailRef = useRef(openEventDetail)
+  openEventDetailRef.current = openEventDetail
+  const storeEventsRef = useRef(store.events)
+  storeEventsRef.current = store.events
+
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onQuickEditDeferred) return
+    return api.onQuickEditDeferred((payload) => {
+      const date =
+        parseDateKeyLocal(payload.dateKey) ?? parseDateKey(payload.dateKey)
+      if (date) {
+        setViewDate(date)
+        setSelectedKey(payload.dateKey)
+      }
+      if (payload.kind === 'editor') {
+        const event = payload.eventId
+          ? storeEventsRef.current.find((item) => item.id === payload.eventId) ?? null
+          : null
+        openEventEditorRef.current(event, { defaultDate: payload.dateKey })
+        return
+      }
+      if (payload.kind === 'detail' && payload.eventId) {
+        const seriesId = payload.eventId.split('::')[0] ?? payload.eventId
+        const master = storeEventsRef.current.find((item) => item.id === seriesId)
+        if (master) {
+          const occurrence =
+            storeEventsRef.current.find((item) => item.id === payload.eventId) ?? master
+          openEventDetailRef.current(occurrence, null, { dayKey: payload.dateKey })
+        }
+      }
+    })
+  }, [])
 
   const handleScopeSelect = async (scope: 'single' | 'following' | 'all'): Promise<void> => {
     const dialogMode = scopeDialog?.mode

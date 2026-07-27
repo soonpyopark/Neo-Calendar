@@ -1,4 +1,9 @@
 import type {
+  DesktopQuickEditContext,
+  QuickEditDeferToMainPayload,
+  QuickEditWindowInit
+} from './quickEditLayout'
+import type {
   CalendarEvent,
   CalendarRecord,
   CalendarStoreSnapshot,
@@ -133,6 +138,15 @@ export type NeoCalendarApi = {
   onModeChanged: (listener: (status: ModeStatus) => void) => () => void
   /** Main → renderer: open day quick edit after WorkerW double-click unlock. */
   onOpenDayQuickEdit: (listener: (payload: OpenDayQuickEditPayload) => void) => () => void
+  /** WorkerW embedded: publish view context for floating quick-edit window. */
+  setDesktopQuickEditContext: (context: DesktopQuickEditContext) => void
+  /** Floating quick-edit window: read open payload after load. */
+  getQuickEditInit: () => Promise<QuickEditWindowInit | null>
+  closeQuickEditWindow: () => void
+  /** Close floating quick edit and unlock main for editor/detail. */
+  deferQuickEditToMain: (payload: QuickEditDeferToMainPayload) => Promise<boolean>
+  /** Main → renderer: open editor/detail after floating quick edit defers. */
+  onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => () => void
   /** Main → renderer: run period toolbar action after embedded click unlock. */
   onToolbarClick: (listener: (payload: ToolbarClickPayload) => void) => () => void
   /** Dev: main-process day-dblclick logs mirrored into renderer DevTools. */

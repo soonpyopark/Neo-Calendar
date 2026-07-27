@@ -34,28 +34,18 @@ import { compareEventsForDayDisplay } from '../../../shared/mdcExport/eventBarFo
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
 import type { DayReorderItem } from '../lib/dayReorder'
 
-const QUICK_EDIT_CHROME_HEIGHT = 88
-const QUICK_EDIT_BODY_EXTRA_MONTH = 96
-/** Year view (mini day cells): reserve list rows even when anchor height is tiny. */
-const QUICK_EDIT_YEAR_VISIBLE_ITEMS = 6
-const QUICK_EDIT_ITEM_ROW_PX = 32
-const QUICK_EDIT_CREATE_ROW_PX = 36
-const QUICK_EDIT_BODY_LAYOUT_PX = 24
+import {
+  QUICK_EDIT_CHROME_HEIGHT,
+  QUICK_EDIT_BODY_EXTRA_MONTH,
+  QUICK_EDIT_MIN_BODY_HEIGHT,
+  QUICK_EDIT_YEAR_MIN_BODY
+} from '../../../shared/quickEditLayout'
+
+export { QUICK_EDIT_YEAR_MIN_BODY } from '../../../shared/quickEditLayout'
+
 const COLOR_PANEL_PAD = 8
 /** Inset from shell content edges (principle #4). */
 const VIEWPORT_PAD = 5
-const MIN_BODY_HEIGHT = 72
-
-function quickEditBodyHeightForItems(itemCount: number): number {
-  return (
-    QUICK_EDIT_BODY_LAYOUT_PX +
-    QUICK_EDIT_CREATE_ROW_PX +
-    itemCount * QUICK_EDIT_ITEM_ROW_PX
-  )
-}
-
-/** Passed from CalendarGrid year view only — month/week quick edit stays unchanged. */
-export const QUICK_EDIT_YEAR_MIN_BODY = quickEditBodyHeightForItems(QUICK_EDIT_YEAR_VISIBLE_ITEMS)
 
 export type AnchorRect = {
   top: number
@@ -65,6 +55,8 @@ export type AnchorRect = {
 }
 
 export type DayQuickEditPopoverProps = {
+  /** Inline overlay (default) or dedicated floating BrowserWindow. */
+  surface?: 'inline' | 'floating'
   dateKey: string
   date: Date
   events: CalendarEvent[]
@@ -117,7 +109,7 @@ function buildQuickEditStyle(
       padding: VIEWPORT_PAD
     })
     const fittedBody = Math.max(
-      floorBody || MIN_BODY_HEIGHT,
+      floorBody || QUICK_EDIT_MIN_BODY_HEIGHT,
       clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
     )
     return {
@@ -135,7 +127,7 @@ function buildQuickEditStyle(
   const desiredBody = Math.max(
     floorBody,
     Math.round(usableAnchor.height) + bodyExtra,
-    bodyExtra > 0 ? 160 : MIN_BODY_HEIGHT
+    bodyExtra > 0 ? 160 : QUICK_EDIT_MIN_BODY_HEIGHT
   )
   const height = desiredBody + QUICK_EDIT_CHROME_HEIGHT
   const left = usableAnchor.left + usableAnchor.width / 2 - width / 2
@@ -149,7 +141,7 @@ function buildQuickEditStyle(
   })
   // Keep chrome + body inside the clamped panel height (principle #4).
   const fittedBody = Math.max(
-    floorBody || MIN_BODY_HEIGHT,
+    floorBody || QUICK_EDIT_MIN_BODY_HEIGHT,
     clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
   )
 
@@ -171,6 +163,7 @@ function defaultCalendarId(calendars: CalendarRecord[]): string {
 }
 
 export function DayQuickEditPopover({
+  surface = 'inline',
   dateKey,
   date,
   events,
@@ -196,6 +189,7 @@ export function DayQuickEditPopover({
   onOpenEvent,
   onAttachFiles
 }: DayQuickEditPopoverProps): ReactElement {
+  const isFloating = surface === 'floating'
   const [title, setTitle] = useState('')
   const [draftCalendarId, setDraftCalendarId] = useState(() => defaultCalendarId(calendars))
   const [draftTagIds, setDraftTagIds] = useState<string[]>([])
@@ -250,6 +244,7 @@ export function DayQuickEditPopover({
   // Portaled flyouts (calendar/tag/emoji/…) sit outside this InteractionUI box.
   // While open, keep click-through off so desktop mode still delivers clicks to them.
   useEffect(() => {
+    if (isFloating) return
     setClickThroughEnabled(false)
     setIgnoreMouseEvents(false)
     return () => {
@@ -258,10 +253,26 @@ export function DayQuickEditPopover({
       const windowLike = Boolean(document.querySelector('.wallpaper-root.is-window-mode'))
       setClickThroughEnabled(!windowLike)
     }
-  }, [])
+  }, [isFloating])
 
   // Principle #4: remeasure after layout / resize so the panel never leaves the window.
   useLayoutEffect(() => {
+    if (isFloating) {
+      const base = buildQuickEditStyle(anchorRect, styleOptions)
+      const bodyVar = (base as CSSProperties & { '--day-quick-edit-body-height'?: string })[
+        '--day-quick-edit-body-height'
+      ]
+      setStyle({
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        maxHeight: '100%',
+        ...(bodyVar ? { '--day-quick-edit-body-height': bodyVar } : {})
+      } as CSSProperties)
+      return undefined
+    }
+
     const base = buildQuickEditStyle(anchorRect, styleOptions)
     setStyle(base)
 
@@ -291,7 +302,7 @@ export function DayQuickEditPopover({
         padding: VIEWPORT_PAD
       })
       const fittedBody = Math.max(
-        minBodyHeight || MIN_BODY_HEIGHT,
+        minBodyHeight || QUICK_EDIT_MIN_BODY_HEIGHT,
         clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
       )
       const next: CSSProperties = {
@@ -331,7 +342,7 @@ export function DayQuickEditPopover({
       ro?.disconnect()
       window.removeEventListener('resize', apply)
     }
-  }, [anchorRect, bodyExtra, minBodyHeight])
+  }, [anchorRect, bodyExtra, expandBody, isFloating, minBodyHeight])
 
   const resolvedDayKey = dateKey || (date ? toDateKey(date) : '')
 
@@ -585,15 +596,18 @@ export function DayQuickEditPopover({
 
   return (
     <>
-      <div
-        className="day-quick-edit-backdrop interaction-ui"
-        role="presentation"
-        onClick={onClose}
-        onMouseEnter={() => setIgnoreMouseEvents(false)}
-        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
-      />
+      {!isFloating ? (
+        <div
+          className="day-quick-edit-backdrop interaction-ui"
+          role="presentation"
+          onClick={onClose}
+          onMouseEnter={() => setIgnoreMouseEvents(false)}
+          onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+        />
+      ) : null}
       <InteractionUI
         ref={panelRef}
+        captureOnHover={!isFloating}
         className="day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface shadow-g-lg"
         style={style}
         role="dialog"
