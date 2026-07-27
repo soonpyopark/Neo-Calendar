@@ -488,14 +488,17 @@ export function CalendarGrid({
 
       const vw = window.innerWidth
       const vh = window.innerHeight
+      const dayZoneSelectors = [
+        '.neo-cal-shell .day-cell[data-date-key] .day-number',
+        '.neo-cal-shell .year-day[data-date-key]'
+      ].join(', ')
       const dayZones = Array.from(
-        document.querySelectorAll<HTMLElement>(
-          '.neo-cal-shell .day-cell[data-date-key], .neo-cal-shell .year-day[data-date-key]'
-        )
+        document.querySelectorAll<HTMLElement>(dayZoneSelectors)
       ).flatMap((el) => {
-        if (el instanceof HTMLButtonElement && el.disabled) return []
-        const dateKey = el.dataset.dateKey ?? ''
+        const host = el.closest<HTMLElement>('[data-date-key]')
+        const dateKey = host?.dataset.dateKey ?? el.dataset.dateKey ?? ''
         if (!dateKey) return []
+        if (host instanceof HTMLButtonElement && host.disabled) return []
         const r = el.getBoundingClientRect()
         if (r.width < 1 || r.height < 1) return []
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
@@ -1525,6 +1528,7 @@ export function CalendarGrid({
         completedHidden={completedHidden}
         canEdit={canEdit}
         tall={options?.tall}
+        desktopEmbedded={embedded}
         themeEpoch={themeEpoch}
         onDaySelect={(date) => {
           setSelectedKey(toDateKey(date.getFullYear(), date.getMonth(), date.getDate()))

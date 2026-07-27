@@ -18,7 +18,7 @@
       "allDay": true,
       "calendarId": "32496041-84de-4378-8562-e281f601992f",
       "color": null,
-      "completed": true,
+      "completed": false,
       "createdAt": "2026-07-13T06:53:31.590Z",
       "createdBy": "local",
       "description": "",
@@ -36,7 +36,7 @@
       "startTime": null,
       "tagIds": [],
       "title": "점심 식사(이진혁 주사님)",
-      "updatedAt": "2026-07-25T12:40:11.707Z"
+      "updatedAt": "2026-07-27T08:34:28.130Z"
     },
     {
       "allDay": true,
@@ -401,5 +401,5 @@
       "updatedAt": "2026-07-23T17:34:57.711Z"
     }
   ],
-  "updatedAt": "2026-07-25T12:40:11.707Z"
+  "updatedAt": "2026-07-27T08:34:28.131Z"
 }

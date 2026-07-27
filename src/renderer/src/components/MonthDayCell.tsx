@@ -51,6 +51,8 @@ export type MonthDayCellProps = {
   completedHidden?: boolean
   canEdit?: boolean
   tall?: boolean
+  /** WorkerW embedded: quick edit only via `.day-number` (global hook), not whole cell. */
+  desktopEmbedded?: boolean
   themeEpoch?: number
   onDaySelect: (date: Date) => void
   onDayQuickEdit: (date: Date, anchorRect: DOMRect) => void
@@ -85,6 +87,7 @@ export function MonthDayCell({
   completedHidden = false,
   canEdit = true,
   tall = false,
+  desktopEmbedded = false,
   themeEpoch = 0,
   onDaySelect,
   onDayQuickEdit,
@@ -163,7 +166,7 @@ export function MonthDayCell({
       data-date-key={dayKey}
       onClick={interactive ? () => onDaySelect(cell.date) : undefined}
       onDoubleClick={
-        interactive
+        interactive && !desktopEmbedded
           ? (event) => {
               if ((event.target as Element | null)?.closest?.('.event-bar, .event-more')) return
               event.preventDefault()
