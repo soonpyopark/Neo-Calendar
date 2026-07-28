@@ -1,4 +1,4 @@
-export const APP_VERSION = '1.0.3'
+export const APP_VERSION = '1.0.4'
 export const APP_NAME = 'Neo Calendar'
 export const APP_TITLE = `${APP_NAME} v${APP_VERSION}`
 export const SITE_URL = 'https://note4all.tistory.com'

@@ -240,12 +240,14 @@ export function shouldProcessEmbeddedGlobalClick(
 
   if (!atPoint) return false
 
+  // WindowFromPoint can return WorkerW/desktop under layered apps (e.g. Chrome).
+  // Always honor foreground foreign window bounds before the desktop-shell shortcut.
+  if (isClickInsideForeignForeground(user32, ptDip, ourHwnd)) return false
+  if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
+
   // Clicks on desktop icons / WorkerW — process even when another app is foreground
   // (icon launch proceeds via CallNextHookEx; quick edit opens in parallel after defer).
   if (isDesktopShellHwnd(user32, atPoint)) return true
-
-  if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
-  if (isClickInsideForeignForeground(user32, ptDip, ourHwnd)) return false
 
   if (isOurHwnd(user32, atPoint, ourHwnd)) {
     return isOurHwnd(user32, fg, ourHwnd)

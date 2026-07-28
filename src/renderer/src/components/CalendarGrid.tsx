@@ -1899,19 +1899,6 @@ export function CalendarGrid({
           setSelectedKey(toDateKey(date.getFullYear(), date.getMonth(), date.getDate()))
         }}
         onDayQuickEdit={(date, rect) => openQuickEditFromDate(date, rect)}
-        onEventDetail={(event, clientX, clientY, dayKey) => {
-          // MDC: bar / list click (or context menu) → pointer-anchored detail.
-          // Don't open over quick-edit / full editor (guard is here, not in openEventDetail).
-          if (quickEdit || editor) return
-          setSelectedKey(dayKey)
-          openEventDetail(event, { x: clientX, y: clientY }, { dayKey })
-        }}
-        onEventEdit={(event, dayKey) => {
-          if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
-          setSelectedKey(dayKey)
-          openEventEditor(event, { defaultDate: dayKey })
-        }}
-        onReorderEvents={handleReorderEvents}
       />
     )
   }
@@ -1964,15 +1951,18 @@ export function CalendarGrid({
                     if (!cell.inMonth) return
                     if (!requireEdit()) return
                     setSelectedKey(cell.dateKey)
-                    setViewDate(cell.date)
                   }}
-                  onDoubleClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    if (!cell.inMonth) return
-                    if (!requireEdit()) return
-                    openQuickEdit(cell, new DOMRect(e.clientX, e.clientY, 1, 1))
-                  }}
+                  onDoubleClick={
+                    embedded
+                      ? undefined
+                      : (e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          if (!cell.inMonth) return
+                          if (!requireEdit()) return
+                          openQuickEdit(cell, new DOMRect(e.clientX, e.clientY, 1, 1))
+                        }
+                  }
                   aria-label={
                     cell.inMonth
                       ? `${year}년 ${monthIndex + 1}월 ${cell.day}일`
