@@ -378,34 +378,19 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'search') {
-    const width = Math.min(
-      computeSearchPanelWidth(mainSize.width),
-      workArea.width - VIEWPORT_PAD * 2
-    )
-    const height = Math.min(SEARCH_PANEL_MIN_HEIGHT, workArea.height - VIEWPORT_PAD * 2)
-    if (anchorClient && anchorClient.width > 0 && anchorClient.height > 0) {
-      return belowAnchoredBounds({
-        anchorScreen: {
-          top: mainOrigin.y + anchorClient.top,
-          left: mainOrigin.x + anchorClient.left,
-          width: anchorClient.width,
-          height: anchorClient.height
-        },
-        panelWidth: width,
-        panelHeight: height,
-        workArea,
-        mainOrigin,
-        mainSize,
-        centerInMain: true
-      })
-    }
-    return centeredBounds({
+    return centerInMainWindow({
       mainOrigin,
       mainSize,
       workArea,
-      width,
-      height,
-      topBias: -Math.round(mainSize.height * 0.12)
+      width: Math.min(
+        computeSearchPanelWidth(mainSize.width),
+        workArea.width - VIEWPORT_PAD * 2
+      ),
+      height: Math.min(
+        SEARCH_PANEL_MAX_HEIGHT,
+        Math.round(mainSize.height * 0.8),
+        workArea.height - VIEWPORT_PAD * 2
+      )
     })
   }
 

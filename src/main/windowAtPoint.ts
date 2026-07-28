@@ -240,10 +240,12 @@ export function shouldProcessEmbeddedGlobalClick(
 
   if (!atPoint) return false
 
+  // Clicks on desktop icons / WorkerW — process even when another app is foreground
+  // (icon launch proceeds via CallNextHookEx; we open quick edit in parallel).
+  if (isDesktopShellHwnd(user32, atPoint)) return true
+
   if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
   if (isClickInsideForeignForeground(user32, ptDip, ourHwnd)) return false
-
-  if (isDesktopShellHwnd(user32, atPoint)) return true
 
   if (isOurHwnd(user32, atPoint, ourHwnd)) {
     return isOurHwnd(user32, fg, ourHwnd)

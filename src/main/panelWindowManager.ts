@@ -11,7 +11,7 @@ import {
   type PanelWindowInit
 } from '../shared/panelWindows'
 import type { QuickEditDeferToMainPayload } from '../shared/quickEditLayout'
-import type { OpenDayQuickEditPayload } from '../shared/ipc'
+import type { OpenDayQuickEditPayload, WidgetBounds } from '../shared/ipc'
 import type { QuickEditViewMode } from '../shared/quickEditLayout'
 import type { WallpaperBrowserWindow } from './wallpaper'
 
@@ -69,6 +69,8 @@ type PanelWindowManagerOptions = {
   onPanelStackChanged?: (hasOpenPanels: boolean) => void
   /** WorkerW-embedded desktop: panels must be top-level (above desktop icons). */
   isWorkerEmbedded?: () => boolean
+  /** Calendar footprint in screen DIP (locked bounds when WorkerW-embedded). */
+  getMainFootprint?: () => WidgetBounds | null
 }
 
 export class PanelWindowManager {
@@ -374,7 +376,8 @@ export class PanelWindowManager {
     this.lastMainWindow = mainWindow
     this.ensureOutsideListener()
 
-    const mainBounds = getWindowDipScreenBounds(mainWindow)
+    const mainBounds =
+      this.options.getMainFootprint?.() ?? getWindowDipScreenBounds(mainWindow)
     if (!mainBounds) return
 
     const origin = { x: mainBounds.x, y: mainBounds.y }

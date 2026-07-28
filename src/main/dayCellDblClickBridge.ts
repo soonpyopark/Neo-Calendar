@@ -6,7 +6,7 @@ import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
 const DEFAULT_DBLCLICK_MS = 500
 const COOLDOWN_MS = 400
 /** Second click may jitter over desktop icons above WorkerW. */
-const CLICK_JITTER_PX = 32
+const CLICK_JITTER_PX = 48
 
 export type DayCellClientZone = {
   x: number

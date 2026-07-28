@@ -657,25 +657,23 @@ export function CalendarGrid({
         '.neo-cal-shell .day-cell[data-date-key]',
         '.neo-cal-shell .year-day[data-date-key]'
       ].join(', ')
-      const dayZones = userRef.current
-        ? Array.from(
-            document.querySelectorAll<HTMLElement>(dayZoneSelectors)
-          ).flatMap((el) => {
-            const dateKey = el.dataset.dateKey ?? ''
-            if (!dateKey) return []
-            if (el instanceof HTMLButtonElement && el.disabled) return []
-            const r = el.getBoundingClientRect()
-            if (r.width < 1 || r.height < 1) return []
-            if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
-            const hit = publishDayCellHitRect(el, r, weekStartsOn)
-            return [
-              {
-                ...hit,
-                dateKey
-              }
-            ]
-          })
-        : []
+      const dayZones = Array.from(
+        document.querySelectorAll<HTMLElement>(dayZoneSelectors)
+      ).flatMap((el) => {
+        const dateKey = el.dataset.dateKey ?? ''
+        if (!dateKey) return []
+        if (el instanceof HTMLButtonElement && el.disabled) return []
+        const r = el.getBoundingClientRect()
+        if (r.width < 1 || r.height < 1) return []
+        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
+        const hit = publishDayCellHitRect(el, r, weekStartsOn)
+        return [
+          {
+            ...hit,
+            dateKey
+          }
+        ]
+      })
       api.setDayCellHitZones(dayZones)
 
       const excludeZones = Array.from(

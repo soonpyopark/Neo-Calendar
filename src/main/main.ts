@@ -280,6 +280,7 @@ function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
 
 /** WorkerW embedded: open quick edit in a top-level window above desktop icons. */
 function openFloatingDayQuickEdit(payload: OpenDayQuickEditPayload): void {
+  if (!auth?.getUser()) return
   const win = mainWindow
   if (!win || win.isDestroyed() || !panelWindowManager) return
   if (!win.webContents.isDestroyed()) {
@@ -943,7 +944,14 @@ function bootApp(): void {
       if (hasOpenPanels) shieldMainWindowWhilePanelsOpen()
       else restoreMainWindowMouseAfterPanels()
     },
-    isWorkerEmbedded: () => desktopMode.isWorkerEmbedded()
+    isWorkerEmbedded: () => desktopMode.isWorkerEmbedded(),
+    getMainFootprint: () => {
+      const locked = desktopMode.getLockedBounds()
+      if (desktopMode.isWorkerEmbedded() && locked) return locked
+      const live =
+        mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
+      return live ?? locked
+    }
   })
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
