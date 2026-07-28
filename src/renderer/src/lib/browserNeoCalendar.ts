@@ -208,9 +208,21 @@ function pickSingleFile(accept: string): Promise<File | null> {
 
 let browserHostInstalled = false
 
+function isHttpPageHost(): boolean {
+  if (typeof window === 'undefined') return false
+  const protocol = window.location?.protocol ?? ''
+  return protocol === 'http:' || protocol === 'https:'
+}
+
+function isElectronRenderer(): boolean {
+  return typeof navigator !== 'undefined' && navigator.userAgent.includes('Electron')
+}
+
 /** True when the UI is served over HTTP (not Electron preload). */
 export function isBrowserNeoCalendarHost(): boolean {
-  return browserHostInstalled
+  if (browserHostInstalled) return true
+  if (isElectronRenderer()) return false
+  return isHttpPageHost()
 }
 
 /**
@@ -218,7 +230,16 @@ export function isBrowserNeoCalendarHost(): boolean {
  */
 export function installBrowserNeoCalendar(): void {
   if (typeof window === 'undefined') return
-  if (window.neoCalendar) return
+  if (isElectronRenderer()) return
+
+  const onHttp = isHttpPageHost()
+  if (window.neoCalendar) {
+    // Vite HMR re-evaluates modules but keeps window.neoCalendar — restore the flag.
+    browserHostInstalled = onHttp
+    return
+  }
+
+  if (!onHttp) return
 
   browserHostInstalled = true
 

@@ -495,15 +495,40 @@ export function CalendarGrid({
   const inlineOverlays = usesInlineOverlays(mode, embedded)
   const floatingPanels = usesFloatingPanels(mode, embedded)
 
+  const openInlineChromePanel = useCallback((init: PanelWindowInit): void => {
+    switch (init.kind) {
+      case 'search':
+        setSettingsOpen(false)
+        setSearchOpen(true)
+        break
+      case 'settings':
+        setSearchOpen(false)
+        setSettingsOpen(true)
+        break
+      case 'login':
+        setLoginError(null)
+        setLoginOpen(true)
+        break
+      default:
+        break
+    }
+  }, [])
+
   const openEmbeddedPanel = useCallback(
     (init: PanelWindowInit, anchorClient?: PanelAnchorRect | null): void => {
+      if (isBrowserNeoCalendarHost()) {
+        openInlineChromePanel(init)
+        return
+      }
       const payload = {
         ...init,
         ...(anchorClient ? { anchorClient } : {})
       } as OpenPanelWindowRequest
-      void window.neoCalendar.openPanelWindow?.(payload)
+      void window.neoCalendar.openPanelWindow?.(payload).then((opened) => {
+        if (opened === false) openInlineChromePanel(init)
+      })
     },
-    []
+    [openInlineChromePanel]
   )
 
   useEffect(() => {
@@ -1445,12 +1470,16 @@ export function CalendarGrid({
 
   const handleAuthToggle = (): void => {
     if (user) {
-      void window.neoCalendar.logout().then(async () => {
-        onUserChange(null)
-        setSettingsOpen(false)
-        // Reload guest (empty) snapshot — never keep the previous member's events on screen.
-        await refresh()
-      })
+      void window.neoCalendar
+        .logout()
+        .then(async () => {
+          onUserChange(null)
+          setSettingsOpen(false)
+          await refresh()
+        })
+        .catch(async (error) => {
+          await alert(error instanceof Error ? error.message : '로그아웃에 실패했습니다.')
+        })
       return
     }
     setLoginError(null)
@@ -1737,8 +1766,35 @@ export function CalendarGrid({
     if (!canEdit || exporting) return
     const exportYear = viewDate.getFullYear()
     const exportMonth = viewDate.getMonth() + 1
-    const { floatingPanels } = modeEmbeddedRef.current
-    if (floatingPanels) {
+    const runInlineExport = async (): Promise<void> => {
+      const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
+      const ok = await confirm(
+        `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
+      )
+      if (!ok) return
+      setExporting(true)
+      try {
+        const result = await window.neoCalendar.exportCalendar({
+          format,
+          year: exportYear,
+          month: exportMonth,
+          asAdmin: true
+        })
+        if (result.canceled) return
+        if (!result.ok) {
+          await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
+          return
+        }
+        await alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
+      } finally {
+        setExporting(false)
+      }
+    }
+
+    const { floatingPanels: useFloating } = modeEmbeddedRef.current
+    if (useFloating && !isBrowserNeoCalendarHost()) {
       openEmbeddedPanel({
         kind: 'exportConfirm',
         format,
@@ -1747,30 +1803,7 @@ export function CalendarGrid({
       })
       return
     }
-    const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
-    const ok = await confirm(
-      `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
-    )
-    if (!ok) return
-    setExporting(true)
-    try {
-      const result = await window.neoCalendar.exportCalendar({
-        format,
-        year: exportYear,
-        month: exportMonth,
-        asAdmin: true
-      })
-      if (result.canceled) return
-      if (!result.ok) {
-        await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
-        return
-      }
-      await alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
-    } catch (error) {
-      await alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
-    } finally {
-      setExporting(false)
-    }
+    await runInlineExport()
   }
 
   const lunarMonthLabel = useMemo(
@@ -1916,6 +1949,11 @@ export function CalendarGrid({
           chromeRef={chromeRef}
           onOpenSearch={() => {
             if (!canEdit) return
+            if (isBrowserNeoCalendarHost()) {
+              setSettingsOpen(false)
+              setSearchOpen(true)
+              return
+            }
             if (floatingPanels) {
               openEmbeddedPanel({ kind: 'search', eventsHidden })
               return
@@ -1925,6 +1963,11 @@ export function CalendarGrid({
           }}
           onOpenSettings={() => {
             if (!canEdit) return
+            if (isBrowserNeoCalendarHost()) {
+              setSearchOpen(false)
+              setSettingsOpen(true)
+              return
+            }
             if (floatingPanels) {
               openEmbeddedPanel({ kind: 'settings' })
               return
