@@ -22,7 +22,9 @@ function normalizeHex(raw: unknown, fallback = '#1976d2'): string {
   const withHash = value.startsWith('#') ? value : `#${value}`
   if (!HEX_RE.test(withHash)) return fallback
   if (withHash.length === 4) {
-    const [, r, g, b] = withHash
+    const r = withHash[1]
+    const g = withHash[2]
+    const b = withHash[3]
     return `#${r}${r}${g}${g}${b}${b}`.toLowerCase()
   }
   return withHash.toLowerCase()

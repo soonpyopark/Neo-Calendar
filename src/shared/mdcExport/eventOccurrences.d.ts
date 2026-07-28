@@ -1,5 +1,6 @@
 /** Ambient types for MDC eventOccurrences.js (used by Neo renderer). */
 
+import type { CalendarEvent } from '../calendarTypes'
 export function isRecurringEvent(event: { repeat?: string | null } | null | undefined): boolean
 
 export function getOccurrenceDate(
@@ -42,7 +43,7 @@ export function buildFollowingSeriesEvent(
 export function getSeriesId(event: { id?: string; seriesId?: string } | null | undefined): string | null
 
 export function expandEventsForRange(
-  events: unknown[] | null | undefined,
+  events: CalendarEvent[] | null | undefined,
   rangeStart: string,
   rangeEnd: string
-): unknown[]
+): CalendarEvent[]

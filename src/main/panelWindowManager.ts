@@ -486,16 +486,17 @@ export class PanelWindowManager {
     zones: Array<{ x: number; y: number; width: number; height: number; dateKey: string }>
   ): void {
     let anchorClient: PanelAnchorRect | null = null
-    const hasPointer =
-      typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
+    const clientX = payload.clientX
+    const clientY = payload.clientY
+    const hasPointer = typeof clientX === 'number' && typeof clientY === 'number'
     const yearView = isEmbeddedYearQuickEdit(context, zones)
     const effectiveViewMode: QuickEditViewMode = yearView ? 'year' : context.viewMode
 
     // Year view: pointer anchor (same as window mode CalendarGrid double-click).
     if (yearView && hasPointer) {
       anchorClient = {
-        left: payload.clientX,
-        top: payload.clientY,
+        left: clientX,
+        top: clientY,
         width: 1,
         height: 1
       }
@@ -510,8 +511,8 @@ export class PanelWindowManager {
         }
       } else if (hasPointer) {
         anchorClient = {
-          left: payload.clientX - 24,
-          top: payload.clientY - 24,
+          left: clientX - 24,
+          top: clientY - 24,
           width: 48,
           height: 48
         }

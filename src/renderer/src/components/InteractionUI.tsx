@@ -1,10 +1,12 @@
 import {
+  forwardRef,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type HTMLAttributes,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
-  type ReactNode
+  type ReactNode,
+  type Ref
 } from 'react'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 
@@ -22,7 +24,7 @@ type DivProps = CommonProps &
   }
 
 type ButtonProps = CommonProps &
-  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'style' | 'children' | 'type'> & {
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'className' | 'style' | 'children'> & {
     as: 'button'
   }
 
@@ -86,7 +88,10 @@ function bindInteractionHandlers<T extends HTMLElement>(
  * On hover, re-enables mouse capture so buttons / events receive clicks.
  * Empty desktop areas outside these wrappers remain click-through.
  */
-export function InteractionUI(props: InteractionUIProps): ReactElement {
+export const InteractionUI = forwardRef<HTMLElement, InteractionUIProps>(function InteractionUI(
+  props,
+  ref
+): ReactElement {
   const className = `interaction-ui ${props.className ?? ''}`.trim()
 
   if (props.as === 'button') {
@@ -99,6 +104,7 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
       onMouseLeave,
       onClick,
       as: _as,
+      type = 'button',
       ...rest
     } = props
     const handlers = bindInteractionHandlers<HTMLButtonElement>(
@@ -109,7 +115,7 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
     )
 
     return (
-      <button type="button" className={className} style={style} {...rest} {...handlers}>
+      <button ref={ref as Ref<HTMLButtonElement>} type={type} className={className} style={style} {...rest} {...handlers}>
         {children}
       </button>
     )
@@ -135,7 +141,7 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
     )
 
     return (
-      <span className={className} style={style} {...rest} {...handlers}>
+      <span ref={ref as Ref<HTMLSpanElement>} className={className} style={style} {...rest} {...handlers}>
         {children}
       </span>
     )
@@ -160,10 +166,10 @@ export function InteractionUI(props: InteractionUIProps): ReactElement {
   )
 
   return (
-    <div className={className} style={style} {...rest} {...handlers}>
+    <div ref={ref as Ref<HTMLDivElement>} className={className} style={style} {...rest} {...handlers}>
       {children}
     </div>
   )
-}
+})
 
 export default InteractionUI

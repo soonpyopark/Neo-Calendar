@@ -3,6 +3,7 @@ import type {
   QuickEditDeferToMainPayload,
   QuickEditWindowInit
 } from './quickEditLayout'
+export type { DesktopQuickEditContext, QuickEditDeferToMainPayload, QuickEditWindowInit }
 import type { OpenPanelWindowRequest, PanelWindowInit } from './panelWindows'
 export type { OpenPanelWindowRequest, PanelWindowInit }
 import type {

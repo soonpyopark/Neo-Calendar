@@ -1347,10 +1347,10 @@ export function CalendarGrid({
     return api.onToolbarClick(({ action }) => {
       const toolbarActionSet = PERIOD_TOOLBAR_ACTION_ID_SET
       const chromeActionSet = new Set([
-        ...EMBEDDED_FLOATING_CHROME_ACTIONS,
-        ...EMBEDDED_MODE_CHROME_ACTIONS,
-        ...EMBEDDED_EXPORT_CHROME_ACTIONS,
-        ...EMBEDDED_AUTH_CHROME_ACTIONS
+        ...Array.from(EMBEDDED_FLOATING_CHROME_ACTIONS),
+        ...Array.from(EMBEDDED_MODE_CHROME_ACTIONS),
+        ...Array.from(EMBEDDED_EXPORT_CHROME_ACTIONS),
+        ...Array.from(EMBEDDED_AUTH_CHROME_ACTIONS)
       ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       const btn = document.querySelector<HTMLElement>(
