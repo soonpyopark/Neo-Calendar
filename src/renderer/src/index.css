@@ -266,6 +266,41 @@ textarea {
   color: var(--gcal-muted, #70757a);
 }
 
+.neo-cal-footer-hint-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.neo-cal-footer-hint-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  padding: 0;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--gcal-muted, #70757a);
+  cursor: pointer;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.neo-cal-footer-hint-control:hover:not(:disabled) {
+  color: var(--gcal-heading, #3c4043);
+  background: var(--gcal-surface-2, rgba(60, 64, 67, 0.08));
+}
+
+.neo-cal-footer-hint-control.is-active {
+  color: var(--gcal-blue, #1a73e8);
+}
+
+.neo-cal-footer-hint-control:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
 .app-chrome-no-drag {
   -webkit-app-region: no-drag;
 }

@@ -65,6 +65,11 @@ import {
 } from '../../../shared/mdcExport/eventOccurrences.js'
 import { eventToMutationPayload } from '../lib/eventMutation'
 import {
+  FOOTER_HINTS,
+  FOOTER_HINT_ROTATE_MS,
+  pickRandomFooterHintIndex
+} from '../content/footerHints'
+import {
   EVENT_UI_DISMISS_AFTER_DELETE,
   type EventUiDismissDetail
 } from '../lib/eventUiDismiss'
@@ -328,6 +333,54 @@ function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
+function FooterHintPrevIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+    </svg>
+  )
+}
+
+function FooterHintPauseIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M6 5h4v14H6V5zm8 0h4v14h-4V5z" />
+    </svg>
+  )
+}
+
+function FooterHintPlayIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M8 5v14l11-7L8 5z" />
+    </svg>
+  )
+}
+
+function FooterHintNextIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden>
+      <path fill="currentColor" d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+    </svg>
+  )
+}
+
+type FooterHintNav = {
+  index: number
+  history: number[]
+  pos: number
+}
+
+function createFooterHintNav(index = pickRandomFooterHintIndex()): FooterHintNav {
+  return { index, history: [index], pos: 0 }
+}
+
+function advanceFooterHintNav(nav: FooterHintNav, nextIndex: number): FooterHintNav {
+  const history = nav.history.slice(0, nav.pos + 1)
+  history.push(nextIndex)
+  return { index: nextIndex, history, pos: history.length - 1 }
+}
+
 function toWeekStartKey(week: DayCell[]): string {
   return week[0]?.dateKey ?? ''
 }
@@ -417,6 +470,10 @@ export function CalendarGrid({
   const [loginError, setLoginError] = useState<string | null>(null)
   const [modeBusy, setModeBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [footerHintNav, setFooterHintNav] = useState<FooterHintNav>(() => createFooterHintNav())
+  const [footerHintPaused, setFooterHintPaused] = useState(false)
+  const footerHintIndex = footerHintNav.index
+  const canGoPrevFooterHint = footerHintNav.pos > 0
   const [webEditUrl, setWebEditUrl] = useState<string | null>(null)
   /** Bumps when light/dark flips so MDC event-bar themes recompute. */
   const [themeEpoch, setThemeEpoch] = useState(0)
@@ -482,6 +539,16 @@ export function CalendarGrid({
     window.addEventListener(EVENT_UI_DISMISS_AFTER_DELETE, onDismiss)
     return () => window.removeEventListener(EVENT_UI_DISMISS_AFTER_DELETE, onDismiss)
   }, [clearEventDetail])
+
+  useEffect(() => {
+    if (footerHintPaused) return undefined
+    const id = window.setInterval(() => {
+      setFooterHintNav((nav) =>
+        advanceFooterHintNav(nav, pickRandomFooterHintIndex(nav.index))
+      )
+    }, FOOTER_HINT_ROTATE_MS)
+    return () => window.clearInterval(id)
+  }, [footerHintPaused, footerHintIndex])
 
   // MDC login wall: first launch / cold start without session → login dialog.
   const autoLoginPromptedRef = useRef(false)
@@ -2372,9 +2439,86 @@ export function CalendarGrid({
           event.stopPropagation()
         }}
       >
-        <p className="neo-cal-footer-hint m-0 min-w-0">
-          [참고] 날짜 영역을 더블클릭해서 일정을 추가하세요.
-        </p>
+        <div className="neo-cal-footer-hint m-0 flex min-w-0 items-center gap-1.5">
+          <div className="neo-cal-footer-hint-controls shrink-0">
+            <button
+              type="button"
+              className="neo-cal-footer-hint-control"
+              title="이전 도움말"
+              aria-label="이전 도움말"
+              disabled={!canGoPrevFooterHint}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setFooterHintNav((nav) => {
+                  if (nav.pos <= 0) return nav
+                  const pos = nav.pos - 1
+                  return { ...nav, pos, index: nav.history[pos] ?? nav.index }
+                })
+              }}
+            >
+              <FooterHintPrevIcon />
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'neo-cal-footer-hint-control',
+                !footerHintPaused && 'is-active'
+              )}
+              title="도움말 자동 전환 정지"
+              aria-label="도움말 자동 전환 정지"
+              aria-pressed={footerHintPaused}
+              disabled={footerHintPaused}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setFooterHintPaused(true)
+              }}
+            >
+              <FooterHintPauseIcon />
+            </button>
+            <button
+              type="button"
+              className={cn(
+                'neo-cal-footer-hint-control',
+                footerHintPaused && 'is-active'
+              )}
+              title="도움말 자동 전환 재생"
+              aria-label="도움말 자동 전환 재생"
+              aria-pressed={!footerHintPaused}
+              disabled={!footerHintPaused}
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setFooterHintPaused(false)
+              }}
+            >
+              <FooterHintPlayIcon />
+            </button>
+            <button
+              type="button"
+              className="neo-cal-footer-hint-control"
+              title="다음 도움말"
+              aria-label="다음 도움말"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                setFooterHintNav((nav) => {
+                  if (nav.pos < nav.history.length - 1) {
+                    const pos = nav.pos + 1
+                    return { ...nav, pos, index: nav.history[pos] ?? nav.index }
+                  }
+                  return advanceFooterHintNav(nav, pickRandomFooterHintIndex(nav.index))
+                })
+              }}
+            >
+              <FooterHintNextIcon />
+            </button>
+          </div>
+          <p className="m-0 min-w-0 truncate">
+            {FOOTER_HINTS[footerHintIndex] ?? FOOTER_HINTS[0]}
+          </p>
+        </div>
         <SiteLink />
       </footer>
 
