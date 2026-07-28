@@ -81,10 +81,14 @@ export function AppChrome({
     <div
       ref={setChromeRef}
       className={cn(
-        'flex min-w-0 items-center justify-between gap-2',
+        'interaction-ui flex min-w-0 items-center justify-between gap-2',
         isWindow && 'is-window-mode'
       )}
       data-shell-chrome="header-actions"
+      onDoubleClick={(event) => {
+        event.preventDefault()
+        event.stopPropagation()
+      }}
     >
       <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap app-chrome-drag">
         <div className="flex items-baseline gap-2">

@@ -653,32 +653,41 @@ export function CalendarGrid({
 
       const vw = window.innerWidth
       const vh = window.innerHeight
-      const dayZoneSelectors = [
-        '.neo-cal-shell .day-cell[data-date-key]',
-        '.neo-cal-shell .year-day[data-date-key]'
-      ].join(', ')
-      const dayZones = Array.from(
-        document.querySelectorAll<HTMLElement>(dayZoneSelectors)
-      ).flatMap((el) => {
-        const dateKey = el.dataset.dateKey ?? ''
-        if (!dateKey) return []
-        if (el instanceof HTMLButtonElement && el.disabled) return []
-        const r = el.getBoundingClientRect()
-        if (r.width < 1 || r.height < 1) return []
-        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
-        const hit = publishDayCellHitRect(el, r, weekStartsOn)
-        return [
-          {
-            ...hit,
-            dateKey
-          }
-        ]
-      })
-      api.setDayCellHitZones(dayZones)
+      if (!canEdit) {
+        api.setDayCellHitZones([])
+      } else {
+        const dayZoneSelectors = [
+          '.neo-cal-shell .day-cell[data-date-key]',
+          '.neo-cal-shell .year-day[data-date-key]'
+        ].join(', ')
+        const dayZones = Array.from(
+          document.querySelectorAll<HTMLElement>(dayZoneSelectors)
+        ).flatMap((el) => {
+          const dateKey = el.dataset.dateKey ?? ''
+          if (!dateKey) return []
+          if (el instanceof HTMLButtonElement && el.disabled) return []
+          const r = el.getBoundingClientRect()
+          if (r.width < 1 || r.height < 1) return []
+          if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
+          const hit = publishDayCellHitRect(el, r, weekStartsOn)
+          return [
+            {
+              ...hit,
+              dateKey
+            }
+          ]
+        })
+        api.setDayCellHitZones(dayZones)
+
+        if (dayZones.length !== lastDayZoneCountRef.current) {
+          lastDayZoneCountRef.current = dayZones.length
+          console.log('[day-dblclick] renderer published zones', dayZones.length)
+        }
+      }
 
       const excludeZones = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-shell-chrome="header"], [data-shell-chrome="footer"], [data-shell-chrome="weekday-header"]'
+          '[data-shell-chrome="header"], [data-shell-chrome="header-actions"], [data-shell-chrome="period-header"], [data-shell-chrome="footer"], [data-shell-chrome="weekday-header"]'
         )
       ).flatMap((el) => {
         const r = el.getBoundingClientRect()
@@ -695,9 +704,9 @@ export function CalendarGrid({
       api.setDayDblClickExcludeZones(excludeZones)
       api.setDesktopQuickEditContext?.({ viewMode, eventsHidden })
 
-      if (dayZones.length !== lastDayZoneCountRef.current) {
-        lastDayZoneCountRef.current = dayZones.length
-        console.log('[day-dblclick] renderer published zones', dayZones.length)
+      if (!canEdit && lastDayZoneCountRef.current !== 0) {
+        lastDayZoneCountRef.current = 0
+        console.log('[day-dblclick] renderer published zones', 0)
       }
     }
 
@@ -735,7 +744,8 @@ export function CalendarGrid({
     exporting,
     modeBusy,
     switchReady,
-    user
+    user,
+    canEdit
   ])
 
   // Re-publish after embed (WorkerW blocks forwarded mousemove).
@@ -1958,6 +1968,11 @@ export function CalendarGrid({
           mode === 'window' && 'is-window-mode'
         )}
         data-shell-chrome="header"
+        onMouseDown={(event) => event.stopPropagation()}
+        onDoubleClick={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+        }}
       >
         <AppChrome
           mode={mode}
@@ -2007,8 +2022,12 @@ export function CalendarGrid({
 
         <div
           ref={periodHeaderRef}
-          className="header-period-row flex min-w-0 items-center justify-center gap-2"
+          className="header-period-row interaction-ui flex min-w-0 items-center justify-center gap-2"
           data-shell-chrome="period-header"
+          onDoubleClick={(event) => {
+            event.preventDefault()
+            event.stopPropagation()
+          }}
         >
           <div className="flex shrink-0 items-center gap-1" role="group" aria-label="보기 모드">
             {VIEW_MODE_OPTIONS.map(({ value, label, Icon }) => (

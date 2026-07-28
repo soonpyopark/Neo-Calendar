@@ -74,18 +74,26 @@ const VIEWPORT_PAD = 5
 /** Event detail popover / floating panel width (px). */
 export const EVENT_DETAIL_PANEL_WIDTH = 530
 
-/** Floating search panel size (px). Height caps; width = {@link computeSearchPanelWidth}. */
-export const SEARCH_PANEL_WIDTH_RATIO = 0.8
-/** @deprecated Use {@link computeSearchPanelWidth} — kept as upper hint for legacy layouts. */
+/** Settings + search panel width — 90% of main calendar / shell width. */
+export const MAIN_PANEL_WIDTH_RATIO = 0.9
+
+/** @deprecated Use {@link MAIN_PANEL_WIDTH_RATIO} */
+export const SEARCH_PANEL_WIDTH_RATIO = MAIN_PANEL_WIDTH_RATIO
+
+/** @deprecated Use {@link computeMainPanelWidth} — kept as upper hint for legacy layouts. */
 export const SEARCH_PANEL_WIDTH = 880
 export const SEARCH_PANEL_MIN_HEIGHT = 300
 export const SEARCH_PANEL_MAX_HEIGHT = 540
 export const SEARCH_PANEL_CHROME_PAD = 16
 
-/** Search panel width — 80% of main calendar / shell width. */
-export function computeSearchPanelWidth(containerWidth: number): number {
+export function computeMainPanelWidth(containerWidth: number): number {
   const inner = Math.max(0, containerWidth)
-  return Math.max(280, Math.round(inner * SEARCH_PANEL_WIDTH_RATIO))
+  return Math.max(280, Math.round(inner * MAIN_PANEL_WIDTH_RATIO))
+}
+
+/** Search panel width — same as settings ({@link MAIN_PANEL_WIDTH_RATIO}). */
+export function computeSearchPanelWidth(containerWidth: number): number {
+  return computeMainPanelWidth(containerWidth)
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -163,7 +171,7 @@ function belowAnchoredBounds(options: {
   mainOrigin: { x: number; y: number }
   mainSize: { width: number; height: number }
   gap?: number
-  /** When true, horizontal center follows the main window (80% width panels). */
+  /** When true, horizontal center follows the main window (90% width panels). */
   centerInMain?: boolean
 }): { x: number; y: number; width: number; height: number } {
   const pad = VIEWPORT_PAD
@@ -372,7 +380,7 @@ export function computePanelWindowBounds(options: {
       mainOrigin,
       mainSize,
       workArea,
-      width: Math.round(mainSize.width * 0.9),
+      width: computeMainPanelWidth(mainSize.width),
       height: Math.min(Math.round(mainSize.height * 0.8), workArea.height - VIEWPORT_PAD * 2)
     })
   }
@@ -383,7 +391,7 @@ export function computePanelWindowBounds(options: {
       mainSize,
       workArea,
       width: Math.min(
-        computeSearchPanelWidth(mainSize.width),
+        computeMainPanelWidth(mainSize.width),
         workArea.width - VIEWPORT_PAD * 2
       ),
       height: Math.min(

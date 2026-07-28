@@ -269,6 +269,17 @@ textarea {
   -webkit-app-region: no-drag;
 }
 
+/* Disabled toolbar buttons must still capture hits — otherwise clicks fall through to day cells. */
+.neo-cal-shell [data-shell-chrome='header'] button:disabled,
+.neo-cal-shell [data-shell-chrome='period-header'] button:disabled {
+  pointer-events: auto;
+  cursor: not-allowed;
+}
+
+[data-shell-chrome='header-actions'] {
+  pointer-events: auto;
+}
+
 /* —— Month view: transparent shell; day cells carry --neo-shell-opacity (no double stack) —— */
 .month-view {
   display: flex;

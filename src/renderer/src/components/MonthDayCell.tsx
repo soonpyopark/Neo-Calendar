@@ -158,6 +158,7 @@ export function MonthDayCell({
       onDoubleClick={
         interactive && !desktopEmbedded
           ? (event) => {
+              if ((event.target as Element | null)?.closest?.('[data-shell-chrome]')) return
               if ((event.target as Element | null)?.closest?.('.event-bar, .event-more')) return
               event.preventDefault()
               event.stopPropagation()

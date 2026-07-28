@@ -1,6 +1,6 @@
 import koffi from 'koffi'
 import type { WidgetBounds } from '../shared/ipc'
-import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
+import { subscribeGlobalMouseDown, type MouseButton, type ScreenPoint } from './globalMouseHook'
 
 /** Fallback if GetDoubleClickTime is unavailable. */
 const DEFAULT_DBLCLICK_MS = 500
@@ -63,7 +63,9 @@ export class DayCellDblClickBridge {
   start(): void {
     if (process.platform !== 'win32' || this.unsubscribe) return
     this.unsubscribe = subscribeGlobalMouseDown((pt, button) => {
-      if (button === 'left') this.handleMouseDown(pt)
+      if (button === 'left' || button === 'left-dblclick') {
+        this.handleMouseDown(pt, button)
+      }
     })
     console.log('[day-dblclick] global mouse hook armed (GetDoubleClickTime)')
     this.debug('[day-dblclick] hook ready — waiting for embedded clicks')
@@ -76,7 +78,7 @@ export class DayCellDblClickBridge {
     this.lastZoneCount = -1
   }
 
-  private handleMouseDown(pt: ScreenPoint): void {
+  private handleMouseDown(pt: ScreenPoint, button: MouseButton): void {
     if (!this.options.isArmed()) {
       this.lastPress = null
       this.lastZoneCount = -1
@@ -108,6 +110,11 @@ export class DayCellDblClickBridge {
 
     if (this.isExcluded(pt, origin)) {
       this.lastPress = null
+      return
+    }
+
+    if (button === 'left-dblclick') {
+      this.handleSystemDoubleClick(pt, origin, zones)
       return
     }
 
@@ -151,15 +158,7 @@ export class DayCellDblClickBridge {
     }
 
     if (prev && prev.dateKey === hit.dateKey && now - prev.at <= dblWindow) {
-      this.lastPress = null
-      this.lastOpenAt = now
-      this.lastOpenedKey = hit.dateKey
-      this.debug('[day-dblclick] confirmed → floating quick edit', { dateKey: hit.dateKey })
-      this.options.onQuickEditClick({
-        dateKey: hit.dateKey,
-        clientX: hit.clientX,
-        clientY: hit.clientY
-      })
+      this.confirmQuickEdit(pt, hit)
       return
     }
 
@@ -167,6 +166,58 @@ export class DayCellDblClickBridge {
     this.debug('[day-dblclick] first click recorded', {
       dateKey: hit.dateKey,
       dblWindowMs: dblWindow
+    })
+  }
+
+  /** OS WM_LBUTTONDBLCLK — Windows already validated double-click timing. */
+  private handleSystemDoubleClick(
+    pt: ScreenPoint,
+    origin: { x: number; y: number },
+    zones: DayCellClientZone[]
+  ): void {
+    const now = Date.now()
+    if (this.lastOpenedKey && now - this.lastOpenAt < COOLDOWN_MS) {
+      return
+    }
+
+    const prev = this.lastPress
+    let hit = this.hitDayCell(pt, origin, zones)
+    if (
+      !hit &&
+      prev &&
+      Math.hypot(pt.x - prev.x, pt.y - prev.y) <= CLICK_JITTER_PX
+    ) {
+      hit = {
+        dateKey: prev.dateKey,
+        clientX: Math.round(pt.x - origin.x),
+        clientY: Math.round(pt.y - origin.y)
+      }
+    }
+    if (!hit) {
+      this.debug('[day-dblclick] dblclk missed all zones', { x: pt.x, y: pt.y })
+      return
+    }
+
+    this.confirmQuickEdit(pt, hit)
+  }
+
+  private confirmQuickEdit(
+    pt: ScreenPoint,
+    hit: { dateKey: string; clientX: number; clientY: number }
+  ): void {
+    const now = Date.now()
+    this.lastPress = null
+    this.lastOpenAt = now
+    this.lastOpenedKey = hit.dateKey
+    this.debug('[day-dblclick] confirmed → floating quick edit (parallel with desktop icons)', {
+      dateKey: hit.dateKey,
+      x: pt.x,
+      y: pt.y
+    })
+    this.options.onQuickEditClick({
+      dateKey: hit.dateKey,
+      clientX: hit.clientX,
+      clientY: hit.clientY
     })
   }
 

@@ -3,10 +3,12 @@ import koffi from 'koffi'
 
 const WH_MOUSE_LL = 14
 const WM_LBUTTONDOWN = 0x0201
+const WM_LBUTTONDBLCLK = 0x0203
 const WM_RBUTTONDOWN = 0x0204
 
 export type ScreenPoint = { x: number; y: number }
-export type MouseDownListener = (pt: ScreenPoint, button: 'left' | 'right') => void
+export type MouseButton = 'left' | 'left-dblclick' | 'right'
+export type MouseDownListener = (pt: ScreenPoint, button: MouseButton) => void
 
 let hook: unknown = null
 let hookProc: unknown = null
@@ -51,18 +53,22 @@ function ensureHook(): void {
     (nCode: number, wParam: number, lParam: unknown): bigint => {
       try {
         if (nCode >= 0) {
-          let button: 'left' | 'right' | null = null
+          let button: MouseButton | null = null
           if (wParam === WM_LBUTTONDOWN) button = 'left'
+          else if (wParam === WM_LBUTTONDBLCLK) button = 'left-dblclick'
           else if (wParam === WM_RBUTTONDOWN) button = 'right'
           if (button && listeners.size > 0) {
             const pt = screen.getCursorScreenPoint()
-            for (const listener of listeners) {
-              try {
-                listener(pt, button)
-              } catch (error) {
-                console.error('[global-mouse] listener error:', error)
+            // Let CallNextHookEx / desktop icon handlers run before we synthesize clicks.
+            setTimeout(() => {
+              for (const listener of listeners) {
+                try {
+                  listener(pt, button)
+                } catch (error) {
+                  console.error('[global-mouse] listener error:', error)
+                }
               }
-            }
+            }, 0)
           }
         }
       } catch (error) {
