@@ -85,6 +85,8 @@ export class DayCellDblClickBridge {
       return
     }
     if (this.options.shouldProcessEmbeddedClick && !this.options.shouldProcessEmbeddedClick(pt)) {
+      // Icon / foreign click — drop half-finished double-click pairing.
+      this.lastPress = null
       return
     }
 

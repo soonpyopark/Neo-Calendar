@@ -26,6 +26,7 @@ import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
 import { focusWindowForTextInput } from './windowFocus'
 import { isForeignAppAtPoint, shouldProcessEmbeddedGlobalClick } from './windowAtPoint'
+import { desktopHitHelperHost } from './desktopHitHelperHost'
 import { isNativeDialogOpen, withNativeDialog } from './nativeDialogGuard'
 import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
@@ -208,7 +209,10 @@ function isForeignClickAtPoint(pt: { x: number; y: number }): boolean {
 function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolean {
   if (isNativeDialogOpen()) return false
   if (panelWindowManager?.isPointInsideAnyPanel(pt)) return false
-  return shouldProcessEmbeddedGlobalClick(mainWindow, pt)
+  if (!shouldProcessEmbeddedGlobalClick(mainWindow, pt)) return false
+  // Hidden helper (neo-desktop-hit): skip calendar actions when click is on a desktop icon.
+  if (desktopHitHelperHost.isIconAtDipPoint(pt)) return false
+  return true
 }
 
 function restoreMainWindowMouseAfterPanels(): void {
@@ -914,6 +918,7 @@ function bootApp(): void {
   })
 
   registerIpc()
+  desktopHitHelperHost.start()
 
   webServer = new CalendarWebServer({
     auth,
@@ -1061,6 +1066,11 @@ function bootApp(): void {
 app.on('before-quit', () => {
   forceQuit = true
   desktopMode?.persistSession()
+  try {
+    desktopHitHelperHost.stop()
+  } catch {
+    /* ignore */
+  }
   try {
     webServer?.stop()
   } catch {

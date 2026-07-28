@@ -11,12 +11,13 @@
     "browser:dev": "node scripts/open-browser-dev.mjs",
     "stop": "node scripts/kill-dev.mjs",
     "build": "electron-vite build",
+    "build:desktop-hit": "node scripts/build-desktop-hit-helper.mjs",
     "preview": "electron-vite preview",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "sync-version": "node scripts/sync-version.mjs",
-    "dist": "npm run build && electron-builder --win",
+    "dist": "npm run build:desktop-hit && npm run build && electron-builder --win",
     "build:msi": "node scripts/build-msi.mjs",
     "build:dist:msi": "node scripts/build-msi.mjs"
   },
@@ -63,6 +64,13 @@
         "to": "icons",
         "filter": [
           "**/*"
+        ]
+      },
+      {
+        "from": "resources/desktop-hit-helper",
+        "to": "desktop-hit-helper",
+        "filter": [
+          "neo-desktop-hit.exe"
         ]
       }
     ],

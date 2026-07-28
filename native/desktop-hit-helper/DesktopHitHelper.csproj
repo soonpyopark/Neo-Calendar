@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <AssemblyName>neo-desktop-hit</AssemblyName>
+    <RootNamespace>NeoCalendar.DesktopHit</RootNamespace>
+    <StartupObject>NeoCalendar.DesktopHit.Program</StartupObject>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    <!-- net48 is present on Windows 10/11 — keeps the helper small. -->
+    <RuntimeIdentifier></RuntimeIdentifier>
+  </PropertyGroup>
+</Project>

@@ -245,8 +245,8 @@ export function shouldProcessEmbeddedGlobalClick(
   if (isClickInsideForeignForeground(user32, ptDip, ourHwnd)) return false
   if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
 
-  // Clicks on desktop icons / WorkerW — process even when another app is foreground
-  // (icon launch proceeds via CallNextHookEx; quick edit opens in parallel after defer).
+  // Empty desktop / WorkerW / icon listview — accept here.
+  // Desktop *icon items* are filtered by neo-desktop-hit helper in main.ts.
   if (isDesktopShellHwnd(user32, atPoint)) return true
 
   if (isOurHwnd(user32, atPoint, ourHwnd)) {

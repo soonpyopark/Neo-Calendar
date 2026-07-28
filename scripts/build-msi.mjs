@@ -5,7 +5,7 @@
  *
  * Flow:
  * 1) sync-version
- * 2) electron-vite build + electron-builder --win --dir → release/win-unpacked/
+ * 2) build desktop-hit helper + electron-vite build + electron-builder --win --dir → release/win-unpacked/
  * 3) stage into a no-space temp work dir (repo path has spaces; WiX Files Include splits on them)
  *    (+ .env with DATA_GO_KR_SERVICE_KEY)
  * 4) wix build Product.wxs → msi/Neo Calendar v{version}_YYMMDD_HHMMSS.msi
@@ -230,6 +230,7 @@ function writeStagedEnv(stageDir, holidayKey) {
 }
 
 function publishPortable() {
+  run('npm run build:desktop-hit')
   run('npm run build')
   run('npx electron-builder --win --dir')
   const builtExe = path.join(PUBLISH_DIR, STAGE_EXE)
