@@ -6,6 +6,7 @@ import { SettingsPanelHost } from './panelHosts/SettingsPanelHost'
 import { SearchPanelHost } from './panelHosts/SearchPanelHost'
 import { EventDetailPanelHost } from './panelHosts/EventDetailPanelHost'
 import { ExportConfirmPanelHost } from './panelHosts/ExportConfirmPanelHost'
+import { LoginPanelHost } from './panelHosts/LoginPanelHost'
 
 export function PanelApp(): ReactElement | null {
   const [init, setInit] = useState<PanelWindowInit | null>(null)
@@ -43,6 +44,8 @@ export function PanelApp(): ReactElement | null {
       return <EventDetailPanelHost init={init} />
     case 'exportConfirm':
       return <ExportConfirmPanelHost init={init} />
+    case 'login':
+      return <LoginPanelHost init={init} />
     default:
       return null
   }

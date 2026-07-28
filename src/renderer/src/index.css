@@ -1316,6 +1316,57 @@ input[type='search']::-ms-clear,
   cursor: not-allowed;
 }
 
+/* Floating login panel (WorkerW / window mode) — match quick-edit flat chrome. */
+.login-panel-shell {
+  background: var(--gcal-page-solid);
+}
+
+.mdc-login-card--floating {
+  width: 100%;
+  max-width: none;
+  height: auto;
+  border: 0;
+  box-shadow: none;
+  background: transparent;
+  padding: 16px 20px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.mdc-login-card--floating .mdc-login-fields {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.mdc-login-card--floating .mdc-login-footer {
+  margin-top: 14px;
+}
+
+.mdc-login-card--floating .mdc-login-error {
+  margin-top: 8px;
+}
+
+html.neo-panel-window.dark .mdc-login-card--floating .mdc-login-input {
+  background: var(--gcal-input);
+  color: var(--gcal-heading);
+  border-color: var(--gcal-border);
+}
+
+html.neo-panel-window.dark .mdc-login-card--floating .mdc-login-btn {
+  background: var(--gcal-surface-2);
+  color: var(--gcal-body);
+}
+
+html.neo-panel-window.dark .mdc-login-card--floating .mdc-login-btn--primary {
+  background: var(--gcal-blue);
+  color: #fff;
+}
+
+html.neo-panel-window.dark .mdc-login-card--floating .mdc-login-btn--primary:hover:not(:disabled) {
+  background: var(--gcal-blue-dark);
+}
+
 .settings-field input[type='range'] {
   width: 100%;
 }
@@ -1781,6 +1832,7 @@ html.neo-panel-window .settings-panel-shell,
 html.neo-panel-window .search-panel-shell,
 html.neo-panel-window .event-detail-shell,
 html.neo-panel-window .export-confirm-shell,
+html.neo-panel-window .login-panel-shell,
 html.neo-panel-window .shell-solid-surface,
 html.neo-panel-window .interaction-ui.rounded-xl.bg-gcal-surface,
 html.neo-panel-window .app-dialog-root .shell-solid-surface {
@@ -1797,6 +1849,7 @@ html.neo-panel-window.dark .day-quick-edit,
 html.neo-panel-window.dark .event-detail-shell,
 html.neo-panel-window.dark .search-panel-shell,
 html.neo-panel-window.dark .export-confirm-shell,
+html.neo-panel-window.dark .login-panel-shell,
 html.neo-quick-edit-window.dark .day-quick-edit {
   background: var(--gcal-surface);
   border-color: var(--gcal-border);

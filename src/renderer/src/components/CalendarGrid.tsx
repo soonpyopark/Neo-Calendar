@@ -37,6 +37,7 @@ import {
 import { LoginDialog } from './LoginDialog'
 import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 import {
+  EMBEDDED_AUTH_CHROME_ACTIONS,
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   EMBEDDED_MODE_CHROME_ACTIONS,
@@ -468,19 +469,8 @@ export function CalendarGrid({
     enabled: canEdit
   })
 
-  // MDC login wall: first launch / cold start without session → window + login dialog.
+  // MDC login wall: first launch / cold start without session → login dialog.
   const autoLoginPromptedRef = useRef(false)
-  useEffect(() => {
-    if (autoLoginPromptedRef.current || loading || !authReady || user) return
-    autoLoginPromptedRef.current = true
-    setLoginError(null)
-    setLoginOpen(true)
-    if (mode === 'desktop') {
-      void window.neoCalendar.enterWindow().then((status) => {
-        onModeChange(status.mode)
-      })
-    }
-  }, [authReady, loading, mode, onModeChange, user])
 
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
@@ -510,6 +500,31 @@ export function CalendarGrid({
     },
     []
   )
+
+  useEffect(() => {
+    if (autoLoginPromptedRef.current || loading || !authReady || user) return
+    autoLoginPromptedRef.current = true
+    setLoginError(null)
+    if (floatingPanels) {
+      openEmbeddedPanel({ kind: 'login', dismissible: false })
+      return
+    }
+    setLoginOpen(true)
+    if (mode === 'desktop') {
+      void window.neoCalendar.enterWindow().then((status) => {
+        onModeChange(status.mode)
+      })
+    }
+  }, [authReady, floatingPanels, loading, mode, onModeChange, openEmbeddedPanel, user])
+
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onAuthChanged) return
+    return api.onAuthChanged(() => {
+      void api.getAuth().then(onUserChange)
+      void refresh()
+    })
+  }, [onUserChange, refresh])
 
   const eventsHidden = store.settings.viewOptions.eventsHidden
   const completedHidden = store.settings.viewOptions.completedHidden
@@ -566,7 +581,8 @@ export function CalendarGrid({
                 !action ||
                 (!EMBEDDED_FLOATING_CHROME_ACTIONS.has(action) &&
                   !EMBEDDED_MODE_CHROME_ACTIONS.has(action) &&
-                  !EMBEDDED_EXPORT_CHROME_ACTIONS.has(action))
+                  !EMBEDDED_EXPORT_CHROME_ACTIONS.has(action) &&
+                  !EMBEDDED_AUTH_CHROME_ACTIONS.has(action))
               )
                 return []
               const r = el.getBoundingClientRect()
@@ -1230,7 +1246,8 @@ export function CalendarGrid({
       const chromeActionSet = new Set([
         ...EMBEDDED_FLOATING_CHROME_ACTIONS,
         ...EMBEDDED_MODE_CHROME_ACTIONS,
-        ...EMBEDDED_EXPORT_CHROME_ACTIONS
+        ...EMBEDDED_EXPORT_CHROME_ACTIONS,
+        ...EMBEDDED_AUTH_CHROME_ACTIONS
       ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       const btn = document.querySelector<HTMLElement>(
@@ -1422,6 +1439,10 @@ export function CalendarGrid({
       return
     }
     setLoginError(null)
+    if (floatingPanels) {
+      openEmbeddedPanel({ kind: 'login', dismissible: true })
+      return
+    }
     setLoginOpen(true)
   }
 
@@ -2209,14 +2230,16 @@ export function CalendarGrid({
           onRefresh={refresh}
         />
       ) : null}
-      <LoginDialog
-        open={loginOpen}
-        busy={loginBusy}
-        error={loginError}
-        dismissible={!isBrowserNeoCalendarHost() || Boolean(user)}
-        onClose={() => setLoginOpen(false)}
-        onSubmit={handleLogin}
-      />
+      {!floatingPanels ? (
+        <LoginDialog
+          open={loginOpen}
+          busy={loginBusy}
+          error={loginError}
+          dismissible={!isBrowserNeoCalendarHost() || Boolean(user)}
+          onClose={() => setLoginOpen(false)}
+          onSubmit={handleLogin}
+        />
+      ) : null}
 
       {inlineOverlays && quickEdit ? (
         <DayQuickEditPopover

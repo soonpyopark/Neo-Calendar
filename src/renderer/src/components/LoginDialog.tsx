@@ -9,6 +9,7 @@ import { InteractionUI } from './InteractionUI'
 
 export type LoginDialogProps = {
   open: boolean
+  surface?: 'inline' | 'floating'
   busy?: boolean
   error?: string | null
   /** When false, backdrop/Escape/×/취소 cannot dismiss (login wall). */
@@ -44,12 +45,14 @@ function PasswordVisibilityIcon({ visible }: { visible: boolean }): ReactElement
  */
 export function LoginDialog({
   open,
+  surface = 'inline',
   busy = false,
   error = null,
   dismissible = true,
   onClose,
   onSubmit
 }: LoginDialogProps): ReactElement | null {
+  const isFloating = surface === 'floating'
   const [loginId, setLoginId] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -101,6 +104,110 @@ export function LoginDialog({
 
   const canSubmit = Boolean(loginId.trim() && password) && !busy
 
+  const formBody = (
+    <form className="mdc-login-form" onSubmit={handleSubmit}>
+      {dismissible ? (
+        <button
+          type="button"
+          className="mdc-login-close"
+          onClick={onClose}
+          onMouseDown={(event) => event.stopPropagation()}
+          disabled={busy}
+          aria-label="로그인 창 닫기"
+        >
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+            />
+          </svg>
+        </button>
+      ) : null}
+
+      <h2 id="login-dialog-title" className="mdc-login-title">
+        로그인
+      </h2>
+      <p className="mdc-login-subtitle">회원 계정으로 로그인한 뒤 캘린더를 이용합니다.</p>
+
+      <div className="mdc-login-fields">
+        <label className="mdc-login-label">
+          아이디
+          <input
+            ref={idInputRef}
+            type="text"
+            className="mdc-login-input"
+            value={loginId}
+            autoComplete="username"
+            disabled={busy}
+            onChange={(event) => setLoginId(event.target.value)}
+          />
+        </label>
+        <label className="mdc-login-label">
+          비밀번호
+          <div className="mdc-login-password-wrap">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              className="mdc-login-input mdc-login-input--password"
+              value={password}
+              autoComplete="current-password"
+              disabled={busy}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+            <button
+              type="button"
+              className="mdc-login-eye"
+              aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 표시'}
+              aria-pressed={showPassword}
+              disabled={busy}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setShowPassword((prev) => !prev)}
+            >
+              <PasswordVisibilityIcon visible={showPassword} />
+            </button>
+          </div>
+        </label>
+      </div>
+
+      {error ? <p className="mdc-login-error">{error}</p> : null}
+
+      <div className="mdc-login-footer">
+        <label className="mdc-login-remember">
+          <input
+            type="checkbox"
+            checked={remember}
+            disabled={busy}
+            onChange={(event) => setRemember(event.target.checked)}
+          />
+          로그인 유지
+        </label>
+        <div className="mdc-login-actions">
+          {dismissible ? (
+            <button type="button" className="mdc-login-btn" onClick={onClose} disabled={busy}>
+              취소
+            </button>
+          ) : null}
+          <button type="submit" className="mdc-login-btn mdc-login-btn--primary" disabled={!canSubmit}>
+            {busy ? '로그인 중…' : '로그인'}
+          </button>
+        </div>
+      </div>
+    </form>
+  )
+
+  if (isFloating) {
+    return (
+      <InteractionUI
+        as="div"
+        className="login-panel-shell shell-solid-surface flex h-auto w-full shrink-0 flex-col overflow-hidden rounded-xl border border-[var(--gcal-border)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="login-dialog-title"
+      >
+        <div className="mdc-login-card mdc-login-card--floating">{formBody}</div>
+      </InteractionUI>
+    )
+  }
+
   return (
     <div
       className="mdc-login-backdrop interaction-ui"
@@ -115,98 +222,7 @@ export function LoginDialog({
         aria-labelledby="login-dialog-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <form className="mdc-login-form" onSubmit={handleSubmit}>
-          {dismissible ? (
-            <button
-              type="button"
-              className="mdc-login-close"
-              onClick={onClose}
-              onMouseDown={(event) => event.stopPropagation()}
-              disabled={busy}
-              aria-label="로그인 창 닫기"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                />
-              </svg>
-            </button>
-          ) : null}
-
-          <h2 id="login-dialog-title" className="mdc-login-title">
-            로그인
-          </h2>
-          <p className="mdc-login-subtitle">회원 계정으로 로그인한 뒤 캘린더를 이용합니다.</p>
-
-          <div className="mdc-login-fields">
-            <label className="mdc-login-label">
-              아이디
-              <input
-                ref={idInputRef}
-                type="text"
-                className="mdc-login-input"
-                value={loginId}
-                autoComplete="username"
-                disabled={busy}
-                onChange={(event) => setLoginId(event.target.value)}
-              />
-            </label>
-            <label className="mdc-login-label">
-              비밀번호
-              <div className="mdc-login-password-wrap">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  className="mdc-login-input mdc-login-input--password"
-                  value={password}
-                  autoComplete="current-password"
-                  disabled={busy}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-                <button
-                  type="button"
-                  className="mdc-login-eye"
-                  aria-label={showPassword ? '비밀번호 숨기기' : '비밀번호 표시'}
-                  aria-pressed={showPassword}
-                  disabled={busy}
-                  onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => setShowPassword((prev) => !prev)}
-                >
-                  <PasswordVisibilityIcon visible={showPassword} />
-                </button>
-              </div>
-            </label>
-          </div>
-
-          {error ? <p className="mdc-login-error">{error}</p> : null}
-
-          <div className="mdc-login-footer">
-            <label className="mdc-login-remember">
-              <input
-                type="checkbox"
-                checked={remember}
-                disabled={busy}
-                onChange={(event) => setRemember(event.target.checked)}
-              />
-              로그인 유지
-            </label>
-            <div className="mdc-login-actions">
-              {dismissible ? (
-                <button
-                  type="button"
-                  className="mdc-login-btn"
-                  onClick={onClose}
-                  disabled={busy}
-                >
-                  취소
-                </button>
-              ) : null}
-              <button type="submit" className="mdc-login-btn mdc-login-btn--primary" disabled={!canSubmit}>
-                {busy ? '로그인 중…' : '로그인'}
-              </button>
-            </div>
-          </div>
-        </form>
+        {formBody}
       </InteractionUI>
     </div>
   )

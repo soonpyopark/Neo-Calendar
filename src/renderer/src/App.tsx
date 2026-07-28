@@ -56,11 +56,15 @@ export default function App(): ReactElement {
       applyOpacitySettings(patch)
     })
     const unsubStore = api.onStoreChanged(refreshOpacityFromStore)
+    const unsubAuth = api.onAuthChanged?.(() => {
+      void api.getAuth().then(setUser)
+    })
 
     return () => {
       unsubMode()
       unsubOpacity?.()
       unsubStore()
+      unsubAuth?.()
     }
   }, [])
 

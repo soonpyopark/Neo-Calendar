@@ -58,6 +58,8 @@ export class AuthService {
     if (remember) {
       // Persist browser token alongside shell format for cold start convenience.
       this.store.setAuthSession({ token, loginId: member.user.loginId })
+    } else {
+      this.store.setAuthSession(null)
     }
     return { ok: true, user: member.user, token }
   }

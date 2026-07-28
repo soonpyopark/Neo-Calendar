@@ -96,7 +96,8 @@ export const CHROME_TOOLBAR_ACTIONS = {
   exportExcel: 'export-excel',
   exportPdf: 'export-pdf',
   enterDesktop: 'enter-desktop',
-  enterWindow: 'enter-window'
+  enterWindow: 'enter-window',
+  authToggle: 'auth-toggle'
 } as const
 
 /** Header actions that open floating panels while WorkerW-embedded. */
@@ -114,6 +115,11 @@ export const EMBEDDED_MODE_CHROME_ACTIONS = new Set<string>([
 export const EMBEDDED_EXPORT_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.exportExcel,
   CHROME_TOOLBAR_ACTIONS.exportPdf
+])
+
+/** Login / logout while WorkerW-embedded. */
+export const EMBEDDED_AUTH_CHROME_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.authToggle
 ])
 
 export type ToolbarClickPayload = {
@@ -177,6 +183,8 @@ export type NeoCalendarApi = {
   openPanelWindow: (request: OpenPanelWindowRequest) => Promise<boolean>
   closePanelWindow: () => void
   routePanelWindow: (init: PanelWindowInit) => Promise<boolean>
+  /** Shrink a floating panel BrowserWindow to fit its content (keeps x/y). */
+  resizePanelWindow: (size: { width: number; height: number }) => Promise<boolean>
   /** Main → renderer: open editor/detail after floating quick edit defers. */
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => () => void
   /** Main → renderer: run period toolbar action after embedded click unlock. */
@@ -185,6 +193,8 @@ export type NeoCalendarApi = {
   onDayDblClickLog?: (listener: (payload: DayDblClickLogPayload) => void) => () => void
   /** Fired when calendar store mutates (web API or another client). */
   onStoreChanged: (listener: () => void) => () => void
+  /** Main window: shell login / logout completed (including from floating login panel). */
+  onAuthChanged: (listener: () => void) => () => void
   /** Floating panel → main window live opacity preview while dragging sliders. */
   applyMainOpacityPreview: (patch: OpacityPreviewPatch) => void
   /** Main window: receive opacity preview from floating settings panel. */

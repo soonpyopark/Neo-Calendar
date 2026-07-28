@@ -57,6 +57,7 @@ import type {
 } from '../shared/ipc'
 import {
   CHROME_TOOLBAR_ACTIONS,
+  EMBEDDED_AUTH_CHROME_ACTIONS,
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
@@ -138,6 +139,16 @@ let desktopQuickEditContext: DesktopQuickEditContext = {
 let panelWindowManager: PanelWindowManager | null = null
 /** Period toolbar footprints for WorkerW embedded click → action (stay embedded). */
 let clickForwardHitZones: ClickForwardClientZone[] = []
+
+function notifyAuthChanged(): void {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('auth-changed')
+    }
+  } catch {
+    /* ignore */
+  }
+}
 
 function notifyStoreChanged(): void {
   try {
@@ -308,7 +319,8 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
   if (
     !PERIOD_TOOLBAR_ACTION_IDS.has(payload.action) &&
     !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action) &&
-    !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action)
+    !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action) &&
+    !EMBEDDED_AUTH_CHROME_ACTIONS.has(payload.action)
   ) {
     return
   }
@@ -549,12 +561,16 @@ function registerIpc(): void {
       const result = auth.login(loginId, password, Boolean(remember))
       if (result.ok && result.user?.loginId) {
         syncOwnerNameFromLoginId(result.user.loginId)
+        notifyStoreChanged()
+        notifyAuthChanged()
       }
       return result
     }
   )
   ipcMain.handle('logout', () => {
     auth.logout()
+    notifyStoreChanged()
+    notifyAuthChanged()
   })
 
   ipcMain.handle('get-settings', () => settingsStore.getSettings())

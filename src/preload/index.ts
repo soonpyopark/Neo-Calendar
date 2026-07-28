@@ -114,6 +114,8 @@ const api: NeoCalendarApi = {
   },
   routePanelWindow: (init) =>
     ipcRenderer.invoke('panel-route', init) as ReturnType<NeoCalendarApi['routePanelWindow']>,
+  resizePanelWindow: (size) =>
+    ipcRenderer.invoke('panel-resize', size) as ReturnType<NeoCalendarApi['resizePanelWindow']>,
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -157,6 +159,15 @@ const api: NeoCalendarApi = {
     ipcRenderer.on('store-changed', handler)
     return () => {
       ipcRenderer.removeListener('store-changed', handler)
+    }
+  },
+  onAuthChanged: (listener: () => void) => {
+    const handler = (): void => {
+      listener()
+    }
+    ipcRenderer.on('auth-changed', handler)
+    return () => {
+      ipcRenderer.removeListener('auth-changed', handler)
     }
   },
   applyMainOpacityPreview: (patch) => {

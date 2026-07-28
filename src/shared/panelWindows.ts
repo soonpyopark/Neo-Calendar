@@ -12,6 +12,7 @@ export type PanelKind =
   | 'search'
   | 'eventDetail'
   | 'exportConfirm'
+  | 'login'
 
 export type PanelAnchorRect = QuickEditAnchorRect
 
@@ -56,6 +57,11 @@ export type PanelWindowInit =
       format: 'excel' | 'pdf'
       year: number
       month: number
+    }
+  | {
+      kind: 'login'
+      /** When false, backdrop/close/cancel cannot dismiss (login wall). */
+      dismissible?: boolean
     }
 
 export type OpenPanelWindowRequest = PanelWindowInit & {
@@ -324,6 +330,16 @@ export function computePanelWindowBounds(options: {
       workArea,
       width: 392,
       height: 176
+    })
+  }
+
+  if (init.kind === 'login') {
+    return centeredBounds({
+      mainOrigin,
+      mainSize,
+      workArea,
+      width: 392,
+      height: 300
     })
   }
 

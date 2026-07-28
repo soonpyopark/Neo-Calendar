@@ -254,10 +254,18 @@ export function installBrowserNeoCalendar(): void {
     openPanelWindow: async () => false,
     closePanelWindow: () => undefined,
     routePanelWindow: async () => false,
+    resizePanelWindow: async () => false,
     onQuickEditDeferred: () => () => undefined,
     onDayDblClickLog: () => () => undefined,
     // Browser already refreshes via WebSocket → neo-store-changed.
     onStoreChanged: () => () => undefined,
+    onAuthChanged: (listener) => {
+      const handler = (): void => {
+        listener()
+      }
+      window.addEventListener('neo-auth-changed', handler)
+      return () => window.removeEventListener('neo-auth-changed', handler)
+    },
     applyMainOpacityPreview: () => undefined,
     onMainOpacityPreview: () => () => undefined,
 
@@ -284,6 +292,7 @@ export function installBrowserNeoCalendar(): void {
         return { ok: false, error: result.error ?? '로그인에 실패했습니다.' }
       }
       setToken(result.token, Boolean(remember))
+      window.dispatchEvent(new CustomEvent('neo-auth-changed'))
       return { ok: true, user: result.user }
     },
     logout: async () => {
@@ -291,6 +300,7 @@ export function installBrowserNeoCalendar(): void {
         await http('POST', '/api/auth/logout')
       } finally {
         setToken(null, false)
+        window.dispatchEvent(new CustomEvent('neo-auth-changed'))
         await clearOfflineSnapshot().catch(() => {
           /* best-effort */
         })

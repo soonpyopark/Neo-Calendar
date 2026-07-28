@@ -212,6 +212,8 @@ export function AppChrome({
         <InteractionUI
           as="button"
           className={cn(actionBtnBase, 'bg-gcal-blue-soft hover:bg-[#d2e3fc] dark:hover:bg-gcal-surface-2')}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.authToggle}
           title={loggedIn && user ? `${user.loginId} 로그아웃` : '로그인'}
           onClick={onAuthToggle}
         >
