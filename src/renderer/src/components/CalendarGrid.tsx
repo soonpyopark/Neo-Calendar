@@ -45,7 +45,9 @@ import {
   EMBEDDED_AUTH_CHROME_ACTIONS,
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
+  EMBEDDED_FOOTER_HINT_ACTIONS,
   EMBEDDED_MODE_CHROME_ACTIONS,
+  FOOTER_HINT_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../../../shared/ipc'
 import {
@@ -787,7 +789,27 @@ export function CalendarGrid({
             }
           )
         : []
-      api.setClickForwardHitZones([...toolbarZones, ...chromeZones])
+      const footerZones = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.neo-cal-shell [data-shell-chrome="footer"] [data-toolbar-action]'
+        )
+      ).flatMap((el) => {
+        if (el instanceof HTMLButtonElement && el.disabled) return []
+        const action = el.dataset.toolbarAction ?? ''
+        if (!action || !EMBEDDED_FOOTER_HINT_ACTIONS.has(action)) return []
+        const r = el.getBoundingClientRect()
+        if (r.width < 1 || r.height < 1) return []
+        return [
+          {
+            x: Math.round(r.left),
+            y: Math.round(r.top),
+            width: Math.round(r.width),
+            height: Math.round(r.height),
+            action
+          }
+        ]
+      })
+      api.setClickForwardHitZones([...toolbarZones, ...chromeZones, ...footerZones])
 
       const vw = window.innerWidth
       const vh = window.innerHeight
@@ -873,7 +895,9 @@ export function CalendarGrid({
     exporting,
     modeBusy,
     switchReady,
-    user
+    user,
+    footerHintPaused,
+    canGoPrevFooterHint
   ])
 
   // Re-publish after embed (WorkerW blocks forwarded mousemove).
@@ -1402,7 +1426,8 @@ export function CalendarGrid({
         ...Array.from(EMBEDDED_FLOATING_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_MODE_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_EXPORT_CHROME_ACTIONS),
-        ...Array.from(EMBEDDED_AUTH_CHROME_ACTIONS)
+        ...Array.from(EMBEDDED_AUTH_CHROME_ACTIONS),
+        ...Array.from(EMBEDDED_FOOTER_HINT_ACTIONS)
       ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       const btn = document.querySelector<HTMLElement>(
@@ -2444,6 +2469,7 @@ export function CalendarGrid({
             <button
               type="button"
               className="neo-cal-footer-hint-control"
+              data-toolbar-action={FOOTER_HINT_ACTIONS.prev}
               title="이전 도움말"
               aria-label="이전 도움말"
               disabled={!canGoPrevFooterHint}
@@ -2465,6 +2491,7 @@ export function CalendarGrid({
                 'neo-cal-footer-hint-control',
                 !footerHintPaused && 'is-active'
               )}
+              data-toolbar-action={FOOTER_HINT_ACTIONS.pause}
               title="도움말 자동 전환 정지"
               aria-label="도움말 자동 전환 정지"
               aria-pressed={footerHintPaused}
@@ -2483,6 +2510,7 @@ export function CalendarGrid({
                 'neo-cal-footer-hint-control',
                 footerHintPaused && 'is-active'
               )}
+              data-toolbar-action={FOOTER_HINT_ACTIONS.play}
               title="도움말 자동 전환 재생"
               aria-label="도움말 자동 전환 재생"
               aria-pressed={!footerHintPaused}
@@ -2498,6 +2526,7 @@ export function CalendarGrid({
             <button
               type="button"
               className="neo-cal-footer-hint-control"
+              data-toolbar-action={FOOTER_HINT_ACTIONS.next}
               title="다음 도움말"
               aria-label="다음 도움말"
               onClick={(event) => {

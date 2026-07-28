@@ -140,6 +140,16 @@ export const EMBEDDED_AUTH_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.authToggle
 ])
 
+/** Footer hint prev/pause/play/next while WorkerW-embedded. */
+export const FOOTER_HINT_ACTIONS = {
+  prev: 'footer-hint-prev',
+  pause: 'footer-hint-pause',
+  play: 'footer-hint-play',
+  next: 'footer-hint-next'
+} as const
+
+export const EMBEDDED_FOOTER_HINT_ACTIONS = new Set<string>(Object.values(FOOTER_HINT_ACTIONS))
+
 export type ToolbarClickPayload = {
   action: string
 }

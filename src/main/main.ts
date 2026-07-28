@@ -61,6 +61,7 @@ import {
   EMBEDDED_AUTH_CHROME_ACTIONS,
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
+  EMBEDDED_FOOTER_HINT_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../shared/ipc'
 import {
@@ -349,7 +350,8 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
     !PERIOD_TOOLBAR_ACTION_IDS.has(payload.action) &&
     !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action) &&
     !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action) &&
-    !EMBEDDED_AUTH_CHROME_ACTIONS.has(payload.action)
+    !EMBEDDED_AUTH_CHROME_ACTIONS.has(payload.action) &&
+    !EMBEDDED_FOOTER_HINT_ACTIONS.has(payload.action)
   ) {
     return
   }
