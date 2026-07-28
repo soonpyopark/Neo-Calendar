@@ -1872,11 +1872,7 @@ export function CalendarGrid({
                     e.preventDefault()
                     e.stopPropagation()
                     if (!cell.inMonth || !canEdit) return
-                    if (mode === 'window') {
-                      openQuickEdit(cell, new DOMRect(e.clientX, e.clientY, 1, 1))
-                      return
-                    }
-                    openQuickEdit(cell, e)
+                    openQuickEdit(cell, new DOMRect(e.clientX, e.clientY, 1, 1))
                   }}
                   aria-label={
                     cell.inMonth

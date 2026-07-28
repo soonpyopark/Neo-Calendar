@@ -9,12 +9,12 @@ type Init = Extract<PanelWindowInit, { kind: 'search' }>
 export function SearchPanelHost({ init }: { init: Init }): ReactElement | null {
   const { closePanel, routePanel } = usePanelRouter()
   const { store, loading, visibleEvents } = useCalendarStore()
-  usePanelTheme(store.settings)
+  usePanelTheme(store.settings, loading)
 
   if (loading) return null
 
   return (
-    <div className="neo-panel-shell h-screen w-screen overflow-hidden p-2">
+    <div className="neo-panel-shell h-full w-full overflow-hidden p-2">
       <SearchPanel
         surface="floating"
         open

@@ -29,7 +29,7 @@ export function SettingsPanelHost(): ReactElement | null {
     saveMembers,
     syncHolidays
   } = useCalendarStore()
-  usePanelTheme(store.settings)
+  usePanelTheme(store.settings, loading)
 
   useEffect(() => {
     let cancelled = false

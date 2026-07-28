@@ -74,6 +74,12 @@ const VIEWPORT_PAD = 5
 /** Event detail popover / floating panel width (px). */
 export const EVENT_DETAIL_PANEL_WIDTH = 530
 
+/** Floating search panel size (px). */
+export const SEARCH_PANEL_WIDTH = 880
+export const SEARCH_PANEL_MIN_HEIGHT = 300
+export const SEARCH_PANEL_MAX_HEIGHT = 540
+export const SEARCH_PANEL_CHROME_PAD = 16
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
@@ -321,8 +327,8 @@ export function computePanelWindowBounds(options: {
       mainOrigin,
       mainSize,
       workArea,
-      width: Math.min(880, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2),
-      height: Math.min(540, workArea.height - VIEWPORT_PAD * 2),
+      width: Math.min(SEARCH_PANEL_WIDTH, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2),
+      height: Math.min(SEARCH_PANEL_MIN_HEIGHT, workArea.height - VIEWPORT_PAD * 2),
       topBias: -Math.round(mainSize.height * 0.12)
     })
   }

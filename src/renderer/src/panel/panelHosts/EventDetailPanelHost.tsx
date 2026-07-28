@@ -42,7 +42,7 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
   const { closePanel, routePanel } = usePanelRouter()
   const { authReady, canEdit } = usePanelAuth()
   const { store, loading, editEvent, removeEvent, addEvent } = useCalendarStore()
-  usePanelTheme(store.settings)
+  usePanelTheme(store.settings, loading)
 
   const [scopeDialog, setScopeDialog] = useState<{ mode: 'complete' | 'delete' } | null>(null)
   const [pendingComplete, setPendingComplete] = useState<{

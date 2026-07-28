@@ -1848,8 +1848,10 @@ html.neo-quick-edit-window {
 html.neo-panel-window.dark .day-quick-edit,
 html.neo-panel-window.dark .event-detail-shell,
 html.neo-panel-window.dark .search-panel-shell,
+html.neo-panel-window.dark .settings-panel-shell,
 html.neo-panel-window.dark .export-confirm-shell,
 html.neo-panel-window.dark .login-panel-shell,
+html.neo-panel-window.dark form.shell-solid-surface,
 html.neo-quick-edit-window.dark .day-quick-edit {
   background: var(--gcal-surface);
   border-color: var(--gcal-border);

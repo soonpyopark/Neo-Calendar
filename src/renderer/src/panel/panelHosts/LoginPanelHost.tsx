@@ -10,8 +10,8 @@ const PANEL_CHROME_PAD = 16
 
 export function LoginPanelHost({ init }: { init: Init }): ReactElement {
   const { closePanel } = usePanelRouter()
-  const { store } = useCalendarStore()
-  usePanelTheme(store.settings)
+  const { store, loading } = useCalendarStore()
+  usePanelTheme(store.settings, loading)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const measureRef = useRef<HTMLDivElement | null>(null)

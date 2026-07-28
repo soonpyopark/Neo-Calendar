@@ -458,20 +458,33 @@ export class PanelWindowManager {
     zones: Array<{ x: number; y: number; width: number; height: number; dateKey: string }>
   ): void {
     let anchorClient: PanelAnchorRect | null = null
-    const zone = zones.find((z) => z.dateKey === payload.dateKey)
-    if (zone) {
+    const hasPointer =
+      typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
+
+    // Year view: anchor at the double-click pointer (same as window mode).
+    if (context.viewMode === 'year' && hasPointer) {
       anchorClient = {
-        top: zone.y,
-        left: zone.x,
-        width: zone.width,
-        height: zone.height
+        left: payload.clientX,
+        top: payload.clientY,
+        width: 1,
+        height: 1
       }
-    } else if (typeof payload.clientX === 'number' && typeof payload.clientY === 'number') {
-      anchorClient = {
-        left: payload.clientX - 24,
-        top: payload.clientY - 24,
-        width: 48,
-        height: 48
+    } else {
+      const zone = zones.find((z) => z.dateKey === payload.dateKey)
+      if (zone) {
+        anchorClient = {
+          top: zone.y,
+          left: zone.x,
+          width: zone.width,
+          height: zone.height
+        }
+      } else if (hasPointer) {
+        anchorClient = {
+          left: payload.clientX - 24,
+          top: payload.clientY - 24,
+          width: 48,
+          height: 48
+        }
       }
     }
 

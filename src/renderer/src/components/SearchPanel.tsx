@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -20,6 +21,12 @@ import {
   searchCalendarEvents,
   toDateKey
 } from '../lib/searchEvents'
+import {
+  SEARCH_PANEL_CHROME_PAD,
+  SEARCH_PANEL_MAX_HEIGHT,
+  SEARCH_PANEL_MIN_HEIGHT,
+  SEARCH_PANEL_WIDTH
+} from '../../../shared/panelWindows'
 import { cn } from '../lib/cn'
 import DateInput from './DateInput'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
@@ -383,6 +390,9 @@ export function SearchPanel({
     event: CalendarEvent
   } | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const shellRef = useRef<HTMLDivElement>(null)
+  const headerBlockRef = useRef<HTMLDivElement>(null)
+  const resultsRef = useRef<HTMLDivElement>(null)
   const calendarById = useMemo(
     () => new Map((calendars ?? []).map((calendar) => [calendar.id, calendar])),
     [calendars]
@@ -451,9 +461,59 @@ export function SearchPanel({
     return allResults.slice(start, start + pageSize)
   }, [allResults, safePage, pageSize])
 
-  if (!open) return null
-
   const trimmed = query.trim()
+
+  useLayoutEffect(() => {
+    if (!isFloating || !open) return undefined
+
+    const shell = shellRef.current
+    const results = resultsRef.current
+    if (!shell || !results) return undefined
+
+    const fitToContent = (): void => {
+      const api = window.neoCalendar
+      if (!api?.resizePanelWindow) return
+
+      results.style.maxHeight = ''
+      const headerH = headerBlockRef.current?.offsetHeight ?? 0
+      const resultsNatural = results.scrollHeight
+      const contentH = headerH + resultsNatural
+      const width = SEARCH_PANEL_WIDTH
+      const maxContentH = SEARCH_PANEL_MAX_HEIGHT - SEARCH_PANEL_CHROME_PAD
+
+      let windowH: number
+      if (contentH + SEARCH_PANEL_CHROME_PAD > SEARCH_PANEL_MAX_HEIGHT) {
+        windowH = SEARCH_PANEL_MAX_HEIGHT
+        results.style.maxHeight = `${Math.max(120, maxContentH - headerH)}px`
+      } else {
+        windowH = Math.max(
+          SEARCH_PANEL_MIN_HEIGHT,
+          Math.ceil(contentH + SEARCH_PANEL_CHROME_PAD)
+        )
+      }
+
+      void api.resizePanelWindow({ width, height: windowH })
+    }
+
+    fitToContent()
+    const observer = new ResizeObserver(fitToContent)
+    observer.observe(shell)
+    observer.observe(results)
+    return () => observer.disconnect()
+  }, [
+    isFloating,
+    open,
+    trimmed,
+    total,
+    pageResults.length,
+    pageSize,
+    safePage,
+    resourceDetail,
+    rangeStart,
+    rangeEnd
+  ])
+
+  if (!open) return null
 
   const resetRange = (): void => {
     const defaults = getDefaultSearchRange()
@@ -476,20 +536,24 @@ export function SearchPanel({
     <div
       className={
         isFloating
-          ? 'flex h-full w-full flex-col'
+          ? 'flex w-full flex-col'
           : 'interaction-ui fixed inset-0 z-[55] flex flex-col'
       }
       onClick={isFloating ? undefined : onClose}
       role="presentation"
     >
       <div
-        className={isFloating ? 'mx-auto flex h-full w-full max-w-[880px] flex-col px-1' : 'mx-auto mt-3 w-full max-w-[880px] px-3 sm:mt-6 sm:px-4'}
+        className={isFloating ? 'mx-auto flex w-full max-w-[880px] flex-col px-1' : 'mx-auto mt-3 w-full max-w-[880px] px-3 sm:mt-6 sm:px-4'}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
         aria-label="일정 검색"
       >
-        <div className={`search-panel-shell shell-solid-surface overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex min-h-0 flex-1 flex-col' : ''}`}>
+        <div
+          ref={shellRef}
+          className={`search-panel-shell shell-solid-surface w-full overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex flex-col' : ''}`}
+        >
+          <div ref={headerBlockRef} className="shrink-0">
           <div className="search-panel-query-row search-panel-line-b flex h-14 items-center gap-1 px-3">
             <span
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center text-gcal-muted"
@@ -623,9 +687,11 @@ export function SearchPanel({
               </select>
             </label>
           </div>
+          </div>
 
           <div
-            className={`settings-scroll overflow-y-auto${isFloating ? ' min-h-0 flex-1' : ' max-h-[min(55vh,400px)]'}`}
+            ref={resultsRef}
+            className={`settings-scroll overflow-y-auto${isFloating ? '' : ' max-h-[min(55vh,400px)]'}`}
           >
             {!trimmed ? (
               <p className="px-5 py-8 text-center text-sm text-gcal-muted">

@@ -30,7 +30,7 @@
       "source": "seed"
     },
     "widget": {
-      "launchMode": "window",
+      "launchMode": "desktop",
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
@@ -79,7 +79,7 @@
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
-        "colorScheme": "light",
+        "colorScheme": "dark",
         "accentColor": "#795548",
         "eventsHidden": false,
         "completedHidden": false
@@ -127,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-28T00:37:19.724Z"
+  "updatedAt": "2026-07-28T01:07:47.946Z"
 }

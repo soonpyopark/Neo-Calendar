@@ -114,7 +114,7 @@ export function QuickEditWindowApp(): ReactElement | null {
     }
   }, [])
 
-  usePanelTheme(store.settings)
+  usePanelTheme(store.settings, loading)
 
   const date = useMemo(() => {
     if (!init?.dateKey) return null

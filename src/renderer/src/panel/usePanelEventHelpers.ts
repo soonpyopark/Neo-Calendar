@@ -159,7 +159,10 @@ export function usePanelAuth(): {
   return { authReady, canEdit, user }
 }
 
-export function usePanelTheme(settings: Pick<StoreSettings, 'accentColor' | 'viewOptions'>): void {
+export function usePanelTheme(
+  settings: Pick<StoreSettings, 'viewOptions'>,
+  loading = false
+): void {
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -184,18 +187,33 @@ export function usePanelTheme(settings: Pick<StoreSettings, 'accentColor' | 'vie
   }, [])
 
   useEffect(() => {
-    applyThemeFromStoreSettings(settings)
-  }, [settings, settings.viewOptions?.colorScheme, settings.accentColor])
+    const api = window.neoCalendar
+    if (!api?.getCalendarStore) return undefined
+    let cancelled = false
+    void api.getCalendarStore().then((snap) => {
+      if (cancelled) return
+      applyThemeFromStoreSettings(snap.settings)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
-    if (getColorScheme(settings) !== 'system') return
+    if (loading) return
+    applyThemeFromStoreSettings(settings)
+  }, [loading, settings.viewOptions?.colorScheme, settings.viewOptions?.accentColor])
+
+  useEffect(() => {
+    if (loading) return
+    if (getColorScheme(settings.viewOptions) !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: dark)')
     const onChange = (): void => {
       applyThemeFromStoreSettings(settings)
     }
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
-  }, [settings, settings.viewOptions?.colorScheme])
+  }, [loading, settings, settings.viewOptions?.colorScheme])
 
   useEffect(() => {
     const api = window.neoCalendar

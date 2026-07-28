@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import { AppDialogProvider } from './components/AppDialogProvider'
 import { QuickEditWindowApp } from './components/QuickEditWindowApp'
 import { installTextInputFocusBridge } from './lib/textInputFocus'
+import { bootstrapPanelWindowTheme } from './lib/colorScheme'
 import './index.css'
 
 document.documentElement.classList.add('neo-quick-edit-window')
+bootstrapPanelWindowTheme()
 
 const container = document.getElementById('root')
 

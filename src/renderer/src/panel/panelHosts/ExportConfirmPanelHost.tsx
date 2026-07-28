@@ -12,7 +12,7 @@ export function ExportConfirmPanelHost({ init }: { init: Init }): ReactElement |
   const { alert } = useAppDialog()
   const { store, loading } = useCalendarStore()
   const [busy, setBusy] = useState(false)
-  usePanelTheme(store.settings)
+  usePanelTheme(store.settings, loading)
 
   const formatLabel = init.format === 'excel' ? 'Excel' : 'PDF'
   const message = `${init.year}년 ${init.month}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`

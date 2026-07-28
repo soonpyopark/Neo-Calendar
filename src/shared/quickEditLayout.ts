@@ -55,7 +55,7 @@ function isPointerAnchorRect(anchor: QuickEditAnchorRect): boolean {
   return anchor.width > 0 && anchor.height > 0 && anchor.width <= 32 && anchor.height <= 32
 }
 
-/** Year view (window mode): place near the pointer, clamped to the main calendar window. */
+/** Year view: place near the pointer, clamped to the main calendar window. */
 function pointerAnchoredQuickEditBounds(options: {
   pointerClient: { x: number; y: number }
   mainOrigin: { x: number; y: number }

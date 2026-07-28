@@ -29,10 +29,25 @@ export function applyColorScheme(scheme: ColorScheme): void {
 /** Apply light/dark + accent from calendar store settings (panel / quick-edit windows). */
 export function applyThemeFromStoreSettings(settings: {
   accentColor?: string
-  viewOptions?: { colorScheme?: string } | null
+  viewOptions?: { colorScheme?: string; accentColor?: string } | null
 }): void {
-  applyColorScheme(getColorScheme(settings))
-  applyAccentColor(normalizeAccentColor(settings.accentColor))
+  const viewOptions = settings.viewOptions
+  applyColorScheme(getColorScheme(viewOptions))
+  applyAccentColor(normalizeAccentColor(viewOptions?.accentColor ?? settings.accentColor))
+}
+
+/** Apply theme as early as possible in panel / quick-edit HTML entries (before React mount). */
+export function bootstrapPanelWindowTheme(): void {
+  const api = window.neoCalendar
+  if (!api?.getCalendarStore) return
+  void api
+    .getCalendarStore()
+    .then((snap) => {
+      applyThemeFromStoreSettings(snap.settings)
+    })
+    .catch(() => {
+      /* ignore */
+    })
 }
 
 export function normalizeAccentColor(value: unknown, fallback = '#1a73e8'): string {
