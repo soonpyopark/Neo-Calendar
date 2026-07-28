@@ -35,8 +35,14 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
-import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 import {
+  fetchAuthUser,
+  hasBrowserAuthToken,
+  isBrowserNeoCalendarHost,
+  shouldApplyAuthUserUpdate
+} from '../lib/browserNeoCalendar'
+import {
+  CHROME_TOOLBAR_ACTIONS,
   EMBEDDED_AUTH_CHROME_ACTIONS,
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
@@ -355,7 +361,8 @@ export function CalendarGrid({
 }: CalendarGridProps): ReactElement {
   const { alert, confirm } = useAppDialog()
   const now = new Date()
-  const canEdit = Boolean(user)
+  const canEdit =
+    Boolean(user) || (isBrowserNeoCalendarHost() && hasBrowserAuthToken())
   const {
     store,
     loading,
@@ -477,6 +484,23 @@ export function CalendarGrid({
 
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
+
+  const getSearchAnchorClient = useCallback((): PanelAnchorRect | null => {
+    const searchBtn = chromeRef.current?.querySelector<HTMLElement>(
+      `[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.search}"]`
+    )
+    const anchorEl = searchBtn ?? chromeRef.current
+    if (!anchorEl) return null
+    const rect = anchorEl.getBoundingClientRect()
+    if (rect.width < 1 || rect.height < 1) return null
+    return {
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height
+    }
+  }, [])
+
   const monthBodyRef = useRef<HTMLDivElement | null>(null)
   const publishHitZonesRef = useRef<(() => void) | null>(null)
   const lastDayZoneCountRef = useRef(-1)
@@ -551,7 +575,9 @@ export function CalendarGrid({
     const api = window.neoCalendar
     if (!api?.onAuthChanged) return
     return api.onAuthChanged(() => {
-      void api.getAuth().then(onUserChange)
+      void fetchAuthUser().then((next) => {
+        if (shouldApplyAuthUserUpdate(next)) onUserChange(next)
+      })
       void refresh()
     })
   }, [onUserChange, refresh])
@@ -1759,6 +1785,8 @@ export function CalendarGrid({
         ...store.settings.viewOptions,
         ...patch
       }
+    }).catch(async (error) => {
+      await alert(error instanceof Error ? error.message : '표시 설정을 저장하지 못했습니다.')
     })
   }
 
@@ -1941,6 +1969,7 @@ export function CalendarGrid({
           mode={mode}
           embedded={embedded}
           user={user}
+          loggedIn={canEdit}
           searchOpen={searchOpen}
           settingsOpen={settingsOpen}
           exporting={exporting}
@@ -1955,7 +1984,7 @@ export function CalendarGrid({
               return
             }
             if (floatingPanels) {
-              openEmbeddedPanel({ kind: 'search', eventsHidden })
+              openEmbeddedPanel({ kind: 'search', eventsHidden }, getSearchAnchorClient())
               return
             }
             setSettingsOpen(false)
@@ -2301,6 +2330,7 @@ export function CalendarGrid({
       {inlineOverlays ? (
         <SearchPanel
           open={searchOpen}
+          anchorRef={chromeRef}
           events={eventsHidden ? [] : visibleEvents}
           calendars={store.calendars}
           tags={store.tags}

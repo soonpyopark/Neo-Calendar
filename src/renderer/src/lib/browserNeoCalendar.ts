@@ -1,4 +1,4 @@
-import type { NeoCalendarApi } from '../../../shared/ipc'
+import type { AuthUser, NeoCalendarApi } from '../../../shared/ipc'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -23,6 +23,32 @@ function getToken(): string | null {
   } catch {
     return null
   }
+}
+
+/** True when the browser client still holds a Bearer token. */
+export function hasBrowserAuthToken(): boolean {
+  return Boolean(getToken())
+}
+
+/**
+ * Avoid clearing React auth state when /api/auth/session briefly returns null
+ * while a token is already stored (login race / stale session probe).
+ */
+export function shouldApplyAuthUserUpdate(next: AuthUser | null): boolean {
+  if (next) return true
+  if (!isBrowserNeoCalendarHost()) return true
+  return !hasBrowserAuthToken()
+}
+
+/** Fetch session user; retry once when a stored token exists but session is null. */
+export async function fetchAuthUser(): Promise<AuthUser | null> {
+  const api = window.neoCalendar
+  if (!api?.getAuth) return null
+  let user = await api.getAuth()
+  if (!user && isBrowserNeoCalendarHost() && hasBrowserAuthToken()) {
+    user = await api.getAuth()
+  }
+  return user
 }
 
 function setToken(token: string | null, remember: boolean): void {

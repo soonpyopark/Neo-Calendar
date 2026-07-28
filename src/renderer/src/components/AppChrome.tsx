@@ -25,6 +25,8 @@ function cn(...parts: Array<string | false | null | undefined>): string {
 export type AppChromeProps = {
   mode: LaunchMode
   user: AuthUser | null
+  /** When set, overrides `Boolean(user)` for toolbar enablement (browser token fallback). */
+  loggedIn?: boolean
   searchOpen: boolean
   settingsOpen: boolean
   exporting?: boolean
@@ -46,6 +48,7 @@ export type AppChromeProps = {
 export function AppChrome({
   mode,
   user,
+  loggedIn: loggedInProp,
   searchOpen,
   settingsOpen,
   exporting = false,
@@ -63,7 +66,7 @@ export function AppChrome({
 }: AppChromeProps): ReactElement {
   const isDesktop = mode === 'desktop'
   const isWindow = mode === 'window'
-  const loggedIn = Boolean(user)
+  const loggedIn = loggedInProp ?? Boolean(user)
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
   const captureOnHover = !embedded

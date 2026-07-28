@@ -146,6 +146,49 @@ function centerInMainWindow(options: {
   }
 }
 
+/** Place panel top edge just below an anchor (header toolbar button), clamped to main window. */
+function belowAnchoredBounds(options: {
+  anchorScreen: PanelAnchorRect
+  panelWidth: number
+  panelHeight: number
+  workArea: { x: number; y: number; width: number; height: number }
+  mainOrigin: { x: number; y: number }
+  mainSize: { width: number; height: number }
+  gap?: number
+}): { x: number; y: number; width: number; height: number } {
+  const pad = VIEWPORT_PAD
+  const gap = options.gap ?? 8
+  const { anchorScreen, workArea, mainOrigin, mainSize } = options
+  const panelWidth = Math.min(
+    options.panelWidth,
+    Math.max(0, mainSize.width - pad * 2),
+    Math.max(0, workArea.width - pad * 2)
+  )
+  const panelHeight = Math.min(
+    options.panelHeight,
+    Math.max(0, mainSize.height - pad * 2),
+    Math.max(0, workArea.height - pad * 2)
+  )
+
+  let left = anchorScreen.left + anchorScreen.width / 2 - panelWidth / 2
+  let top = anchorScreen.bottom + gap
+
+  const boundsLeft = mainOrigin.x + pad
+  const boundsTop = mainOrigin.y + pad
+  const boundsRight = mainOrigin.x + mainSize.width - pad
+  const boundsBottom = mainOrigin.y + mainSize.height - pad
+
+  left = clamp(left, boundsLeft, Math.max(boundsLeft, boundsRight - panelWidth))
+  top = clamp(top, boundsTop, Math.max(boundsTop, boundsBottom - panelHeight))
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    width: Math.round(panelWidth),
+    height: Math.round(panelHeight)
+  }
+}
+
 function anchoredBounds(options: {
   anchorScreen: PanelAnchorRect
   panelWidth: number
@@ -323,12 +366,29 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'search') {
+    const width = Math.min(SEARCH_PANEL_WIDTH, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2)
+    const height = Math.min(SEARCH_PANEL_MIN_HEIGHT, workArea.height - VIEWPORT_PAD * 2)
+    if (anchorClient && anchorClient.width > 0 && anchorClient.height > 0) {
+      return belowAnchoredBounds({
+        anchorScreen: {
+          top: mainOrigin.y + anchorClient.top,
+          left: mainOrigin.x + anchorClient.left,
+          width: anchorClient.width,
+          height: anchorClient.height
+        },
+        panelWidth: width,
+        panelHeight: height,
+        workArea,
+        mainOrigin,
+        mainSize
+      })
+    }
     return centeredBounds({
       mainOrigin,
       mainSize,
       workArea,
-      width: Math.min(SEARCH_PANEL_WIDTH, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2),
-      height: Math.min(SEARCH_PANEL_MIN_HEIGHT, workArea.height - VIEWPORT_PAD * 2),
+      width,
+      height,
       topBias: -Math.round(mainSize.height * 0.12)
     })
   }

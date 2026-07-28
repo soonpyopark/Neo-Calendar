@@ -2,7 +2,11 @@ import { useEffect, useState, type ReactElement } from 'react'
 import { WallpaperContainer } from './components/WallpaperContainer'
 import { CalendarGrid } from './components/CalendarGrid'
 import { WindowResizeHandles } from './components/WindowResizeHandles'
-import { isBrowserNeoCalendarHost } from './lib/browserNeoCalendar'
+import {
+  fetchAuthUser,
+  isBrowserNeoCalendarHost,
+  shouldApplyAuthUserUpdate
+} from './lib/browserNeoCalendar'
 import { applyOpacitySettings } from './lib/opacitySettings'
 import type { AppSettings, AuthUser, LaunchMode, ModeStatus } from '../../shared/ipc'
 
@@ -31,7 +35,7 @@ export default function App(): ReactElement {
       setEmbedded(status.embedded)
       setSwitchReady(status.switchReady !== false)
     })
-    void api.getAuth().then((next) => {
+    void fetchAuthUser().then((next) => {
       setUser(next)
       setAuthReady(true)
     })
@@ -57,7 +61,9 @@ export default function App(): ReactElement {
     })
     const unsubStore = api.onStoreChanged(refreshOpacityFromStore)
     const unsubAuth = api.onAuthChanged?.(() => {
-      void api.getAuth().then(setUser)
+      void fetchAuthUser().then((next) => {
+        if (shouldApplyAuthUserUpdate(next)) setUser(next)
+      })
     })
 
     return () => {

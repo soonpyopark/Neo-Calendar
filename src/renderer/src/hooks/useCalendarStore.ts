@@ -18,7 +18,11 @@ import {
   getColorScheme,
   normalizeAccentColor
 } from '../lib/colorScheme'
-import { isBrowserNeoCalendarHost, isAuthRequestError } from '../lib/browserNeoCalendar'
+import {
+  hasBrowserAuthToken,
+  isBrowserNeoCalendarHost,
+  isAuthRequestError
+} from '../lib/browserNeoCalendar'
 import { calendarToPatch, eventToMutationPayload } from '../lib/eventMutation'
 import {
   clearOfflineQueue,
@@ -103,6 +107,9 @@ export function useCalendarStore(): UseCalendarStoreResult {
         await clearOfflineSnapshot().catch(() => {
           /* best-effort */
         })
+        // Keep the on-screen store when a Bearer token is still present — a stale
+        // /api/store probe must not wipe view toggles (eventsHidden, etc.) after PATCH.
+        if (isBrowserNeoCalendarHost() && hasBrowserAuthToken()) return
         await applyStore(createEmptySnapshot())
         return
       }
@@ -594,10 +601,28 @@ export function useCalendarStore(): UseCalendarStoreResult {
           return next
         })
       }
-      // Refresh after success so surface-projected viewOptions stay correct.
-      await runOrQueue('patch-settings', () => window.neoCalendar.patchStoreSettings(patch), {
-        payload: patch
-      })
+      if (patch.viewOptions) {
+        setStore((prev) => {
+          const next = {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              viewOptions: {
+                ...prev.settings.viewOptions,
+                ...patch.viewOptions
+              }
+            }
+          }
+          storeRef.current = next
+          return next
+        })
+      }
+      await runOrQueue(
+        'patch-settings',
+        () => window.neoCalendar.patchStoreSettings(patch),
+        { payload: patch },
+        (_current, result) => result as CalendarStoreSnapshot
+      )
     },
     [runOrQueue]
   )

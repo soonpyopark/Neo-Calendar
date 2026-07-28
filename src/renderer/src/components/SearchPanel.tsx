@@ -4,13 +4,17 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactElement
+  type CSSProperties,
+  type ReactElement,
+  type RefObject
 } from 'react'
 import { getEventLinks } from '../lib/eventLinks'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import { formatTime24, isTimedEvent } from '../../../shared/mdcExport/eventBarFormat.js'
 import { openEventAttachment } from '../lib/eventAttachments'
 import { openExternalUrl } from '../lib/openExternal'
+import { getAnchoredPopoverPosition } from '../lib/popoverPosition'
+import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
 import {
   SEARCH_PAGE_SIZE_OPTIONS,
   buildSearchPageItems,
@@ -48,11 +52,22 @@ export type SearchSelectPayload = {
 export type SearchPanelProps = {
   open: boolean
   surface?: 'inline' | 'floating'
+  /** Header chrome row — fallback anchor when the search button is not found. */
+  anchorRef?: RefObject<HTMLElement | null>
   events: CalendarEvent[]
   calendars: CalendarRecord[]
   tags?: TagRecord[]
   onClose: () => void
   onSelectResult: (payload: SearchSelectPayload) => void
+}
+
+function resolveSearchAnchorRect(anchorRef?: RefObject<HTMLElement | null>): DOMRect | null {
+  const searchBtn = document.querySelector<HTMLElement>(
+    `.neo-cal-shell [data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.search}"]`
+  )
+  if (searchBtn) return searchBtn.getBoundingClientRect()
+  if (anchorRef?.current) return anchorRef.current.getBoundingClientRect()
+  return null
 }
 
 function shiftDateKeyByYears(dateKey: string, yearDelta: number): string {
@@ -373,6 +388,7 @@ function SearchResultLegend(): ReactElement {
 export function SearchPanel({
   open,
   surface = 'inline',
+  anchorRef,
   events,
   calendars,
   tags = [],
@@ -381,6 +397,7 @@ export function SearchPanel({
 }: SearchPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const [query, setQuery] = useState('')
+  const [inlinePanelStyle, setInlinePanelStyle] = useState<CSSProperties | undefined>()
   const [rangeStart, setRangeStart] = useState(() => getDefaultSearchRange().start)
   const [rangeEnd, setRangeEnd] = useState(() => getDefaultSearchRange().end)
   const [pageSize, setPageSize] = useState(20)
@@ -464,6 +481,53 @@ export function SearchPanel({
   const trimmed = query.trim()
 
   useLayoutEffect(() => {
+    if (isFloating || !open) {
+      setInlinePanelStyle(undefined)
+      return undefined
+    }
+
+    const place = (): void => {
+      const anchorRect = resolveSearchAnchorRect(anchorRef)
+      if (!anchorRect) {
+        setInlinePanelStyle(undefined)
+        return
+      }
+      const pos = getAnchoredPopoverPosition(anchorRect, {
+        width: SEARCH_PANEL_WIDTH,
+        estimatedHeight: SEARCH_PANEL_MAX_HEIGHT,
+        gap: 8,
+        padding: 5,
+        preferAbove: false,
+        anchorMode: 'element'
+      })
+      setInlinePanelStyle({
+        position: 'fixed',
+        top: Math.round(pos.top),
+        left: Math.round(pos.left),
+        width: Math.round(pos.width),
+        maxHeight: Math.round(pos.maxHeight),
+        zIndex: 56
+      })
+    }
+
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [
+    anchorRef,
+    isFloating,
+    open,
+    trimmed,
+    total,
+    pageResults.length,
+    pageSize,
+    safePage,
+    resourceDetail,
+    rangeStart,
+    rangeEnd
+  ])
+
+  useLayoutEffect(() => {
     if (!isFloating || !open) return undefined
 
     const shell = shellRef.current
@@ -537,13 +601,14 @@ export function SearchPanel({
       className={
         isFloating
           ? 'flex w-full flex-col'
-          : 'interaction-ui fixed inset-0 z-[55] flex flex-col'
+          : 'interaction-ui fixed inset-0 z-[55]'
       }
       onClick={isFloating ? undefined : onClose}
       role="presentation"
     >
       <div
-        className={isFloating ? 'mx-auto flex w-full max-w-[880px] flex-col px-1' : 'mx-auto mt-3 w-full max-w-[880px] px-3 sm:mt-6 sm:px-4'}
+        className={isFloating ? 'mx-auto flex w-full max-w-[880px] flex-col px-1' : 'pointer-events-auto'}
+        style={isFloating ? undefined : inlinePanelStyle}
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -551,7 +616,7 @@ export function SearchPanel({
       >
         <div
           ref={shellRef}
-          className={`search-panel-shell shell-solid-surface w-full overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex flex-col' : ''}`}
+          className={`search-panel-shell shell-solid-surface w-full overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex flex-col' : 'flex max-h-full flex-col'}`}
         >
           <div ref={headerBlockRef} className="shrink-0">
           <div className="search-panel-query-row search-panel-line-b flex h-14 items-center gap-1 px-3">
@@ -691,7 +756,7 @@ export function SearchPanel({
 
           <div
             ref={resultsRef}
-            className={`settings-scroll overflow-y-auto${isFloating ? '' : ' max-h-[min(55vh,400px)]'}`}
+            className={`settings-scroll overflow-y-auto${isFloating ? '' : ' min-h-0 flex-1'}`}
           >
             {!trimmed ? (
               <p className="px-5 py-8 text-center text-sm text-gcal-muted">
