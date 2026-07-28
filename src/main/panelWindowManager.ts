@@ -367,6 +367,9 @@ export class PanelWindowManager {
     if (mainWindow.isDestroyed()) return
 
     const slot = init.kind
+    // Block the outside-click listener on this same mousedown (day-dblclick opens then
+    // handleOutsideClick would immediately close before the panel is shown).
+    this.outsideBlockedUntil = Date.now() + OUTSIDE_CLOSE_GRACE_MS
     this.beforeOpenSlot(slot)
     this.lastMainWindow = mainWindow
     this.ensureOutsideListener()

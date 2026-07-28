@@ -13,3 +13,7 @@ export const DEFAULT_WIDGET_BOUNDS = {
   width: 1300,
   height: 1000
 } as const
+
+/** Main calendar shell — cannot resize below this in window mode. */
+export const MIN_WIDGET_WIDTH = 680
+export const MIN_WIDGET_HEIGHT = 800

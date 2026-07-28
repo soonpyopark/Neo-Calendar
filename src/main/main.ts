@@ -29,7 +29,7 @@ import { isForeignAppAtPoint, shouldProcessEmbeddedGlobalClick } from './windowA
 import { isNativeDialogOpen, withNativeDialog } from './nativeDialogGuard'
 import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
-import { APP_NAME, DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import { APP_NAME, DEFAULT_WIDGET_BOUNDS, MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../shared/constants'
 import {
   CalendarWebServer,
   resolveLaunchServerMode
@@ -349,8 +349,8 @@ function createWindow(): void {
     ? screen.getDisplayNearestPoint(anchor)
     : screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
   const area = display.workArea
-  const startWidth = Math.min(Math.max(640, snapToTen(saved.width)), area.width)
-  const startHeight = Math.min(Math.max(480, snapToTen(saved.height)), area.height)
+  const startWidth = Math.min(Math.max(MIN_WIDGET_WIDTH, snapToTen(saved.width)), area.width)
+  const startHeight = Math.min(Math.max(MIN_WIDGET_HEIGHT, snapToTen(saved.height)), area.height)
   const startX = snapToTen(
     Math.min(
       Math.max(hasSaved ? saved.x : area.x + Math.round((area.width - startWidth) / 2), area.x),
@@ -393,6 +393,8 @@ function createWindow(): void {
   )
 
   mainWindow = win
+
+  win.setMinimumSize(MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT)
 
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:\/\//i.test(url)) {

@@ -1,4 +1,5 @@
 import { screen, type Display } from 'electron'
+import { MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../shared/constants'
 import type { WidgetBounds } from '../shared/ipc'
 
 export type Point = { x: number; y: number }
@@ -24,8 +25,8 @@ export function displayForBounds(bounds: WidgetBounds): Display {
 export function normalizeBoundsToDisplay(bounds: WidgetBounds): WidgetBounds {
   const display = displayForBounds(bounds)
   const area = display.bounds
-  const width = Math.min(Math.max(320, snapToTen(bounds.width)), area.width)
-  const height = Math.min(Math.max(240, snapToTen(bounds.height)), area.height)
+  const width = Math.min(Math.max(MIN_WIDGET_WIDTH, snapToTen(bounds.width)), area.width)
+  const height = Math.min(Math.max(MIN_WIDGET_HEIGHT, snapToTen(bounds.height)), area.height)
   const maxX = area.x + Math.max(0, area.width - width)
   const maxY = area.y + Math.max(0, area.height - height)
   return {
@@ -40,8 +41,8 @@ export function normalizeBoundsToDisplay(bounds: WidgetBounds): WidgetBounds {
 export function centerOnCursorDisplay(width: number, height: number): WidgetBounds {
   const pt = screen.getCursorScreenPoint()
   const area = displayForPoint(pt).workArea
-  const w = Math.min(Math.max(640, snapToTen(width)), area.width)
-  const h = Math.min(Math.max(480, snapToTen(height)), area.height)
+  const w = Math.min(Math.max(MIN_WIDGET_WIDTH, snapToTen(width)), area.width)
+  const h = Math.min(Math.max(MIN_WIDGET_HEIGHT, snapToTen(height)), area.height)
   return {
     x: snapToTen(area.x + Math.round((area.width - w) / 2)),
     y: snapToTen(area.y + Math.round((area.height - h) / 2)),
@@ -53,8 +54,8 @@ export function centerOnCursorDisplay(width: number, height: number): WidgetBoun
 /** Center on the display that best matches saved bounds. */
 export function centerOnBoundsDisplay(bounds: WidgetBounds): WidgetBounds {
   const area = displayForBounds(bounds).workArea
-  const w = Math.min(Math.max(640, snapToTen(bounds.width)), area.width)
-  const h = Math.min(Math.max(480, snapToTen(bounds.height)), area.height)
+  const w = Math.min(Math.max(MIN_WIDGET_WIDTH, snapToTen(bounds.width)), area.width)
+  const h = Math.min(Math.max(MIN_WIDGET_HEIGHT, snapToTen(bounds.height)), area.height)
   return {
     x: snapToTen(area.x + Math.round((area.width - w) / 2)),
     y: snapToTen(area.y + Math.round((area.height - h) / 2)),

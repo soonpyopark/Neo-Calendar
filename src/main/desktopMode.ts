@@ -1,5 +1,5 @@
 import { BrowserWindow } from 'electron'
-import { DEFAULT_WIDGET_BOUNDS } from '../shared/constants'
+import { DEFAULT_WIDGET_BOUNDS, MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../shared/constants'
 import type { LaunchMode, ModeStatus, WidgetBounds } from '../shared/ipc'
 import type { SettingsStore } from './settingsStore'
 import { centerOnCursorDisplay, normalizeBoundsToDisplay } from './displayGeometry'
@@ -419,7 +419,7 @@ export class DesktopModeController {
 
     clearWallpaperPin(win, bounds)
     win.setSkipTaskbar(false)
-    win.setMinimumSize(400, 300)
+    win.setMinimumSize(MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT)
     win.setResizable(true)
     win.setMovable(true)
     win.setMinimizable(true)
