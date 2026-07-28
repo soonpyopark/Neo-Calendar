@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent, type ReactElement } from 'react'
+import { useEffect, useRef, useState, type ReactElement } from 'react'
 import {
   isValidIpOrCidr,
   normalizeAllowedIpCidrs,
@@ -20,7 +20,7 @@ export type SecurityPanelProps = {
 
 export function SecurityPanel({ settings, onSaveSettings }: SecurityPanelProps): ReactElement {
   const { alert, confirm } = useAppDialog()
-  const importInputRef = useRef<HTMLInputElement>(null)
+  const [importing, setImporting] = useState(false)
   const [allowedIpCidrs, setAllowedIpCidrs] = useState<AllowedIpEntry[]>(() =>
     normalizeAllowedIpCidrs(settings?.allowedIpCidrs ?? [])
   )
@@ -122,18 +122,19 @@ export function SecurityPanel({ settings, onSaveSettings }: SecurityPanelProps):
     }
   }
 
-  const handleImportSecurity = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0]
-    event.target.value = ''
-    if (!file) return
+  const handleImportSecurity = async (): Promise<void> => {
+    if (importing || saving) return
 
+    setImporting(true)
     try {
-      const text = await file.text()
-      const { allowedIpCidrs: nextList } = parseSecuritySettingsPayload(text)
+      const picked = await window.neoCalendar.pickCalendarImportFile()
+      if (picked.cancelled) return
+
+      const { allowedIpCidrs: nextList } = parseSecuritySettingsPayload(picked.content)
       const ok = await confirm(
         nextList.length === 0
-          ? `「${file.name}」의 허용 IP가 비어 있습니다.\n현재 목록을 모두 지울까요?`
-          : `「${file.name}」에서 허용 IP ${nextList.length}건을 가져옵니다.\n현재 목록을 이 내용으로 바꿀까요?`,
+          ? `「${picked.filename}」의 허용 IP가 비어 있습니다.\n현재 목록을 모두 지울까요?`
+          : `「${picked.filename}」에서 허용 IP ${nextList.length}건을 가져옵니다.\n현재 목록을 이 내용으로 바꿀까요?`,
         {
           title: '보안설정 가져오기',
           confirmLabel: '가져오기'
@@ -152,6 +153,8 @@ export function SecurityPanel({ settings, onSaveSettings }: SecurityPanelProps):
       }
     } catch (err) {
       await alert(err instanceof Error ? err.message : '보안설정을 가져오지 못했습니다.')
+    } finally {
+      setImporting(false)
     }
   }
 
@@ -188,18 +191,11 @@ export function SecurityPanel({ settings, onSaveSettings }: SecurityPanelProps):
             <button
               type="button"
               className="settings-btn-secondary rounded-full px-4 py-2 text-sm font-medium disabled:opacity-60"
-              disabled={saving}
-              onClick={() => importInputRef.current?.click()}
+              disabled={saving || importing}
+              onClick={() => void handleImportSecurity()}
             >
-              보안설정 가져오기
+              {importing ? '가져오는 중…' : '보안설정 가져오기'}
             </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              className="hidden"
-              accept=".json,application/json"
-              onChange={(event) => void handleImportSecurity(event)}
-            />
           </div>
 
           <ul className="mb-4 space-y-3">

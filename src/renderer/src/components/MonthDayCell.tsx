@@ -54,6 +54,7 @@ export type MonthDayCellProps = {
   /** WorkerW embedded: quick edit via main-process header hit zones, not whole cell. */
   desktopEmbedded?: boolean
   themeEpoch?: number
+  onLoginRequired?: () => void
   onDaySelect: (date: Date) => void
   onDayQuickEdit: (date: Date, anchorRect: DOMRect) => void
   onEventDetail: (
@@ -88,6 +89,7 @@ export function MonthDayCell({
   tall = false,
   desktopEmbedded = false,
   themeEpoch = 0,
+  onLoginRequired,
   onDaySelect,
   onDayQuickEdit,
   onEventDetail,
@@ -95,6 +97,11 @@ export function MonthDayCell({
   onReorderEvents
 }: MonthDayCellProps): ReactElement {
   const interactive = canEdit
+  const gateEdit = (): boolean => {
+    if (canEdit) return true
+    onLoginRequired?.()
+    return false
+  }
   const dayKey = cell.dateKey
   const [dragSeriesId, setDragSeriesId] = useState<string | null>(null)
   const [dragDayKey, setDragDayKey] = useState<string | null>(null)
@@ -154,7 +161,11 @@ export function MonthDayCell({
       )}
       style={cellStyle}
       data-date-key={dayKey}
-      onClick={interactive ? () => onDaySelect(cell.date) : undefined}
+      onClick={
+        interactive
+          ? () => onDaySelect(cell.date)
+          : () => onLoginRequired?.()
+      }
       onDoubleClick={
         interactive && !desktopEmbedded
           ? (event) => {
@@ -164,7 +175,14 @@ export function MonthDayCell({
               event.stopPropagation()
               openQuickEditFromCell(event.currentTarget)
             }
-          : undefined
+          : !interactive && !desktopEmbedded
+            ? (event) => {
+                if ((event.target as Element | null)?.closest?.('.event-bar, .event-more')) return
+                event.preventDefault()
+                event.stopPropagation()
+                onLoginRequired?.()
+              }
+            : undefined
       }
       onKeyDown={
         interactive
@@ -173,10 +191,12 @@ export function MonthDayCell({
                 openQuickEditFromCell(e.currentTarget)
               }
             }
-          : undefined
+          : (e: KeyboardEvent<HTMLDivElement>) => {
+              if (e.key === 'Enter') onLoginRequired?.()
+            }
       }
-      role={interactive ? 'button' : undefined}
-      tabIndex={interactive ? 0 : undefined}
+      role="button"
+      tabIndex={0}
     >
       <DayNumber
         solar={solar}
@@ -189,6 +209,7 @@ export function MonthDayCell({
             ? (e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                if (!gateEdit()) return
                 openQuickEditFromCell(e.currentTarget)
               }
             : undefined
@@ -293,7 +314,7 @@ export function MonthDayCell({
               }}
               onClick={(e) => {
                 e.stopPropagation()
-                if (!canEdit) return
+                if (!gateEdit()) return
                 if (suppressEventClickRef.current) {
                   suppressEventClickRef.current = false
                   return
@@ -309,14 +330,14 @@ export function MonthDayCell({
                 e.preventDefault()
                 e.stopPropagation()
                 clearEventClickTimer()
-                if (!canEdit) return
+                if (!gateEdit()) return
                 if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
                 onEventEdit(event, dayKey)
               }}
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
-                if (!canEdit) return
+                if (!gateEdit()) return
                 clearEventClickTimer()
                 onEventDetail(event, e.clientX, e.clientY, dayKey)
               }}

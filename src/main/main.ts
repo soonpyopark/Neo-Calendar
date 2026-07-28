@@ -234,6 +234,21 @@ function shieldMainWindowWhilePanelsOpen(): void {
   win.setIgnoreMouseEvents(true, { forward: false })
 }
 
+function resolveNativeDialogParent(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
+  const senderWin = BrowserWindow.fromWebContents(event.sender)
+  if (
+    senderWin &&
+    !senderWin.isDestroyed() &&
+    panelWindowManager?.isPanelWebContents(event.sender.id)
+  ) {
+    return senderWin
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return mainWindow
+  }
+  return null
+}
+
 /** Mirror main-process day-dblclick logs into renderer DevTools (dev only). */
 function sendDayDblClickLog(msg: string, data?: Record<string, unknown>): void {
   if (app.isPackaged) return
@@ -280,9 +295,17 @@ function unlockAndOpenDayQuickEdit(payload: OpenDayQuickEditPayload): void {
 
 /** WorkerW embedded: open quick edit in a top-level window above desktop icons. */
 function openFloatingDayQuickEdit(payload: OpenDayQuickEditPayload): void {
-  if (!auth?.getUser()) return
   const win = mainWindow
   if (!win || win.isDestroyed() || !panelWindowManager) return
+  if (!auth?.getUser()) {
+    panelWindowManager.openEmbedded({
+      mainWindow: win,
+      init: { kind: 'login', dismissible: true },
+      anchorClient: null,
+      topLevel: true
+    })
+    return
+  }
   if (!win.webContents.isDestroyed()) {
     win.webContents.send('focus-day-cell', { dateKey: payload.dateKey })
   }
@@ -613,19 +636,17 @@ function registerIpc(): void {
     notifyStoreChanged()
     return calendarStore.getSnapshotForLogin(loginId)
   })
-  ipcMain.handle('calendar:export-backup-zip', async () => {
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
-    return exportBackupZip(calendarStore, win)
+  ipcMain.handle('calendar:export-backup-zip', async (event) => {
+    return exportBackupZip(calendarStore, resolveNativeDialogParent(event))
   })
-  ipcMain.handle('calendar:import-backup-zip', async () => {
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null
+  ipcMain.handle('calendar:import-backup-zip', async (event) => {
     const loginId = auth.getUser()?.loginId
     if (!loginId) {
       throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
     }
-    return importBackupZip(calendarStore, win, loginId)
+    return importBackupZip(calendarStore, resolveNativeDialogParent(event), loginId)
   })
-  ipcMain.handle('calendar:pick-import-file', async () => {
+  ipcMain.handle('calendar:pick-import-file', async (event) => {
     const options: Electron.OpenDialogOptions = {
       title: '캘린더 가져오기',
       filters: [
@@ -634,7 +655,7 @@ function registerIpc(): void {
       ],
       properties: ['openFile']
     }
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+    const win = resolveNativeDialogParent(event) ?? undefined
     const result = await withNativeDialog(async () =>
       win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
     )
@@ -660,13 +681,13 @@ function registerIpc(): void {
     attachmentService.deleteAllForEvent(id)
     notifyStoreChanged()
   })
-  ipcMain.handle('calendar:add-attachments', async (_event, eventId: string) => {
+  ipcMain.handle('calendar:add-attachments', async (event, eventId: string) => {
     const options: Electron.OpenDialogOptions = {
       title: '일정에 첨부할 파일 선택',
       properties: ['openFile', 'multiSelections'],
       buttonLabel: '첨부'
     }
-    const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined
+    const win = resolveNativeDialogParent(event) ?? undefined
     const result = await withNativeDialog(async () =>
       win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
     )

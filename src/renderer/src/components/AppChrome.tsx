@@ -43,6 +43,8 @@ export type AppChromeProps = {
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
+  /** Logged-out click on edit-gated chrome controls. */
+  onLoginRequired?: () => void
 }
 
 export function AppChrome({
@@ -62,7 +64,8 @@ export function AppChrome({
   onExportPdf,
   onEnterDesktop,
   onEnterWindow,
-  onAuthToggle
+  onAuthToggle,
+  onLoginRequired
 }: AppChromeProps): ReactElement {
   const isDesktop = mode === 'desktop'
   const isWindow = mode === 'window'
@@ -100,9 +103,11 @@ export function AppChrome({
             )}
             title={loggedIn ? '새로고침' : '로그인 후 사용할 수 있습니다'}
             aria-label="새로고침"
-            disabled={!loggedIn}
             onClick={() => {
-              if (!loggedIn) return
+              if (!loggedIn) {
+                onLoginRequired?.()
+                return
+              }
               window.location.reload()
             }}
           >
@@ -115,7 +120,10 @@ export function AppChrome({
       <div className="app-chrome-no-drag flex min-w-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
         <InteractionUI
           as="button"
-          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          className={cn(
+            iconBtnClass,
+            (!loggedIn || settingsOpen) && 'cursor-not-allowed opacity-40'
+          )}
           captureOnHover={captureOnHover}
           data-toolbar-action={CHROME_TOOLBAR_ACTIONS.search}
           aria-label="검색"
@@ -126,15 +134,22 @@ export function AppChrome({
                 ? '설정을 닫은 후 검색할 수 있습니다'
                 : '검색'
           }
-          disabled={!loggedIn || settingsOpen}
-          onClick={(event) => onOpenSearch(event)}
+          disabled={loggedIn ? settingsOpen : false}
+          onClick={(event) => {
+            if (!loggedIn) {
+              onLoginRequired?.()
+              return
+            }
+            if (settingsOpen) return
+            onOpenSearch(event)
+          }}
         >
           <SearchIcon />
         </InteractionUI>
 
         <InteractionUI
           as="button"
-          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          className={cn(iconBtnClass, (!loggedIn || searchOpen) && 'cursor-not-allowed opacity-40')}
           captureOnHover={captureOnHover}
           data-toolbar-action={CHROME_TOOLBAR_ACTIONS.settings}
           aria-label="설정"
@@ -145,34 +160,61 @@ export function AppChrome({
                 ? '검색을 닫은 후 설정할 수 있습니다'
                 : '설정'
           }
-          disabled={!loggedIn || searchOpen}
-          onClick={onOpenSettings}
+          disabled={loggedIn ? searchOpen : false}
+          onClick={() => {
+            if (!loggedIn) {
+              onLoginRequired?.()
+              return
+            }
+            if (searchOpen) return
+            onOpenSettings()
+          }}
         >
           <SettingsIcon />
         </InteractionUI>
 
         <InteractionUI
           as="button"
-          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          className={cn(
+            iconBtnClass,
+            (!loggedIn || exporting || settingsOpen || searchOpen) &&
+              'cursor-not-allowed opacity-40'
+          )}
           captureOnHover={captureOnHover}
           data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportExcel}
           aria-label="Excel로 내보내기"
           title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'Excel로 내보내기'}
-          disabled={!loggedIn || exporting || settingsOpen || searchOpen}
-          onClick={onExportExcel}
+          disabled={loggedIn ? exporting || settingsOpen || searchOpen : false}
+          onClick={() => {
+            if (!loggedIn) {
+              onLoginRequired?.()
+              return
+            }
+            onExportExcel()
+          }}
         >
           <ExcelIcon />
         </InteractionUI>
 
         <InteractionUI
           as="button"
-          className={cn(iconBtnClass, iconBtnDisabledClass)}
+          className={cn(
+            iconBtnClass,
+            (!loggedIn || exporting || settingsOpen || searchOpen) &&
+              'cursor-not-allowed opacity-40'
+          )}
           captureOnHover={captureOnHover}
           data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportPdf}
           aria-label="PDF로 내보내기"
           title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'PDF로 내보내기'}
-          disabled={!loggedIn || exporting || settingsOpen || searchOpen}
-          onClick={onExportPdf}
+          disabled={loggedIn ? exporting || settingsOpen || searchOpen : false}
+          onClick={() => {
+            if (!loggedIn) {
+              onLoginRequired?.()
+              return
+            }
+            onExportPdf()
+          }}
         >
           <PdfIcon />
         </InteractionUI>

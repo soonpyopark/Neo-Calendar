@@ -3,7 +3,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ChangeEvent,
   type ReactElement,
   type ReactNode
 } from 'react'
@@ -15,10 +14,7 @@ import { MembersPanel } from './MembersPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { TagsPanel } from './TagsPanel'
 import { CalendarColorPalette } from './CalendarColorPalette'
-import {
-  CalendarFileFormatButton,
-  getAllImportAcceptAttribute
-} from './CalendarFileFormatButton'
+import { CalendarFileFormatButton } from './CalendarFileFormatButton'
 import { getDefaultCalendarColor } from '../../../shared/calendarColorPalette'
 import { sortCalendarsByOrder } from '../../../shared/calendarOrder'
 import { HOLIDAYS_KR_CALENDAR_ID, isProtectedCalendarId } from '../../../shared/calendarDefaults'
@@ -725,7 +721,6 @@ function CalendarSettingsPanel({
   onDuplicated?: (created: CalendarRecord) => void
 }): ReactElement | null {
   const { alert, confirm } = useAppDialog()
-  const importInputRef = useRef<HTMLInputElement | null>(null)
   const calendar = calendars.find((item) => item.id === calendarId)
   const [name, setName] = useState(calendar?.name ?? '')
   const [description, setDescription] = useState(calendar?.description ?? '')
@@ -837,20 +832,19 @@ function CalendarSettingsPanel({
     }
   }
 
-  const handleImportCalendar = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const input = event.target
-    const file = input.files?.[0]
-    input.value = ''
-    if (!file) return
+  const handleImportCalendar = async (): Promise<void> => {
+    if (importing) return
 
     setImporting(true)
     try {
-      const format = detectCalendarFileFormat(file.name)
+      const picked = await window.neoCalendar.pickCalendarImportFile()
+      if (picked.cancelled) return
+
+      const format = detectCalendarFileFormat(picked.filename)
       if (!format) {
         throw new Error('JSON, ICS, CSV 파일만 가져올 수 있습니다.')
       }
-      const text = await file.text()
-      const parsed = parseImportPayload(text, format, file.name)
+      const parsed = parseImportPayload(picked.content, format, picked.filename)
       const events = extractEventsFromImportPayload(parsed)
       if (!events.length) {
         throw new Error('가져올 일정이 없습니다.')
@@ -996,19 +990,12 @@ function CalendarSettingsPanel({
               <button
                 type="button"
                 style={{ gridArea: 'import' }}
-                onClick={() => importInputRef.current?.click()}
+                onClick={() => void handleImportCalendar()}
                 disabled={importing || clearing || deleting || duplicating || saving}
                 className="settings-btn-secondary rounded-full px-6 py-2.5 text-sm font-medium disabled:opacity-60"
               >
                 {importing ? '가져오는 중…' : '가져오기'}
               </button>
-              <input
-                ref={importInputRef}
-                type="file"
-                className="hidden"
-                accept={getAllImportAcceptAttribute()}
-                onChange={(ev) => void handleImportCalendar(ev)}
-              />
 
               <button
                 type="button"

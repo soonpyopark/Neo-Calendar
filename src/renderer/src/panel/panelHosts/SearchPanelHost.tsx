@@ -14,7 +14,7 @@ export function SearchPanelHost({ init }: { init: Init }): ReactElement | null {
   if (loading) return null
 
   return (
-    <div className="neo-panel-shell h-full w-full overflow-hidden p-2">
+    <div className="neo-panel-shell h-screen w-screen overflow-hidden">
       <SearchPanel
         surface="floating"
         open

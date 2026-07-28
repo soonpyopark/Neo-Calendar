@@ -1,12 +1,9 @@
 import {
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type CSSProperties,
-  type ReactElement,
-  type RefObject
+  type ReactElement
 } from 'react'
 import { getEventLinks } from '../lib/eventLinks'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
@@ -23,61 +20,9 @@ import {
   searchCalendarEvents,
   toDateKey
 } from '../lib/searchEvents'
-import {
-  SEARCH_PANEL_CHROME_PAD,
-  SEARCH_PANEL_GAP_BELOW_POINTER,
-  SEARCH_PANEL_MAX_HEIGHT,
-  SEARCH_PANEL_MIN_HEIGHT,
-  computeSearchPanelWidth
-} from '../../../shared/panelWindows'
 import { cn } from '../lib/cn'
 import DateInput from './DateInput'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
-import { clampRectToViewport, getMainShellBounds } from '../lib/popoverPosition'
-
-const SEARCH_PANEL_GAP_BELOW_HEADER = 8
-
-function computeInlineSearchPanelPlacement(options: {
-  openPointer?: { x: number; y: number } | null
-  anchorRef?: RefObject<HTMLElement | null>
-}): {
-  top: number
-  left: number
-  width: number
-  maxHeight: number
-} {
-  const shell = getMainShellBounds()
-  const panelWidth = computeSearchPanelWidth(shell.width)
-  const top =
-    options.openPointer != null
-      ? options.openPointer.y + SEARCH_PANEL_GAP_BELOW_POINTER
-      : resolveHeaderActionsBottom(options.anchorRef) + SEARCH_PANEL_GAP_BELOW_HEADER
-  const left = shell.left + (shell.width - panelWidth) / 2
-  const clamped = clampRectToViewport({
-    top,
-    left,
-    width: panelWidth,
-    height: SEARCH_PANEL_MAX_HEIGHT,
-    padding: 5
-  })
-  return {
-    top: Math.round(clamped.top),
-    left: Math.round(clamped.left),
-    width: Math.round(clamped.width),
-    maxHeight: Math.round(clamped.maxHeight)
-  }
-}
-
-/** Bottom edge of the header icon row (AppChrome), not the period toolbar. */
-function resolveHeaderActionsBottom(anchorRef?: RefObject<HTMLElement | null>): number {
-  const row =
-    document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
-    anchorRef?.current
-  if (row) return row.getBoundingClientRect().bottom
-  const header = document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header"]')
-  if (header) return header.getBoundingClientRect().bottom
-  return getMainShellBounds().top
-}
 
 const pagerBtnClass =
   'inline-flex h-8 w-8 items-center justify-center rounded-full text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading disabled:pointer-events-none disabled:opacity-35'
@@ -94,10 +39,6 @@ export type SearchSelectPayload = {
 export type SearchPanelProps = {
   open: boolean
   surface?: 'inline' | 'floating'
-  /** Click pointer when search opened — panel top = y + 30px (browser / window). */
-  openPointer?: { x: number; y: number } | null
-  /** Header chrome row — fallback anchor when the search button is not found. */
-  anchorRef?: RefObject<HTMLElement | null>
   events: CalendarEvent[]
   calendars: CalendarRecord[]
   tags?: TagRecord[]
@@ -425,8 +366,6 @@ function SearchResultLegend(): ReactElement {
 export function SearchPanel({
   open,
   surface = 'inline',
-  openPointer = null,
-  anchorRef,
   events,
   calendars,
   tags = [],
@@ -435,7 +374,6 @@ export function SearchPanel({
 }: SearchPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const [query, setQuery] = useState('')
-  const [inlinePanelStyle, setInlinePanelStyle] = useState<CSSProperties | undefined>()
   const [rangeStart, setRangeStart] = useState(() => getDefaultSearchRange().start)
   const [rangeEnd, setRangeEnd] = useState(() => getDefaultSearchRange().end)
   const [pageSize, setPageSize] = useState(20)
@@ -518,101 +456,6 @@ export function SearchPanel({
 
   const trimmed = query.trim()
 
-  useLayoutEffect(() => {
-    if (isFloating || !open) {
-      setInlinePanelStyle(undefined)
-      return undefined
-    }
-
-    const place = (): void => {
-      const pos = computeInlineSearchPanelPlacement({ openPointer, anchorRef })
-      setInlinePanelStyle({
-        position: 'fixed',
-        top: pos.top,
-        left: pos.left,
-        width: pos.width,
-        maxHeight: pos.maxHeight,
-        zIndex: 56
-      })
-    }
-
-    place()
-    window.addEventListener('resize', place)
-    const header = document.querySelector('.neo-cal-shell [data-shell-chrome="header"]')
-    const ro =
-      header && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => place())
-        : null
-    ro?.observe(header)
-    return () => {
-      window.removeEventListener('resize', place)
-      ro?.disconnect()
-    }
-  }, [
-    anchorRef,
-    openPointer,
-    isFloating,
-    open,
-    trimmed,
-    total,
-    pageResults.length,
-    pageSize,
-    safePage,
-    resourceDetail,
-    rangeStart,
-    rangeEnd
-  ])
-
-  useLayoutEffect(() => {
-    if (!isFloating || !open) return undefined
-
-    const shell = shellRef.current
-    const results = resultsRef.current
-    if (!shell || !results) return undefined
-
-    const fitToContent = (): void => {
-      const api = window.neoCalendar
-      if (!api?.resizePanelWindow) return
-
-      results.style.maxHeight = ''
-      const headerH = headerBlockRef.current?.offsetHeight ?? 0
-      const resultsNatural = results.scrollHeight
-      const contentH = headerH + resultsNatural
-      const width = Math.round(window.innerWidth)
-      const maxContentH = SEARCH_PANEL_MAX_HEIGHT - SEARCH_PANEL_CHROME_PAD
-
-      let windowH: number
-      if (contentH + SEARCH_PANEL_CHROME_PAD > SEARCH_PANEL_MAX_HEIGHT) {
-        windowH = SEARCH_PANEL_MAX_HEIGHT
-        results.style.maxHeight = `${Math.max(120, maxContentH - headerH)}px`
-      } else {
-        windowH = Math.max(
-          SEARCH_PANEL_MIN_HEIGHT,
-          Math.ceil(contentH + SEARCH_PANEL_CHROME_PAD)
-        )
-      }
-
-      void api.resizePanelWindow({ width, height: windowH })
-    }
-
-    fitToContent()
-    const observer = new ResizeObserver(fitToContent)
-    observer.observe(shell)
-    observer.observe(results)
-    return () => observer.disconnect()
-  }, [
-    isFloating,
-    open,
-    trimmed,
-    total,
-    pageResults.length,
-    pageSize,
-    safePage,
-    resourceDetail,
-    rangeStart,
-    rangeEnd
-  ])
-
   if (!open) return null
 
   const resetRange = (): void => {
@@ -634,25 +477,26 @@ export function SearchPanel({
 
   return (
     <div
-      className={
-        isFloating
-          ? 'flex w-full flex-col'
-          : 'interaction-ui fixed inset-0 z-[55]'
-      }
-      onClick={isFloating ? undefined : onClose}
+      className={isFloating ? 'h-full w-full' : 'interaction-ui fixed inset-0 z-[55]'}
       role="presentation"
+      onClick={isFloating ? undefined : onClose}
     >
       <div
-        className={isFloating ? 'mx-auto flex w-full flex-col px-1' : 'pointer-events-auto'}
-        style={isFloating ? undefined : inlinePanelStyle}
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="일정 검색"
+        className={
+          isFloating
+            ? 'flex h-full w-full'
+            : 'pointer-events-none fixed inset-0 z-[56] flex items-center justify-center'
+        }
+        role="presentation"
       >
         <div
+          className={`search-panel-shell shell-solid-surface pointer-events-auto relative z-[1] flex min-h-0 overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'h-full w-full max-h-full flex-col' : 'h-[80%] w-[90%] max-h-[80%] flex-col'}`}
           ref={shellRef}
-          className={`search-panel-shell shell-solid-surface w-full overflow-hidden rounded-xl${isFloating ? '' : ' shadow-[0_8px_28px_rgba(0,0,0,0.18)]'} ${isFloating ? 'flex flex-col' : 'flex max-h-full flex-col'}`}
+          role="dialog"
+          aria-modal="true"
+          aria-label="일정 검색"
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
         >
           <div ref={headerBlockRef} className="shrink-0">
           <div className="search-panel-query-row search-panel-line-b flex h-14 items-center gap-1 px-3">
@@ -792,7 +636,7 @@ export function SearchPanel({
 
           <div
             ref={resultsRef}
-            className={`settings-scroll overflow-y-auto${isFloating ? '' : ' min-h-0 flex-1'}`}
+            className="settings-scroll min-h-0 flex-1 overflow-y-auto"
           >
             {!trimmed ? (
               <p className="px-5 py-8 text-center text-sm text-gcal-muted">

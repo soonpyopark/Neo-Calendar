@@ -80,30 +80,25 @@ export const MAIN_PANEL_WIDTH_RATIO = 0.9
 /** @deprecated Use {@link MAIN_PANEL_WIDTH_RATIO} */
 export const SEARCH_PANEL_WIDTH_RATIO = MAIN_PANEL_WIDTH_RATIO
 
+/** Main panel height — 80% of main calendar / shell height (settings + search). */
+export const MAIN_PANEL_HEIGHT_RATIO = 0.8
+
 /** @deprecated Use {@link computeMainPanelWidth} — kept as upper hint for legacy layouts. */
 export const SEARCH_PANEL_WIDTH = 880
-export const SEARCH_PANEL_MIN_HEIGHT = 300
-export const SEARCH_PANEL_MAX_HEIGHT = 540
-export const SEARCH_PANEL_CHROME_PAD = 16
-/** Search panel top = pointer Y + this gap (browser / window inline + floating). */
-export const SEARCH_PANEL_GAP_BELOW_POINTER = 30
 
 export function computeMainPanelWidth(containerWidth: number): number {
   const inner = Math.max(0, containerWidth)
   return Math.max(280, Math.round(inner * MAIN_PANEL_WIDTH_RATIO))
 }
 
-/** Search panel width — same as settings ({@link MAIN_PANEL_WIDTH_RATIO}). */
-export function computeSearchPanelWidth(containerWidth: number): number {
-  return computeMainPanelWidth(containerWidth)
+export function computeMainPanelHeight(containerHeight: number): number {
+  const inner = Math.max(0, containerHeight)
+  return Math.max(240, Math.round(inner * MAIN_PANEL_HEIGHT_RATIO))
 }
 
-/** Client-space anchor for search panel placement below the click pointer. */
-export function searchPanelAnchorFromPointer(
-  clientX: number,
-  clientY: number
-): { top: number; left: number; width: number; height: number } {
-  return { top: clientY, left: clientX, width: 1, height: 0 }
+/** @deprecated Use {@link computeMainPanelWidth} */
+export function computeSearchPanelWidth(containerWidth: number): number {
+  return computeMainPanelWidth(containerWidth)
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -169,53 +164,6 @@ function centerInMainWindow(options: {
     y: Math.round(clamp(y, minY, Math.max(minY, maxY))),
     width: Math.round(safeWidth),
     height: Math.round(safeHeight)
-  }
-}
-
-/** Place panel top edge just below an anchor (header toolbar button), clamped to main window. */
-function belowAnchoredBounds(options: {
-  anchorScreen: PanelAnchorRect
-  panelWidth: number
-  panelHeight: number
-  workArea: { x: number; y: number; width: number; height: number }
-  mainOrigin: { x: number; y: number }
-  mainSize: { width: number; height: number }
-  gap?: number
-  /** When true, horizontal center follows the main window (90% width panels). */
-  centerInMain?: boolean
-}): { x: number; y: number; width: number; height: number } {
-  const pad = VIEWPORT_PAD
-  const gap = options.gap ?? 8
-  const { anchorScreen, workArea, mainOrigin, mainSize } = options
-  const panelWidth = Math.min(
-    options.panelWidth,
-    Math.max(0, mainSize.width - pad * 2),
-    Math.max(0, workArea.width - pad * 2)
-  )
-  const panelHeight = Math.min(
-    options.panelHeight,
-    Math.max(0, mainSize.height - pad * 2),
-    Math.max(0, workArea.height - pad * 2)
-  )
-
-  let left = options.centerInMain
-    ? mainOrigin.x + (mainSize.width - panelWidth) / 2
-    : anchorScreen.left + anchorScreen.width / 2 - panelWidth / 2
-  let top = anchorScreen.top + anchorScreen.height + gap
-
-  const boundsLeft = mainOrigin.x + pad
-  const boundsTop = mainOrigin.y + pad
-  const boundsRight = mainOrigin.x + mainSize.width - pad
-  const boundsBottom = mainOrigin.y + mainSize.height - pad
-
-  left = clamp(left, boundsLeft, Math.max(boundsLeft, boundsRight - panelWidth))
-  top = clamp(top, boundsTop, Math.max(boundsTop, boundsBottom - panelHeight))
-
-  return {
-    x: Math.round(left),
-    y: Math.round(top),
-    width: Math.round(panelWidth),
-    height: Math.round(panelHeight)
   }
 }
 
@@ -385,50 +333,13 @@ export function computePanelWindowBounds(options: {
     })
   }
 
-  if (init.kind === 'settings') {
+  if (init.kind === 'settings' || init.kind === 'search') {
     return centerInMainWindow({
       mainOrigin,
       mainSize,
       workArea,
       width: computeMainPanelWidth(mainSize.width),
-      height: Math.min(Math.round(mainSize.height * 0.8), workArea.height - VIEWPORT_PAD * 2)
-    })
-  }
-
-  if (init.kind === 'search') {
-    const panelWidth = Math.min(
-      computeMainPanelWidth(mainSize.width),
-      workArea.width - VIEWPORT_PAD * 2
-    )
-    const panelHeight = Math.min(
-      SEARCH_PANEL_MAX_HEIGHT,
-      Math.round(mainSize.height * 0.8),
-      workArea.height - VIEWPORT_PAD * 2
-    )
-    if (anchorClient) {
-      const anchorScreen = {
-        top: mainOrigin.y + anchorClient.top,
-        left: mainOrigin.x + anchorClient.left,
-        width: anchorClient.width,
-        height: anchorClient.height
-      }
-      return belowAnchoredBounds({
-        anchorScreen,
-        panelWidth,
-        panelHeight,
-        workArea,
-        mainOrigin,
-        mainSize,
-        gap: SEARCH_PANEL_GAP_BELOW_POINTER,
-        centerInMain: true
-      })
-    }
-    return centerInMainWindow({
-      mainOrigin,
-      mainSize,
-      workArea,
-      width: panelWidth,
-      height: panelHeight
+      height: Math.min(computeMainPanelHeight(mainSize.height), workArea.height - VIEWPORT_PAD * 2)
     })
   }
 

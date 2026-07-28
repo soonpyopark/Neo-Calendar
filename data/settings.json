@@ -38,49 +38,29 @@
         "y": 20,
         "width": 1250,
         "height": 1010
-      },
-      "chromeBottomInset": 0,
-      "chromeLeftInset": 0,
-      "chromeRightInset": 0,
-      "chromeTopInset": 0,
-      "embedStrategy": "auto",
-      "inputForward": "auto",
-      "margins": {
-        "bottom": 0.05,
-        "left": 0.2,
-        "right": 0.05,
-        "top": 0.05
       }
     },
     "dayColors": {},
-    "dayColorsByLoginId": {
-      "admin": {}
-    },
+    "dayColorsByLoginId": {},
     "hiddenCalendarIdsByLoginId": {
       "admin": [
-        "cal-test",
         "cal-aconite"
       ]
     },
     "allowedIpCidrs": [
       {
-        "cidr": "221.168.0.216",
-        "description": "회사 인터넷망 PC"
-      },
-      {
-        "cidr": "192.168.0.1/24",
-        "description": "내 공유기 IP 주소"
+        "cidr": "10.0.0.1"
       }
     ],
-    "headerOpacity": 0.95,
-    "shellOpacity": 0.95,
+    "headerOpacity": 1,
+    "shellOpacity": 1,
     "viewOptionsBySurface": {
       "native": {
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
-        "colorScheme": "dark",
-        "accentColor": "#795548",
+        "colorScheme": "light",
+        "accentColor": "#039be5",
         "eventsHidden": false,
         "completedHidden": false
       },
@@ -89,7 +69,7 @@
         "weekStartsOnSunday": true,
         "roundedCorners": true,
         "colorScheme": "light",
-        "accentColor": "#795548",
+        "accentColor": "#039be5",
         "eventsHidden": false,
         "completedHidden": false
       }
@@ -127,5 +107,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-28T03:38:08.229Z"
+  "updatedAt": "2026-07-28T05:07:24.386Z"
 }
