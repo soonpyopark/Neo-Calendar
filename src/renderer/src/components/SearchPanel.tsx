@@ -25,6 +25,7 @@ import {
 } from '../lib/searchEvents'
 import {
   SEARCH_PANEL_CHROME_PAD,
+  SEARCH_PANEL_GAP_BELOW_POINTER,
   SEARCH_PANEL_MAX_HEIGHT,
   SEARCH_PANEL_MIN_HEIGHT,
   computeSearchPanelWidth
@@ -36,18 +37,10 @@ import { clampRectToViewport, getMainShellBounds } from '../lib/popoverPosition'
 
 const SEARCH_PANEL_GAP_BELOW_HEADER = 8
 
-/** Bottom edge of the header icon row (AppChrome), not the period toolbar. */
-function resolveHeaderActionsBottom(anchorRef?: RefObject<HTMLElement | null>): number {
-  const row =
-    document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
-    anchorRef?.current
-  if (row) return row.getBoundingClientRect().bottom
-  const header = document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header"]')
-  if (header) return header.getBoundingClientRect().bottom
-  return getMainShellBounds().top
-}
-
-function computeInlineSearchPanelPlacement(anchorRef?: RefObject<HTMLElement | null>): {
+function computeInlineSearchPanelPlacement(options: {
+  openPointer?: { x: number; y: number } | null
+  anchorRef?: RefObject<HTMLElement | null>
+}): {
   top: number
   left: number
   width: number
@@ -55,7 +48,10 @@ function computeInlineSearchPanelPlacement(anchorRef?: RefObject<HTMLElement | n
 } {
   const shell = getMainShellBounds()
   const panelWidth = computeSearchPanelWidth(shell.width)
-  const top = resolveHeaderActionsBottom(anchorRef) + SEARCH_PANEL_GAP_BELOW_HEADER
+  const top =
+    options.openPointer != null
+      ? options.openPointer.y + SEARCH_PANEL_GAP_BELOW_POINTER
+      : resolveHeaderActionsBottom(options.anchorRef) + SEARCH_PANEL_GAP_BELOW_HEADER
   const left = shell.left + (shell.width - panelWidth) / 2
   const clamped = clampRectToViewport({
     top,
@@ -70,6 +66,17 @@ function computeInlineSearchPanelPlacement(anchorRef?: RefObject<HTMLElement | n
     width: Math.round(clamped.width),
     maxHeight: Math.round(clamped.maxHeight)
   }
+}
+
+/** Bottom edge of the header icon row (AppChrome), not the period toolbar. */
+function resolveHeaderActionsBottom(anchorRef?: RefObject<HTMLElement | null>): number {
+  const row =
+    document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
+    anchorRef?.current
+  if (row) return row.getBoundingClientRect().bottom
+  const header = document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header"]')
+  if (header) return header.getBoundingClientRect().bottom
+  return getMainShellBounds().top
 }
 
 const pagerBtnClass =
@@ -87,6 +94,8 @@ export type SearchSelectPayload = {
 export type SearchPanelProps = {
   open: boolean
   surface?: 'inline' | 'floating'
+  /** Click pointer when search opened — panel top = y + 30px (browser / window). */
+  openPointer?: { x: number; y: number } | null
   /** Header chrome row — fallback anchor when the search button is not found. */
   anchorRef?: RefObject<HTMLElement | null>
   events: CalendarEvent[]
@@ -416,6 +425,7 @@ function SearchResultLegend(): ReactElement {
 export function SearchPanel({
   open,
   surface = 'inline',
+  openPointer = null,
   anchorRef,
   events,
   calendars,
@@ -515,7 +525,7 @@ export function SearchPanel({
     }
 
     const place = (): void => {
-      const pos = computeInlineSearchPanelPlacement(anchorRef)
+      const pos = computeInlineSearchPanelPlacement({ openPointer, anchorRef })
       setInlinePanelStyle({
         position: 'fixed',
         top: pos.top,
@@ -540,6 +550,7 @@ export function SearchPanel({
     }
   }, [
     anchorRef,
+    openPointer,
     isFloating,
     open,
     trimmed,

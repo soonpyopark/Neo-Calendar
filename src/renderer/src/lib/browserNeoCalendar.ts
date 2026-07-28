@@ -390,7 +390,8 @@ export function installBrowserNeoCalendar(): void {
         return { ok: false, error: result.error ?? '로그인에 실패했습니다.' }
       }
       setToken(result.token, Boolean(remember))
-      dispatchNeoAuthChanged(result.user)
+      // Full reload so toolbar/auth/store state matches Electron after login.
+      window.location.reload()
       return { ok: true, user: result.user }
     },
     logout: async () => {

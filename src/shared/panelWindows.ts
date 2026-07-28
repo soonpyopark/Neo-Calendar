@@ -85,6 +85,8 @@ export const SEARCH_PANEL_WIDTH = 880
 export const SEARCH_PANEL_MIN_HEIGHT = 300
 export const SEARCH_PANEL_MAX_HEIGHT = 540
 export const SEARCH_PANEL_CHROME_PAD = 16
+/** Search panel top = pointer Y + this gap (browser / window inline + floating). */
+export const SEARCH_PANEL_GAP_BELOW_POINTER = 30
 
 export function computeMainPanelWidth(containerWidth: number): number {
   const inner = Math.max(0, containerWidth)
@@ -94,6 +96,14 @@ export function computeMainPanelWidth(containerWidth: number): number {
 /** Search panel width — same as settings ({@link MAIN_PANEL_WIDTH_RATIO}). */
 export function computeSearchPanelWidth(containerWidth: number): number {
   return computeMainPanelWidth(containerWidth)
+}
+
+/** Client-space anchor for search panel placement below the click pointer. */
+export function searchPanelAnchorFromPointer(
+  clientX: number,
+  clientY: number
+): { top: number; left: number; width: number; height: number } {
+  return { top: clientY, left: clientX, width: 1, height: 0 }
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -191,7 +201,7 @@ function belowAnchoredBounds(options: {
   let left = options.centerInMain
     ? mainOrigin.x + (mainSize.width - panelWidth) / 2
     : anchorScreen.left + anchorScreen.width / 2 - panelWidth / 2
-  let top = anchorScreen.bottom + gap
+  let top = anchorScreen.top + anchorScreen.height + gap
 
   const boundsLeft = mainOrigin.x + pad
   const boundsTop = mainOrigin.y + pad
@@ -386,19 +396,39 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'search') {
+    const panelWidth = Math.min(
+      computeMainPanelWidth(mainSize.width),
+      workArea.width - VIEWPORT_PAD * 2
+    )
+    const panelHeight = Math.min(
+      SEARCH_PANEL_MAX_HEIGHT,
+      Math.round(mainSize.height * 0.8),
+      workArea.height - VIEWPORT_PAD * 2
+    )
+    if (anchorClient) {
+      const anchorScreen = {
+        top: mainOrigin.y + anchorClient.top,
+        left: mainOrigin.x + anchorClient.left,
+        width: anchorClient.width,
+        height: anchorClient.height
+      }
+      return belowAnchoredBounds({
+        anchorScreen,
+        panelWidth,
+        panelHeight,
+        workArea,
+        mainOrigin,
+        mainSize,
+        gap: SEARCH_PANEL_GAP_BELOW_POINTER,
+        centerInMain: true
+      })
+    }
     return centerInMainWindow({
       mainOrigin,
       mainSize,
       workArea,
-      width: Math.min(
-        computeMainPanelWidth(mainSize.width),
-        workArea.width - VIEWPORT_PAD * 2
-      ),
-      height: Math.min(
-        SEARCH_PANEL_MAX_HEIGHT,
-        Math.round(mainSize.height * 0.8),
-        workArea.height - VIEWPORT_PAD * 2
-      )
+      width: panelWidth,
+      height: panelHeight
     })
   }
 

@@ -1,4 +1,4 @@
-import { useRef, type ReactElement, type Ref } from 'react'
+import { useRef, type MouseEvent, type ReactElement, type Ref } from 'react'
 import { InteractionUI } from './InteractionUI'
 import {
   DesktopModeIcon,
@@ -36,7 +36,7 @@ export type AppChromeProps = {
   /** WorkerW-embedded: clicks via main bridge, not hover wake. */
   embedded?: boolean
   chromeRef?: Ref<HTMLDivElement | null>
-  onOpenSearch: () => void
+  onOpenSearch: (event: MouseEvent<HTMLElement>) => void
   onOpenSettings: () => void
   onExportExcel: () => void
   onExportPdf: () => void
@@ -127,7 +127,7 @@ export function AppChrome({
                 : '검색'
           }
           disabled={!loggedIn || settingsOpen}
-          onClick={onOpenSearch}
+          onClick={(event) => onOpenSearch(event)}
         >
           <SearchIcon />
         </InteractionUI>

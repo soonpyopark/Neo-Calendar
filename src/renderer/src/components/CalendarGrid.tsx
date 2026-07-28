@@ -48,7 +48,12 @@ import {
   EMBEDDED_MODE_CHROME_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../../../shared/ipc'
-import type { OpenPanelWindowRequest, PanelAnchorRect, PanelWindowInit } from '../../../shared/panelWindows'
+import {
+  searchPanelAnchorFromPointer,
+  type OpenPanelWindowRequest,
+  type PanelAnchorRect,
+  type PanelWindowInit
+} from '../../../shared/panelWindows'
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
@@ -396,6 +401,9 @@ export function CalendarGrid({
   const [viewDate, setViewDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()))
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [searchOpenPointer, setSearchOpenPointer] = useState<{ x: number; y: number } | null>(
+    null
+  )
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
@@ -484,21 +492,6 @@ export function CalendarGrid({
   const chromeRef = useRef<HTMLDivElement | null>(null)
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
 
-  const getSearchAnchorClient = useCallback((): PanelAnchorRect | null => {
-    const headerActions =
-      document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
-      chromeRef.current
-    if (!headerActions) return null
-    const rect = headerActions.getBoundingClientRect()
-    if (rect.width < 1 || rect.height < 1) return null
-    return {
-      top: rect.top,
-      left: rect.left,
-      width: rect.width,
-      height: rect.height
-    }
-  }, [])
-
   const monthBodyRef = useRef<HTMLDivElement | null>(null)
   const publishHitZonesRef = useRef<(() => void) | null>(null)
   const lastDayZoneCountRef = useRef(-1)
@@ -583,6 +576,26 @@ export function CalendarGrid({
   const dayColors = store.settings.dayColors ?? {}
   const weekStartsOn: 0 | 1 =
     settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
+
+  const openSearchAtPointer = useCallback(
+    (clientX: number, clientY: number): void => {
+      setSearchOpenPointer({ x: clientX, y: clientY })
+      setSettingsOpen(false)
+      if (isBrowserNeoCalendarHost()) {
+        setSearchOpen(true)
+        return
+      }
+      if (floatingPanels) {
+        openEmbeddedPanel(
+          { kind: 'search', eventsHidden },
+          searchPanelAnchorFromPointer(clientX, clientY)
+        )
+        return
+      }
+      setSearchOpen(true)
+    },
+    [eventsHidden, floatingPanels, openEmbeddedPanel]
+  )
 
   // WorkerW-embedded: publish period-toolbar + visible day-cell hit zones.
   useLayoutEffect(() => {
@@ -1985,19 +1998,9 @@ export function CalendarGrid({
           modeBusy={modeBusy}
           switchReady={switchReady}
           chromeRef={chromeRef}
-          onOpenSearch={() => {
+          onOpenSearch={(event) => {
             if (!canEdit) return
-            if (isBrowserNeoCalendarHost()) {
-              setSettingsOpen(false)
-              setSearchOpen(true)
-              return
-            }
-            if (floatingPanels) {
-              openEmbeddedPanel({ kind: 'search', eventsHidden }, getSearchAnchorClient())
-              return
-            }
-            setSettingsOpen(false)
-            setSearchOpen(true)
+            openSearchAtPointer(event.clientX, event.clientY)
           }}
           onOpenSettings={() => {
             if (!canEdit) return
@@ -2343,11 +2346,15 @@ export function CalendarGrid({
       {inlineOverlays ? (
         <SearchPanel
           open={searchOpen}
+          openPointer={searchOpenPointer}
           anchorRef={chromeRef}
           events={eventsHidden ? [] : visibleEvents}
           calendars={store.calendars}
           tags={store.tags}
-          onClose={() => setSearchOpen(false)}
+          onClose={() => {
+            setSearchOpen(false)
+            setSearchOpenPointer(null)
+          }}
           onSelectResult={handleSearchSelect}
         />
       ) : null}
