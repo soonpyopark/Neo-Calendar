@@ -93,6 +93,10 @@ export class PanelWindowManager {
       if (slot) this.closeSlot(slot)
     })
 
+    ipcMain.on('panel-close-slot', (_event, kind: PanelKind) => {
+      if (typeof kind === 'string' && kind) this.closeSlot(kind)
+    })
+
     ipcMain.handle('panel-resize', (event, size: { width: number; height: number }) =>
       this.resizeFromSender(event, size)
     )
@@ -408,8 +412,11 @@ export class PanelWindowManager {
     }
 
     const resizable = init.kind === 'eventEditor' || init.kind === 'settings'
+    // Scope / confirm dialogs must stay above sibling panels (detail/quick-edit).
+    const forceTopLevel =
+      init.kind === 'recurrenceScope' || init.kind === 'exportConfirm' || init.kind === 'login'
     const topLevel =
-      topLevelOption ?? (this.options.isWorkerEmbedded?.() ?? false)
+      topLevelOption ?? (forceTopLevel || (this.options.isWorkerEmbedded?.() ?? false))
 
     const win = new BrowserWindow({
       x: windowBounds.x,
@@ -447,16 +454,13 @@ export class PanelWindowManager {
 
     const webContentsId = win.webContents.id
     win.setIgnoreMouseEvents(false)
-    if (topLevel) {
-      raiseFloatingPanelWindow(win)
-    }
+    // Always raise so scope dialogs appear above sibling panels (quickEdit / eventDetail).
+    raiseFloatingPanelWindow(win)
     this.registerEntry(slot, win, init, anchorScreen)
 
     win.once('ready-to-show', () => {
       if (win.isDestroyed()) return
-      if (topLevel) {
-        raiseFloatingPanelWindow(win)
-      }
+      raiseFloatingPanelWindow(win)
       win.show()
       focusWindowForTextInput(win)
       this.outsideBlockedUntil = Math.max(

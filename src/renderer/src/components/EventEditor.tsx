@@ -168,11 +168,17 @@ export function EventEditor({
   const formSeedKeyRef = useRef(null);
   /** Fingerprint of fields right after seed — used to detect unsaved edits on close. */
   const initialFingerprintRef = useRef(null);
+  /**
+   * Google-like: touching repeat controls while editing "all" clears EXDATEs so
+   * re-applying a series (e.g. until Friday again) restores previously deleted days.
+   */
+  const [recurrenceTouched, setRecurrenceTouched] = useState(false);
 
   useEffect(() => {
     if (!open) {
       formSeedKeyRef.current = null;
       initialFingerprintRef.current = null;
+      setRecurrenceTouched(false);
       return;
     }
 
@@ -187,6 +193,7 @@ export function EventEditor({
       return;
     }
     formSeedKeyRef.current = seedKey;
+    setRecurrenceTouched(false);
 
     if (event) {
       const seeded = {
@@ -355,6 +362,17 @@ export function EventEditor({
     const parsedCount = Math.max(1, Number.parseInt(repeatCount, 10) || 1);
     const normalizedUntil = repeatUntil && repeatUntil < startDate ? startDate : repeatUntil;
     const repeating = repeat !== 'none';
+    const prevRepeat = event?.repeat ?? 'none';
+    const prevUntil = event?.repeatUntil ?? null;
+    const prevCount = event?.repeatCount ?? null;
+    const nextUntil = repeating && repeatEndMode === 'until' ? normalizedUntil : null;
+    const nextCount = repeating && repeatEndMode === 'count' ? parsedCount : null;
+    const recurrenceDirty =
+      recurrenceTouched ||
+      repeat !== prevRepeat ||
+      (nextUntil ?? null) !== (prevUntil ?? null) ||
+      (nextCount ?? null) !== (prevCount ?? null) ||
+      !repeating;
 
     return {
       id: event?.id,
@@ -365,9 +383,10 @@ export function EventEditor({
       startTime: allDay ? null : startTime,
       endTime: allDay ? null : normalizedEndTime,
       repeat,
-      repeatUntil: repeating && repeatEndMode === 'until' ? normalizedUntil : null,
-      repeatCount: repeating && repeatEndMode === 'count' ? parsedCount : null,
-      exdates: Array.isArray(event?.exdates) ? event.exdates : [],
+      repeatUntil: nextUntil,
+      repeatCount: nextCount,
+      // Rewrite / re-touch recurrence → clear EXDATEs (restore cancelled instances).
+      exdates: !repeating || recurrenceDirty ? [] : (Array.isArray(event?.exdates) ? event.exdates : []),
       description,
       links: normalizeEventLinksArray(links),
       link: getPrimaryEventLinkUrl({ links }),
@@ -392,6 +411,7 @@ export function EventEditor({
     event,
     links,
     markerShape,
+    recurrenceTouched,
     repeat,
     repeatCount,
     repeatEndMode,
@@ -702,7 +722,10 @@ export function EventEditor({
             <select
               className={fieldClass}
               value={repeat}
-              onChange={(e) => setRepeat(e.target.value)}
+              onChange={(e) => {
+                setRecurrenceTouched(true)
+                setRepeat(e.target.value)
+              }}
               aria-label="반복"
             >
               {REPEAT_OPTIONS.map((option) => (
@@ -716,7 +739,10 @@ export function EventEditor({
                 <select
                   className={fieldClass}
                   value={repeatEndMode}
-                  onChange={(e) => setRepeatEndMode(e.target.value)}
+                  onChange={(e) => {
+                    setRecurrenceTouched(true)
+                    setRepeatEndMode(e.target.value)
+                  }}
                   aria-label="반복 종료"
                 >
                   {REPEAT_END_OPTIONS.map((option) => (
@@ -730,7 +756,10 @@ export function EventEditor({
                     className={dateFieldClass}
                     value={repeatUntil || startDate}
                     min={startDate}
-                    onChange={setRepeatUntil}
+                    onChange={(value) => {
+                      setRecurrenceTouched(true)
+                      setRepeatUntil(value)
+                    }}
                     aria-label="반복 종료일"
                   />
                 )}
@@ -742,7 +771,10 @@ export function EventEditor({
                       max={999}
                       className={`${fieldClass} w-20`}
                       value={repeatCount}
-                      onChange={(e) => setRepeatCount(e.target.value)}
+                      onChange={(e) => {
+                        setRecurrenceTouched(true)
+                        setRepeatCount(e.target.value)
+                      }}
                       aria-label="반복 횟수"
                     />
                     회

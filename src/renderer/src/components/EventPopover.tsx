@@ -85,6 +85,7 @@ export function EventPopover({
 
   const handleDeleteClick = (): void => {
     void (async () => {
+      // Same copy as EventEditor. AppDialog uses z-[100] so it paints above this shell (z-71).
       const ok = await confirm('이 일정을 정말 삭제하시겠습니까?', {
         variant: 'danger',
         confirmLabel: '삭제'

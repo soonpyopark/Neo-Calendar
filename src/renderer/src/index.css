@@ -1857,6 +1857,16 @@ html.neo-quick-edit-window .day-quick-edit {
   box-shadow: none;
 }
 
+/* Recurrence scope floating panel — fill BrowserWindow like quick-edit shell. */
+html.neo-panel-window .recurrence-scope-shell.day-quick-edit {
+  position: relative;
+  inset: auto;
+  z-index: auto;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+
 /* Floating panel BrowserWindows (panel.html) — flat chrome, no drop shadow. */
 html.neo-panel-window .day-quick-edit,
 html.neo-panel-window .day-events-popover,
@@ -1865,6 +1875,7 @@ html.neo-panel-window .search-panel-shell,
 html.neo-panel-window .event-detail-shell,
 html.neo-panel-window .export-confirm-shell,
 html.neo-panel-window .login-panel-shell,
+html.neo-panel-window .recurrence-scope-shell,
 html.neo-panel-window .shell-solid-surface,
 html.neo-panel-window .interaction-ui.rounded-xl.bg-gcal-surface,
 html.neo-panel-window .app-dialog-root .shell-solid-surface,
@@ -1884,10 +1895,12 @@ html.neo-panel-window.dark .search-panel-shell,
 html.neo-panel-window.dark .settings-panel-shell,
 html.neo-panel-window.dark .export-confirm-shell,
 html.neo-panel-window.dark .login-panel-shell,
+html.neo-panel-window.dark .recurrence-scope-shell,
 html.neo-panel-window.dark form.shell-solid-surface,
 html.neo-panel-window.dark .neo-modal-shell,
 html.neo-quick-edit-window.dark .day-quick-edit,
-html.neo-quick-edit-window.dark .neo-modal-shell {
+html.neo-quick-edit-window.dark .neo-modal-shell,
+html.neo-quick-edit-window.dark .recurrence-scope-shell {
   background: var(--gcal-surface);
   border-color: var(--gcal-border);
   color: var(--gcal-body);

@@ -58,16 +58,17 @@ import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { useEventLayoutCssVars, useMaxVisibleEvents } from '../hooks/useMaxVisibleEvents'
 import {
-  addExdate,
-  buildFollowingSeriesEvent,
-  buildSingleExceptionEvent,
   getOccurrenceDate,
   getSeriesId,
   isRecurringEvent,
-  expandEventsForRange,
-  truncateSeriesBefore
+  expandEventsForRange
 } from '../../../shared/mdcExport/eventOccurrences.js'
 import { eventToMutationPayload } from '../lib/eventMutation'
+import { buildRecurringCompletePayload } from '../lib/recurrenceComplete'
+import {
+  applyRecurringDelete,
+  applyRecurringEdit as applyRecurringEditCore
+} from '../lib/recurrenceMutations'
 import {
   getPrimaryEventLinkUrl,
   normalizeEventLinksArray
@@ -1068,60 +1069,16 @@ export function CalendarGrid({
       occurrenceDate: string,
       scope: 'single' | 'following' | 'all'
     ): Promise<void> => {
-      if (scope === 'all') {
-        const startDate = String(payload.startDate ?? master.startDate)
-        const endDate = String(payload.endDate ?? payload.startDate ?? master.endDate)
-        const durationDays = Math.max(
-          1,
-          Math.round(
-            (new Date(`${endDate}T00:00:00`).getTime() -
-              new Date(`${startDate}T00:00:00`).getTime()) /
-              86400000
-          ) + 1
-        )
-        const keepSeriesStart = occurrenceDate !== master.startDate
-        const nextStart = keepSeriesStart ? master.startDate : startDate
-        const seriesEnd = new Date(`${nextStart}T00:00:00`)
-        seriesEnd.setDate(seriesEnd.getDate() + durationDays - 1)
-        const seriesEndDate = toDateKey(
-          seriesEnd.getFullYear(),
-          seriesEnd.getMonth(),
-          seriesEnd.getDate()
-        )
-        await editEvent(master.id, {
-          ...payload,
-          startDate: nextStart,
-          endDate: seriesEndDate,
-          exdates: Array.isArray(master.exdates) ? master.exdates : []
-        } as Partial<CalendarEvent>)
-        return
-      }
-
-      if (scope === 'single') {
-        const exception = buildSingleExceptionEvent(master, payload, occurrenceDate)
-        const withExdate = addExdate(master, occurrenceDate)
-        await editEvent(master.id, { exdates: withExdate.exdates })
-        await addEvent(exception as Parameters<typeof addEvent>[0])
-        return
-      }
-
-      const truncated = truncateSeriesBefore(master, occurrenceDate)
-      if ((truncated.repeat ?? 'none') === 'none') {
-        await removeEvent(master.id)
-      } else {
-        await editEvent(master.id, {
-          repeatUntil: truncated.repeatUntil,
-          repeatCount: null,
-          repeat: truncated.repeat
-        })
-      }
-      await addEvent(
-        buildFollowingSeriesEvent(master, payload, occurrenceDate) as Parameters<
-          typeof addEvent
-        >[0]
+      await applyRecurringEditCore(
+        { addEvent, editEvent, removeEvent },
+        master,
+        payload,
+        occurrenceDate,
+        scope,
+        store.events
       )
     },
-    [addEvent, editEvent, removeEvent]
+    [addEvent, editEvent, removeEvent, store.events]
   )
 
   const shiftMonth = (delta: number): void => {
@@ -1392,6 +1349,34 @@ export function CalendarGrid({
     []
   )
 
+  const openRecurringCompleteScope = useCallback(
+    (master: CalendarEvent, occurrenceDate: string, completed: boolean): void => {
+      const nextCompleted = Boolean(completed)
+      const openInline = (): void => {
+        setPendingComplete({ master, occurrenceDate, completed: nextCompleted })
+        setScopeDialog({ mode: 'complete' })
+      }
+      // Browser / unlocked desktop: in-shell floating dialog (quick-edit chrome).
+      if (isBrowserNeoCalendarHost() || !floatingPanels) {
+        openInline()
+        return
+      }
+      void window.neoCalendar
+        .openPanelWindow?.({
+          kind: 'recurrenceScope',
+          mode: 'complete',
+          eventId: master.id,
+          occurrenceDate,
+          completed: nextCompleted
+        })
+        .then((opened) => {
+          if (opened === false) openInline()
+        })
+        .catch(() => openInline())
+    },
+    [floatingPanels]
+  )
+
   const handleQuickEditToggleCompleted = useCallback(
     async (event: CalendarEvent, completed: boolean): Promise<void> => {
       if (!requireEdit()) return
@@ -1405,19 +1390,21 @@ export function CalendarGrid({
         }
         const occurrenceDate =
           getOccurrenceDate(event, quickEdit?.dateKey) ?? master.startDate
-        setPendingComplete({
-          master,
-          occurrenceDate,
-          completed: nextCompleted
-        })
-        setScopeDialog({ mode: 'complete' })
+        openRecurringCompleteScope(master, occurrenceDate, nextCompleted)
       } catch (error) {
         await alert(
           error instanceof Error ? error.message : '완료 상태를 변경하지 못했습니다.'
         )
       }
     },
-    [alert, editEvent, findMasterEvent, quickEdit?.dateKey, requireEdit]
+    [
+      alert,
+      editEvent,
+      findMasterEvent,
+      openRecurringCompleteScope,
+      quickEdit?.dateKey,
+      requireEdit
+    ]
   )
 
   /** MDC DayQuickEditPopover — resolve occurrence id to series master before patch. */
@@ -1775,26 +1762,7 @@ export function CalendarGrid({
       if (dialogMode === 'complete' && pendingComplete?.master) {
         const { master, occurrenceDate, completed } = pendingComplete
         const nextCompleted = Boolean(completed)
-        const durationDays = Math.max(
-          1,
-          Math.round(
-            (new Date(`${master.endDate || master.startDate}T00:00:00`).getTime() -
-              new Date(`${master.startDate}T00:00:00`).getTime()) /
-              86400000
-          ) + 1
-        )
-        const occurrenceEnd = addDays(new Date(`${occurrenceDate}T00:00:00`), durationDays - 1)
-        const occurrenceEndDate = toDateKey(
-          occurrenceEnd.getFullYear(),
-          occurrenceEnd.getMonth(),
-          occurrenceEnd.getDate()
-        )
-        const payload = {
-          ...eventToMutationPayload(master),
-          startDate: occurrenceDate,
-          endDate: occurrenceEndDate,
-          completed: nextCompleted
-        }
+        const payload = buildRecurringCompletePayload(master, occurrenceDate, nextCompleted)
         await applyRecurringEdit(master, payload, occurrenceDate, scope)
         setPendingComplete(null)
         setEventPopover((prev) =>
@@ -1805,23 +1773,13 @@ export function CalendarGrid({
       if (dialogMode === 'delete' && pendingDelete?.master) {
         const { master, occurrenceDate } = pendingDelete
         setPendingDelete(null)
-        if (scope === 'all') {
-          await removeEvent(master.id)
-        } else if (scope === 'single') {
-          const withExdate = addExdate(master, occurrenceDate)
-          await editEvent(master.id, { exdates: withExdate.exdates })
-        } else {
-          const truncated = truncateSeriesBefore(master, occurrenceDate)
-          if ((truncated.repeat ?? 'none') === 'none') {
-            await removeEvent(master.id)
-          } else {
-            await editEvent(master.id, {
-              repeatUntil: truncated.repeatUntil,
-              repeatCount: null,
-              repeat: truncated.repeat
-            })
-          }
-        }
+        await applyRecurringDelete(
+          { editEvent, removeEvent },
+          master,
+          occurrenceDate,
+          scope,
+          store.events
+        )
         clearEventDetail()
         setEditor(null)
       }
@@ -2545,15 +2503,10 @@ export function CalendarGrid({
               )
               return
             }
-            // MDC: recurring complete → scope dialog.
+            // Recurring complete → floating panel (Electron) or in-shell dialog (browser).
             const occurrenceDate =
               getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
-            setPendingComplete({
-              master,
-              occurrenceDate,
-              completed: nextCompleted
-            })
-            setScopeDialog({ mode: 'complete' })
+            openRecurringCompleteScope(master, occurrenceDate, nextCompleted)
           }}
         />
       ) : null}
@@ -2631,6 +2584,7 @@ export function CalendarGrid({
 
       <RecurrenceScopeDialog
         open={Boolean(scopeDialog)}
+        surface="overlay"
         mode={scopeDialog?.mode ?? 'edit'}
         onClose={() => {
           setScopeDialog(null)

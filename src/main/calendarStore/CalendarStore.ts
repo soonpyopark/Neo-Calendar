@@ -725,6 +725,8 @@ export class CalendarStore {
       attachments: input.attachments ?? [],
       sortOrder: input.sortOrder,
       sortOrderByDay: input.sortOrderByDay,
+      detachedFromSeriesId: input.detachedFromSeriesId ?? null,
+      detachedOccurrenceDate: input.detachedOccurrenceDate ?? null,
       createdAt: now,
       updatedAt: now,
       createdBy: input.createdBy ?? 'local'
@@ -965,6 +967,8 @@ export class CalendarStore {
           e.sortOrderByDay && typeof e.sortOrderByDay === 'object'
             ? { ...e.sortOrderByDay }
             : undefined,
+        detachedFromSeriesId: e.detachedFromSeriesId ?? null,
+        detachedOccurrenceDate: e.detachedOccurrenceDate ?? null,
         createdAt: now,
         updatedAt: now,
         createdBy: e.createdBy ?? 'import',

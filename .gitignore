@@ -3,6 +3,7 @@ dist
 out
 release
 data/
+.cache/
 *.log
 .DS_Store
 .env

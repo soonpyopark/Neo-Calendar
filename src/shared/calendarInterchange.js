@@ -386,10 +386,24 @@ function mapIcsPropsToEvent(props) {
   const recurrence = props.RRULE ? parseIcsRRule(props.RRULE) : { repeat: 'none', repeatUntil: null, repeatCount: null };
   /** @type {string[]} */
   const exdates = [];
+  const pushExdateValue = (raw) => {
+    for (const part of String(raw).split(',')) {
+      const token = part.trim();
+      if (!token) continue;
+      try {
+        const parsed = parseIcsDateValue(token);
+        if (parsed.dateKey) exdates.push(parsed.dateKey);
+      } catch {
+        /* ignore malformed EXDATE tokens */
+      }
+    }
+  };
+  if (props.__EXDATE_VALUES__) {
+    pushExdateValue(props.__EXDATE_VALUES__);
+  }
   for (const exdateKey of Object.keys(props)) {
     if (!exdateKey.startsWith('EXDATE')) continue;
-    const parsed = parseIcsDateValue(props[exdateKey]);
-    if (parsed.dateKey) exdates.push(parsed.dateKey);
+    pushExdateValue(props[exdateKey]);
   }
 
   return {
@@ -423,11 +437,23 @@ export function parseIcsEvents(text) {
     const body = chunk.split(/END:VEVENT/i)[0] ?? '';
     /** @type {Record<string, string>} */
     const props = {};
+    /** @type {string[]} */
+    const exdateRawValues = [];
     for (const line of body.split(/\r?\n/)) {
       if (!line.trim()) continue;
       const index = line.indexOf(':');
       if (index <= 0) continue;
-      props[line.slice(0, index).trim()] = line.slice(index + 1).trim();
+      const key = line.slice(0, index).trim();
+      const value = line.slice(index + 1).trim();
+      // Multiple EXDATE lines must accumulate (Google exports often emit one per date).
+      if (key.startsWith('EXDATE')) {
+        exdateRawValues.push(value);
+        continue;
+      }
+      props[key] = value;
+    }
+    if (exdateRawValues.length) {
+      props.__EXDATE_VALUES__ = exdateRawValues.join(',');
     }
     events.push(mapIcsPropsToEvent(props));
   }

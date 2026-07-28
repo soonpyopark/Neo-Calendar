@@ -17,6 +17,8 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "sync-version": "node scripts/sync-version.mjs",
+    "update:all": "node scripts/update-all.mjs",
+    "build:update_all": "node scripts/update-all.mjs --msi",
     "dist": "npm run build:desktop-hit && npm run build && electron-builder --win",
     "build:msi": "node scripts/build-msi.mjs",
     "build:dist:msi": "node scripts/build-msi.mjs"

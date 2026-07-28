@@ -2,22 +2,21 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from 're
 import { useAppDialog } from '../../components/AppDialogProvider'
 import { EventEditor } from '../../components/EventEditor'
 import { RecurrenceScopeDialog } from '../../components/RecurrenceScopeDialog'
+import { openRecurrenceDeletePanel } from '../../lib/recurrenceComplete'
 import { useCalendarStore } from '../../hooks/useCalendarStore'
 import {
-  addExdate,
   expandEventsForRange,
   getOccurrenceDate,
   getSeriesId,
-  isRecurringEvent,
-  truncateSeriesBefore
+  isRecurringEvent
 } from '../../../../shared/mdcExport/eventOccurrences.js'
-import { eventToMutationPayload } from '../../lib/eventMutation'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../../shared/calendarDefaults'
 import type { CalendarEvent } from '../../../../shared/calendarTypes'
 import type { PanelWindowInit } from '../../../../shared/panelWindows'
 import {
   findMasterEvent,
   mergeOccurrenceForEditor,
+  useApplyRecurringDelete,
   useApplyRecurringEdit,
   usePanelAuth,
   usePanelRouter,
@@ -25,18 +24,6 @@ import {
 } from '../usePanelEventHelpers'
 
 type Init = Extract<PanelWindowInit, { kind: 'eventEditor' }>
-
-function addDays(date: Date, days: number): Date {
-  const next = new Date(date)
-  next.setDate(next.getDate() + days)
-  return next
-}
-
-function toDateKey(year: number, month: number, day: number): string {
-  const mm = String(month + 1).padStart(2, '0')
-  const dd = String(day).padStart(2, '0')
-  return `${year}-${mm}-${dd}`
-}
 
 export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | null {
   const { alert } = useAppDialog()
@@ -58,7 +45,18 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
   } | null>(null)
   const [scopeDialog, setScopeDialog] = useState<{ mode: 'edit' | 'delete' } | null>(null)
 
-  const applyRecurringEdit = useApplyRecurringEdit({ addEvent, editEvent, removeEvent })
+  const getEvents = useCallback(() => store.events, [store.events])
+  const applyRecurringEdit = useApplyRecurringEdit({
+    addEvent,
+    editEvent,
+    removeEvent,
+    getEvents
+  })
+  const applyRecurringDelete = useApplyRecurringDelete({
+    editEvent,
+    removeEvent,
+    getEvents
+  })
 
   const resolvedEvent = useMemo(() => {
     if (editorEvent) return editorEvent
@@ -94,23 +92,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
       if (dialogMode === 'delete' && pendingDelete?.master) {
         const { master, occurrenceDate } = pendingDelete
         setPendingDelete(null)
-        if (scope === 'all') {
-          await removeEvent(master.id)
-        } else if (scope === 'single') {
-          const withExdate = addExdate(master, occurrenceDate)
-          await editEvent(master.id, { exdates: withExdate.exdates })
-        } else {
-          const truncated = truncateSeriesBefore(master, occurrenceDate)
-          if ((truncated.repeat ?? 'none') === 'none') {
-            await removeEvent(master.id)
-          } else {
-            await editEvent(master.id, {
-              repeatUntil: truncated.repeatUntil,
-              repeatCount: null,
-              repeat: truncated.repeat
-            })
-          }
-        }
+        await applyRecurringDelete(master, occurrenceDate, scope)
         closePanel()
       }
     } catch (error) {
@@ -203,8 +185,15 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
                   init.occurrenceDate ||
                   getOccurrenceDate(resolvedEvent, init.defaultDate) ||
                   master.startDate
-                setPendingDelete({ master, occurrenceDate })
-                setScopeDialog({ mode: 'delete' })
+                const opened = await openRecurrenceDeletePanel({
+                  eventId: master.id,
+                  occurrenceDate,
+                  closePanels: ['eventEditor', 'quickEdit']
+                })
+                if (!opened) {
+                  setPendingDelete({ master, occurrenceDate })
+                  setScopeDialog({ mode: 'delete' })
+                }
               }
             : undefined
         }
@@ -212,6 +201,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
 
       <RecurrenceScopeDialog
         open={Boolean(scopeDialog)}
+        surface="overlay"
         mode={scopeDialog?.mode ?? 'edit'}
         onClose={() => {
           setScopeDialog(null)

@@ -12,6 +12,7 @@ export type PanelKind =
   | 'search'
   | 'eventDetail'
   | 'exportConfirm'
+  | 'recurrenceScope'
   | 'login'
 
 export type PanelAnchorRect = QuickEditAnchorRect
@@ -57,6 +58,16 @@ export type PanelWindowInit =
       format: 'excel' | 'pdf'
       year: number
       month: number
+    }
+  | {
+      kind: 'recurrenceScope'
+      mode: 'complete' | 'delete' | 'edit'
+      eventId: string
+      occurrenceDate: string
+      /** Required when mode is `complete`. */
+      completed?: boolean
+      /** Close these sibling panels after a successful delete (e.g. eventDetail). */
+      closePanels?: Array<Exclude<PanelKind, 'recurrenceScope'>>
     }
   | {
       kind: 'login'
@@ -350,6 +361,16 @@ export function computePanelWindowBounds(options: {
       workArea,
       width: 392,
       height: 176
+    })
+  }
+
+  if (init.kind === 'recurrenceScope') {
+    return centeredBounds({
+      mainOrigin,
+      mainSize,
+      workArea,
+      width: 400,
+      height: 360
     })
   }
 

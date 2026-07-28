@@ -1,14 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  addExdate,
-  buildFollowingSeriesEvent,
-  buildSingleExceptionEvent,
-  getSeriesId,
-  truncateSeriesBefore
-} from '../../../shared/mdcExport/eventOccurrences.js'
+import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import type { CalendarEvent, EventInput } from '../../../shared/calendarTypes'
 import type { AuthUser } from '../../../shared/ipc'
 import type { PanelWindowInit } from '../../../shared/panelWindows'
+import {
+  applyRecurringDelete as applyRecurringDeleteCore,
+  applyRecurringEdit as applyRecurringEditCore,
+  type RecurrenceScope
+} from '../lib/recurrenceMutations'
 import {
   applyThemeFromStoreSettings,
   getColorScheme
@@ -44,73 +43,54 @@ export function useApplyRecurringEdit(options: {
   addEvent: (input: EventInput) => Promise<CalendarEvent>
   editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
   removeEvent: (id: string) => Promise<void>
+  /** Needed to clean detached "this only" exceptions. */
+  getEvents?: () => CalendarEvent[]
 }): (
   master: CalendarEvent,
   payload: Record<string, unknown>,
   occurrenceDate: string,
-  scope: 'single' | 'following' | 'all'
+  scope: RecurrenceScope
 ) => Promise<void> {
-  const { addEvent, editEvent, removeEvent } = options
+  const { addEvent, editEvent, removeEvent, getEvents } = options
 
   return useCallback(
     async (master, payload, occurrenceDate, scope) => {
-      if (scope === 'all') {
-        const startDate = String(payload.startDate ?? master.startDate)
-        const endDate = String(payload.endDate ?? payload.startDate ?? master.endDate)
-        const durationDays = Math.max(
-          1,
-          Math.round(
-            (new Date(`${endDate}T00:00:00`).getTime() -
-              new Date(`${startDate}T00:00:00`).getTime()) /
-              86400000
-          ) + 1
-        )
-        const keepSeriesStart = occurrenceDate !== master.startDate
-        const nextStart = keepSeriesStart ? master.startDate : startDate
-        const seriesEnd = new Date(`${nextStart}T00:00:00`)
-        seriesEnd.setDate(seriesEnd.getDate() + durationDays - 1)
-        const seriesEndDate = toDateKey(
-          seriesEnd.getFullYear(),
-          seriesEnd.getMonth(),
-          seriesEnd.getDate()
-        )
-        await editEvent(master.id, {
-          ...payload,
-          startDate: nextStart,
-          endDate: seriesEndDate,
-          exdates: Array.isArray(master.exdates) ? master.exdates : []
-        } as Partial<CalendarEvent>)
-        return
-      }
-
-      if (scope === 'single') {
-        const exception = buildSingleExceptionEvent(master, payload, occurrenceDate)
-        const withExdate = addExdate(master, occurrenceDate)
-        await editEvent(master.id, { exdates: withExdate.exdates })
-        await addEvent(exception as EventInput)
-        return
-      }
-
-      const truncated = truncateSeriesBefore(master, occurrenceDate)
-      if ((truncated.repeat ?? 'none') === 'none') {
-        await removeEvent(master.id)
-      } else {
-        await editEvent(master.id, {
-          repeatUntil: truncated.repeatUntil,
-          repeatCount: null,
-          repeat: truncated.repeat
-        })
-      }
-      await addEvent(buildFollowingSeriesEvent(master, payload, occurrenceDate) as EventInput)
+      await applyRecurringEditCore(
+        { addEvent, editEvent, removeEvent },
+        master,
+        payload,
+        occurrenceDate,
+        scope,
+        getEvents?.() ?? []
+      )
     },
-    [addEvent, editEvent, removeEvent]
+    [addEvent, editEvent, getEvents, removeEvent]
   )
 }
 
-function toDateKey(year: number, month: number, day: number): string {
-  const mm = String(month + 1).padStart(2, '0')
-  const dd = String(day).padStart(2, '0')
-  return `${year}-${mm}-${dd}`
+export function useApplyRecurringDelete(options: {
+  editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
+  removeEvent: (id: string) => Promise<void>
+  getEvents?: () => CalendarEvent[]
+}): (
+  master: CalendarEvent,
+  occurrenceDate: string,
+  scope: RecurrenceScope
+) => Promise<void> {
+  const { editEvent, removeEvent, getEvents } = options
+
+  return useCallback(
+    async (master, occurrenceDate, scope) => {
+      await applyRecurringDeleteCore(
+        { editEvent, removeEvent },
+        master,
+        occurrenceDate,
+        scope,
+        getEvents?.() ?? []
+      )
+    },
+    [editEvent, getEvents, removeEvent]
+  )
 }
 
 export function usePanelRouter(): {

@@ -64,6 +64,13 @@ export type CalendarEvent = {
   /** Expanded occurrence date (search / views). */
   occurrenceDate?: string
   seriesId?: string
+  /**
+   * Soft link for a "this event only" exception detached from a recurring master.
+   * Used to clean orphans on delete-all / delete-following (not full Google RECURRENCE-ID).
+   */
+  detachedFromSeriesId?: string | null
+  /** Original occurrence start (YYYY-MM-DD) for a detached exception. */
+  detachedOccurrenceDate?: string | null
 }
 
 export type TagRecord = {

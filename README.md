@@ -64,6 +64,20 @@ MSI에는 Electron 런타임이 포함됩니다 (`Neo Calendar.exe` + `resources
 | `npm run dist` | NSIS 설치 파일 (`release/`) |
 | `npm run build:msi` | WiX MSI 설치판 (`msi/*.msi`) |
 | `npm run sync-version` | `constants.ts` 버전 → package.json / License.rtf 동기화 |
+| `npm run update:all` | npm 의존성 업데이트 (+ desktop-hit 헬퍼 재빌드) |
+| `npm run build:update_all` | `update:all` 후 MSI 빌드 |
+
+### 의존성 업데이트
+
+NAS4USB와 같은 흐름입니다.
+
+```bash
+npm run update:all
+```
+
+옵션: `--skip-git` `--skip-npm` `--skip-hit` `--build` `--msi`  
+예: `npm run update:all -- --build`  
+Windows: `update_all.bat` (로그: `.cache/logs/update-all.log`)
 
 ## Click-through model
 

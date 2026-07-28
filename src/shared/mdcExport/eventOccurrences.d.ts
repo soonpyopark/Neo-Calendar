@@ -13,12 +13,33 @@ export function addExdate<T extends { exdates?: string[] | null }>(
   occurrenceDate: string
 ): T & { exdates: string[] }
 
+export function recurrenceRuleChanged(
+  master: Record<string, unknown> | null | undefined,
+  payload: Record<string, unknown> | null | undefined
+): boolean
+
+export function pruneExdatesForSeries(
+  series: Record<string, unknown> | null | undefined,
+  exdates: string[] | null | undefined
+): string[]
+
+export function resolveExdatesForAllEdit(
+  master: Record<string, unknown> | null | undefined,
+  payload: Record<string, unknown> | null | undefined
+): string[]
+
+export function splitExdatesAt(
+  exdates: string[] | null | undefined,
+  fromDate: string
+): { before: string[]; after: string[] }
+
 export function truncateSeriesBefore<T extends {
   startDate?: string | null
   seriesStartDate?: string | null
   repeat?: string | null
   repeatUntil?: string | null
   repeatCount?: number | null
+  exdates?: string[] | null
 }>(
   master: T,
   fromDate: string
@@ -26,6 +47,7 @@ export function truncateSeriesBefore<T extends {
   repeat: string | null
   repeatUntil: string | null
   repeatCount: number | null
+  exdates: string[]
 }
 
 export function buildSingleExceptionEvent(

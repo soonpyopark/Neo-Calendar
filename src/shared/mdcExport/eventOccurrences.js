@@ -375,6 +375,103 @@ export function addExdate(master, occurrenceDate) {
 }
 
 /**
+ * @param {unknown} value
+ */
+function normUntil(value) {
+  if (value == null || value === '') return null;
+  return String(value);
+}
+
+/**
+ * @param {unknown} value
+ */
+function normCount(value) {
+  if (value == null || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * True when RRULE identity changes (Google Calendar / AOSP: exceptions are dropped
+ * when the series rule is rewritten — not on title-only "edit all").
+ *
+ * @param {object} master
+ * @param {object} payload
+ */
+export function recurrenceRuleChanged(master, payload) {
+  const prevRepeat = String(master?.repeat ?? 'none') || 'none';
+  const nextRepeat =
+    payload?.repeat !== undefined ? String(payload.repeat ?? 'none') || 'none' : prevRepeat;
+  if (nextRepeat !== prevRepeat) return true;
+
+  if (payload?.repeatUntil !== undefined) {
+    if (normUntil(payload.repeatUntil) !== normUntil(master?.repeatUntil)) return true;
+  }
+  if (payload?.repeatCount !== undefined) {
+    if (normCount(payload.repeatCount) !== normCount(master?.repeatCount)) return true;
+  }
+  if (payload?.startDate !== undefined) {
+    const prevStart = String(master?.seriesStartDate ?? master?.startDate ?? '');
+    const nextStart = String(payload.startDate ?? '');
+    if (nextStart && prevStart && nextStart !== prevStart) return true;
+  }
+  return false;
+}
+
+/**
+ * Drop EXDATEs that can never occur under the (new) series window.
+ * @param {object} series
+ * @param {string[]} exdates
+ */
+export function pruneExdatesForSeries(series, exdates) {
+  const list = Array.isArray(exdates) ? exdates.map(String).filter(Boolean) : [];
+  if (list.length === 0) return [];
+  const start = String(series?.seriesStartDate ?? series?.startDate ?? '');
+  const until = normUntil(series?.repeatUntil);
+  return list
+    .filter((date) => {
+      if (start && date < start) return false;
+      if (until && date > until) return false;
+      return true;
+    })
+    .sort();
+}
+
+/**
+ * Resolve EXDATEs for scope=all edits (Google-like):
+ * - non-recurring → clear
+ * - RRULE / UNTIL / COUNT / series start changed → clear (rewrite series)
+ * - otherwise keep payload/master exdates, pruned to the new window
+ *
+ * @param {object} master
+ * @param {object} payload
+ */
+export function resolveExdatesForAllEdit(master, payload) {
+  const nextRepeat =
+    payload?.repeat !== undefined ? payload.repeat : (master?.repeat ?? 'none');
+  if ((nextRepeat || 'none') === 'none') return [];
+
+  if (recurrenceRuleChanged(master, payload)) return [];
+
+  const raw = Array.isArray(payload?.exdates)
+    ? payload.exdates
+    : getExdates(master);
+  const nextSeries = {
+    ...master,
+    repeat: nextRepeat,
+    repeatUntil:
+      payload?.repeatUntil !== undefined ? payload.repeatUntil : master?.repeatUntil,
+    repeatCount:
+      payload?.repeatCount !== undefined ? payload.repeatCount : master?.repeatCount,
+    startDate:
+      payload?.startDate !== undefined
+        ? payload.startDate
+        : (master?.seriesStartDate ?? master?.startDate),
+  };
+  return pruneExdatesForSeries(nextSeries, raw);
+}
+
+/**
  * Truncate series so occurrences on/after `fromDate` are removed.
  * @param {object} master
  * @param {string} fromDate
@@ -384,13 +481,49 @@ export function truncateSeriesBefore(master, fromDate) {
   // Prefer seriesStartDate — display occurrences overwrite startDate to the occurrence day.
   const seriesStart = master.seriesStartDate ?? master.startDate ?? until;
   if (until < seriesStart) {
-    return { ...master, repeat: 'none', repeatUntil: null, repeatCount: null };
+    return {
+      ...master,
+      repeat: 'none',
+      repeatUntil: null,
+      repeatCount: null,
+      exdates: [],
+    };
   }
+  const nextUntil =
+    master.repeatUntil && master.repeatUntil < until ? master.repeatUntil : until;
   return {
     ...master,
-    repeatUntil: master.repeatUntil && master.repeatUntil < until ? master.repeatUntil : until,
+    repeatUntil: nextUntil,
     repeatCount: null,
+    // Drop EXDATEs that fall in the truncated tail (Google-like cleanup).
+    exdates: pruneExdatesForSeries(
+      { ...master, repeatUntil: nextUntil },
+      getExdates(master)
+    ),
   };
+}
+
+/**
+ * Split EXDATEs at a following-split boundary (Google-like).
+ * Dates on/after `fromDate` move with the new series.
+ *
+ * @param {string[]|null|undefined} exdates
+ * @param {string} fromDate
+ */
+export function splitExdatesAt(exdates, fromDate) {
+  /** @type {string[]} */
+  const before = [];
+  /** @type {string[]} */
+  const after = [];
+  for (const raw of Array.isArray(exdates) ? exdates : []) {
+    const date = String(raw || '');
+    if (!date) continue;
+    if (date < fromDate) before.push(date);
+    else after.push(date);
+  }
+  before.sort();
+  after.sort();
+  return { before, after };
 }
 
 /**
@@ -405,6 +538,9 @@ export function buildSingleExceptionEvent(master, patch, occurrenceDate) {
     endDate: patch.endDate ?? patch.startDate ?? occurrenceDate,
   });
   const startDate = patch.startDate ?? occurrenceDate;
+  const tagIds = Array.isArray(patch.tagIds)
+    ? patch.tagIds
+    : (Array.isArray(master.tagIds) ? master.tagIds : []);
   return {
     calendarId: patch.calendarId ?? master.calendarId,
     title: patch.title ?? master.title,
@@ -423,12 +559,16 @@ export function buildSingleExceptionEvent(master, patch, occurrenceDate) {
     guests: Array.isArray(patch.guests) ? patch.guests : (master.guests ?? []),
     completed: Boolean(patch.completed ?? master.completed),
     markerShape: patch.markerShape ?? master.markerShape ?? null,
+    tagIds: [...tagIds],
     links: Array.isArray(patch.links)
       ? patch.links
       : (Array.isArray(master.links) ? master.links : undefined),
     link: patch.link ?? master.link ?? '',
     sortOrder: patch.sortOrder ?? master.sortOrder ?? null,
     sortOrderByDay: patch.sortOrderByDay ?? master.sortOrderByDay ?? undefined,
+    // Soft back-link so later all/following ops can clean orphans (not full RECURRENCE-ID).
+    detachedFromSeriesId: master.id ?? master.seriesId ?? null,
+    detachedOccurrenceDate: occurrenceDate,
   };
 }
 
@@ -441,6 +581,19 @@ export function buildSingleExceptionEvent(master, patch, occurrenceDate) {
 export function buildFollowingSeriesEvent(master, patch, occurrenceDate) {
   const startDate = patch.startDate ?? occurrenceDate;
   const endDate = patch.endDate ?? startDate;
+  const tagIds = Array.isArray(patch.tagIds)
+    ? patch.tagIds
+    : (Array.isArray(master.tagIds) ? master.tagIds : []);
+  const movedExdates = Array.isArray(patch.exdates)
+    ? pruneExdatesForSeries(
+        {
+          startDate,
+          repeatUntil: patch.repeatUntil ?? null,
+          repeat: patch.repeat ?? master.repeat ?? 'none',
+        },
+        patch.exdates
+      )
+    : [];
   return {
     calendarId: patch.calendarId ?? master.calendarId,
     title: patch.title ?? master.title,
@@ -454,11 +607,12 @@ export function buildFollowingSeriesEvent(master, patch, occurrenceDate) {
     repeat: patch.repeat ?? master.repeat ?? 'none',
     repeatUntil: patch.repeatUntil ?? null,
     repeatCount: patch.repeatCount ?? null,
-    exdates: [],
+    exdates: movedExdates,
     color: patch.color ?? master.color ?? null,
     guests: Array.isArray(patch.guests) ? patch.guests : (master.guests ?? []),
     completed: Boolean(patch.completed ?? master.completed),
     markerShape: patch.markerShape ?? master.markerShape ?? null,
+    tagIds: [...tagIds],
     links: Array.isArray(patch.links)
       ? patch.links
       : (Array.isArray(master.links) ? master.links : undefined),

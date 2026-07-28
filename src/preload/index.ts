@@ -112,6 +112,9 @@ const api: NeoCalendarApi = {
   closePanelWindow: () => {
     ipcRenderer.send('panel-close')
   },
+  closePanelSlot: (kind) => {
+    ipcRenderer.send('panel-close-slot', kind)
+  },
   routePanelWindow: (init) =>
     ipcRenderer.invoke('panel-route', init) as ReturnType<NeoCalendarApi['routePanelWindow']>,
   resizePanelWindow: (size) =>

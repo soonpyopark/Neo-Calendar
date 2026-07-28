@@ -4,8 +4,8 @@ import type {
   QuickEditWindowInit
 } from './quickEditLayout'
 export type { DesktopQuickEditContext, QuickEditDeferToMainPayload, QuickEditWindowInit }
-import type { OpenPanelWindowRequest, PanelWindowInit } from './panelWindows'
-export type { OpenPanelWindowRequest, PanelWindowInit }
+import type { OpenPanelWindowRequest, PanelKind, PanelWindowInit } from './panelWindows'
+export type { OpenPanelWindowRequest, PanelKind, PanelWindowInit }
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -200,6 +200,8 @@ export type NeoCalendarApi = {
   getPanelInit: () => Promise<PanelWindowInit | null>
   openPanelWindow: (request: OpenPanelWindowRequest) => Promise<boolean>
   closePanelWindow: () => void
+  /** Close a floating panel by kind (sibling slots; e.g. eventDetail after recurring delete). */
+  closePanelSlot: (kind: PanelKind) => void
   routePanelWindow: (init: PanelWindowInit) => Promise<boolean>
   /** Shrink a floating panel BrowserWindow to fit its content (keeps x/y). */
   resizePanelWindow: (size: { width: number; height: number }) => Promise<boolean>
