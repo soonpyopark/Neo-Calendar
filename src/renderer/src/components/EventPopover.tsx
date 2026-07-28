@@ -71,6 +71,8 @@ export function EventPopover({
       if (panel?.contains(target)) return
       if (target instanceof Element && target.closest('.day-events-popover')) return
       if (target instanceof Element && target.closest('.app-dialog-root')) return
+      // Keep detail open while browsing search results (search stays open too).
+      if (target instanceof Element && target.closest('.search-panel-shell')) return
       onClose()
     }
     document.addEventListener('mousedown', handlePointerDown, true)
@@ -127,14 +129,14 @@ export function EventPopover({
         isFloating
           ? 'h-full w-full'
           : anchorRect
-            ? 'pointer-events-none fixed inset-0 z-[50]'
-            : 'pointer-events-none fixed inset-0 z-[50] flex items-center justify-center overflow-y-auto p-4'
+            ? 'pointer-events-none fixed inset-0 z-[70]'
+            : 'pointer-events-none fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"
     >
       <div
         ref={ref as RefObject<HTMLDivElement | null>}
-        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
+        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[71] flex max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
         style={
           isFloating
             ? (panelStyle as CSSProperties)

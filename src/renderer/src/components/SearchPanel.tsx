@@ -34,6 +34,12 @@ export type SearchSelectPayload = {
   event: CalendarEvent
   date: Date
   dayKey: string
+  /** Client coords relative to the search panel / main window. */
+  clientX: number
+  clientY: number
+  /** Screen DIP coords — used by floating panel windows. */
+  screenX: number
+  screenY: number
 }
 
 export type SearchPanelProps = {
@@ -248,18 +254,18 @@ function SearchResourceDetail({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/25 px-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent px-4"
       role="presentation"
       onClick={onClose}
     >
       <div
-        className="shell-solid-surface w-full max-w-md overflow-hidden rounded-xl shadow-[0_12px_40px_rgba(0,0,0,0.22)]"
+        className="neo-modal-shell w-full max-w-md overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(event) => event.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-gcal-border-light px-4 py-3">
+        <div className="neo-modal-shell-header flex items-center justify-between px-4 py-3">
           <h2 className="text-sm font-semibold text-gcal-heading">
             {title}
             <span className="ml-1.5 font-normal text-gcal-muted">({items.length})</span>
@@ -708,11 +714,15 @@ export function SearchPanel({
                             'min-w-0 rounded-lg px-1 py-0.5 text-left transition-colors',
                             'hover:bg-gcal-surface focus:bg-gcal-surface focus:outline-none'
                           )}
-                          onClick={() => {
+                          onClick={(e) => {
                             onSelectResult({
                               event,
                               date: dateFromDateKey(dayKey),
-                              dayKey
+                              dayKey,
+                              clientX: e.clientX,
+                              clientY: e.clientY,
+                              screenX: e.screenX,
+                              screenY: e.screenY
                             })
                           }}
                         >

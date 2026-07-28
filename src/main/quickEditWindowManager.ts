@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { focusWindowForTextInput } from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
+import { isNativeDialogOpen } from './nativeDialogGuard'
 import { getWindowDipScreenBounds } from './wallpaper'
 import {
   computeQuickEditWindowBounds,
@@ -251,6 +252,7 @@ export class QuickEditWindowManager {
 
   private handleOutsideClick(pt: ScreenPoint): void {
     if (!this.isOpen()) return
+    if (isNativeDialogOpen()) return
     const now = Date.now()
     if (now < this.outsideBlockedUntil) return
     if (now - this.lastOutsideCloseAt < OUTSIDE_CLOSE_COOLDOWN_MS) return

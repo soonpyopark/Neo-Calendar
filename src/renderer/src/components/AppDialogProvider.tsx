@@ -72,12 +72,12 @@ function AppDialogModal({
 
   return (
     <InteractionUI
-      className="app-dialog-root fixed inset-0 z-[70] flex items-center justify-center bg-[rgba(32,33,36,0.32)] p-4"
+      className="app-dialog-root fixed inset-0 z-[70] flex items-center justify-center bg-transparent p-4"
       onClick={() => onClose(false)}
       role="presentation"
     >
       <div
-        className="settings-scroll shell-solid-surface max-h-[calc(100vh-2rem)] w-full max-w-[360px] overflow-y-auto rounded-xl shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+        className="neo-modal-shell settings-scroll max-h-[calc(100vh-2rem)] w-full max-w-[360px] overflow-y-auto"
         onClick={(event) => event.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -95,7 +95,7 @@ function AppDialogModal({
         >
           {dialog.message}
         </p>
-        <div className="flex justify-end gap-2 border-t border-gcal-border-light px-4 py-3">
+        <div className="neo-modal-shell-footer flex justify-end gap-2 px-4 py-3">
           {isConfirm ? (
             <button
               type="button"

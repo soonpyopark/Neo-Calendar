@@ -35,10 +35,26 @@ export type WidgetBounds = {
   height: number
 }
 
+/**
+ * Preferred monitor footprint — survives sleep/wake when absolute DIP coords
+ * temporarily resolve to the wrong (nearest) display.
+ */
+export type WidgetDisplayPlacement = {
+  /** Electron `Display.id` for the preferred monitor. */
+  displayId: number
+  /** DIP offset from that display's `bounds` origin. */
+  offsetX: number
+  offsetY: number
+  width: number
+  height: number
+}
+
 export type AppSettings = {
   widget: {
     launchMode: LaunchMode
     bounds: WidgetBounds
+    /** Preferred monitor + relative offsets (multi-monitor restore). */
+    displayPlacement?: WidgetDisplayPlacement | null
   }
   weekStartsOn: 0 | 1
   headerOpacity: number

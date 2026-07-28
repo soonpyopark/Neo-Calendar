@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
 import { focusWindowForTextInput, raiseFloatingPanelWindow } from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
+import { isNativeDialogOpen } from './nativeDialogGuard'
 import { getWindowDipScreenBounds } from './wallpaper'
 import {
   computePanelWindowBounds,
@@ -547,6 +548,8 @@ export class PanelWindowManager {
 
   private handleOutsideClick(pt: ScreenPoint): void {
     if (this.entriesBySlot.size === 0) return
+    // File/save dialogs are outside panel bounds — do not close the parent panel.
+    if (isNativeDialogOpen()) return
     const now = Date.now()
     if (now < this.outsideBlockedUntil) return
     if (now - this.lastOutsideCloseAt < OUTSIDE_CLOSE_COOLDOWN_MS) return

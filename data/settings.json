@@ -50,11 +50,22 @@
         "left": 0.2,
         "right": 0.05,
         "top": 0.05
+      },
+      "displayPlacement": {
+        "displayId": 2404042230,
+        "offsetX": 790,
+        "offsetY": 10,
+        "width": 1120,
+        "height": 1020
       }
     },
     "dayColors": {},
     "dayColorsByLoginId": {},
-    "hiddenCalendarIdsByLoginId": {},
+    "hiddenCalendarIdsByLoginId": {
+      "admin": [
+        "cal-aconite"
+      ]
+    },
     "allowedIpCidrs": [
       {
         "cidr": "221.168.0.216",
@@ -120,5 +131,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-28T06:09:09.794Z"
+  "updatedAt": "2026-07-28T07:43:36.433Z"
 }

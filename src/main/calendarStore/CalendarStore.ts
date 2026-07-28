@@ -86,7 +86,15 @@ function deepMergeSettings(base: StoreSettings, patch: Partial<StoreSettings>): 
     widget: {
       ...base.widget,
       ...(patch.widget ?? {}),
-      bounds: patch.widget?.bounds ? { ...patch.widget.bounds } : { ...base.widget.bounds }
+      bounds: patch.widget?.bounds ? { ...patch.widget.bounds } : { ...base.widget.bounds },
+      displayPlacement:
+        patch.widget && 'displayPlacement' in patch.widget
+          ? patch.widget.displayPlacement
+            ? { ...patch.widget.displayPlacement }
+            : null
+          : base.widget.displayPlacement
+            ? { ...base.widget.displayPlacement }
+            : base.widget.displayPlacement
     },
     dayColors: patch.dayColors ? { ...patch.dayColors } : { ...base.dayColors },
     dayColorsByLoginId: patch.dayColorsByLoginId
@@ -283,7 +291,10 @@ export class CalendarStore {
     return {
       widget: {
         launchMode: s.widget.launchMode === 'desktop' ? 'desktop' : 'window',
-        bounds: { ...s.widget.bounds }
+        bounds: { ...s.widget.bounds },
+        displayPlacement: s.widget.displayPlacement
+          ? { ...s.widget.displayPlacement }
+          : null
       },
       weekStartsOn: s.viewOptions.weekStartsOnSunday ? 0 : 1,
       headerOpacity: s.headerOpacity,
@@ -293,14 +304,22 @@ export class CalendarStore {
 
   patchAppSettings(patch: Partial<AppSettings>): AppSettings {
     const cur = this.getSnapshot()
+    const widgetPatch: StoreSettings['widget'] = {
+      ...cur.settings.widget,
+      launchMode: patch.widget?.launchMode ?? cur.settings.widget.launchMode,
+      bounds: patch.widget?.bounds
+        ? { ...patch.widget.bounds }
+        : { ...cur.settings.widget.bounds }
+    }
+    if (patch.widget && 'displayPlacement' in patch.widget) {
+      widgetPatch.displayPlacement = patch.widget.displayPlacement
+        ? { ...patch.widget.displayPlacement }
+        : null
+    }
     let nextSettings = deepMergeSettings(cur.settings, {
       headerOpacity: patch.headerOpacity ?? cur.settings.headerOpacity,
       shellOpacity: patch.shellOpacity ?? cur.settings.shellOpacity,
-      widget: {
-        ...cur.settings.widget,
-        launchMode: patch.widget?.launchMode ?? cur.settings.widget.launchMode,
-        bounds: patch.widget?.bounds ?? cur.settings.widget.bounds
-      }
+      widget: widgetPatch
     })
     if (patch.weekStartsOn !== undefined) {
       nextSettings = applyViewOptionsPatch(
@@ -315,13 +334,24 @@ export class CalendarStore {
     return this.getAppSettings()
   }
 
-  setWidget(patch: { launchMode?: LaunchMode; bounds?: WidgetBounds }): AppSettings {
-    return this.patchAppSettings({
-      widget: {
-        launchMode: patch.launchMode ?? this.getAppSettings().widget.launchMode,
-        bounds: patch.bounds ?? this.getAppSettings().widget.bounds
-      }
-    })
+  setWidget(
+    patch: {
+      launchMode?: LaunchMode
+      bounds?: WidgetBounds
+      displayPlacement?: AppSettings['widget']['displayPlacement']
+    }
+  ): AppSettings {
+    const current = this.getAppSettings().widget
+    const nextWidget: AppSettings['widget'] = {
+      launchMode: patch.launchMode ?? current.launchMode,
+      bounds: patch.bounds ?? current.bounds
+    }
+    if ('displayPlacement' in patch) {
+      nextWidget.displayPlacement = patch.displayPlacement ?? null
+    } else {
+      nextWidget.displayPlacement = current.displayPlacement ?? null
+    }
+    return this.patchAppSettings({ widget: nextWidget })
   }
 
   getWidgetBounds(): WidgetBounds {

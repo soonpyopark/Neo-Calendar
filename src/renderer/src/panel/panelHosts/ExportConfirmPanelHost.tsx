@@ -56,7 +56,7 @@ export function ExportConfirmPanelHost({ init }: { init: Init }): ReactElement |
   return (
     <div className="neo-panel-shell h-screen w-screen overflow-hidden p-2">
       <div
-        className="export-confirm-shell shell-solid-surface flex h-full flex-col overflow-hidden rounded-xl border border-[var(--gcal-border)] shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+        className="export-confirm-shell neo-modal-shell flex h-full flex-col overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="export-confirm-message"
@@ -67,7 +67,7 @@ export function ExportConfirmPanelHost({ init }: { init: Init }): ReactElement |
         >
           {message}
         </p>
-        <div className="flex justify-end gap-2 border-t border-[#cccccc] px-4 py-3">
+        <div className="neo-modal-shell-footer flex justify-end gap-2 px-4 py-3">
           <InteractionUI
             as="button"
             type="button"

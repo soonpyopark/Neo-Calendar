@@ -76,12 +76,12 @@ export function RecurrenceScopeDialog({
 
   return (
     <div
-      className="interaction-ui fixed inset-0 z-[75] flex items-center justify-center bg-[rgba(32,33,36,0.32)] p-4"
+      className="interaction-ui fixed inset-0 z-[75] flex items-center justify-center bg-transparent p-4"
       onClick={onClose}
       role="presentation"
     >
       <InteractionUI
-        className="shell-solid-surface w-full max-w-[400px] overflow-hidden rounded-xl shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+        className="neo-modal-shell w-full max-w-[400px] overflow-hidden"
         onClick={(event) => event.stopPropagation()}
         onMouseDown={(event) => event.stopPropagation()}
         role="dialog"
@@ -117,7 +117,7 @@ export function RecurrenceScopeDialog({
           ))}
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-gcal-border-light px-4 py-3">
+        <div className="neo-modal-shell-footer flex justify-end gap-2 px-4 py-3">
           <button
             type="button"
             className="rounded-full px-5 py-2 text-sm font-medium text-gcal-body transition-colors hover:bg-gcal-surface-2"

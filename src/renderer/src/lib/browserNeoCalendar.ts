@@ -415,7 +415,10 @@ export function installBrowserNeoCalendar(): void {
       return {
         widget: {
           launchMode: s.widget.launchMode === 'desktop' ? 'desktop' : 'window',
-          bounds: { ...s.widget.bounds }
+          bounds: { ...s.widget.bounds },
+          displayPlacement: s.widget.displayPlacement
+            ? { ...s.widget.displayPlacement }
+            : null
         },
         weekStartsOn: s.viewOptions.weekStartsOnSunday ? 0 : 1,
         headerOpacity: s.headerOpacity,

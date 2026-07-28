@@ -1569,13 +1569,17 @@ export function CalendarGrid({
   }
 
   /**
-   * MDC App.openEventDetail — pointer `{x,y}` or null (centered, e.g. search).
+   * MDC App.openEventDetail — pointer `{x,y}` or null (centered).
    * Callers that must not open over QE/editor (bar click) guard themselves.
    */
   const openEventDetail = (
     event: CalendarEvent,
     anchorRect: EventPopoverAnchor = null,
-    opts?: { dayKey?: string; fromSearch?: boolean }
+    opts?: {
+      dayKey?: string
+      fromSearch?: boolean
+      pointerScreen?: { x: number; y: number } | null
+    }
   ): void => {
     if (!requireEdit()) return
     detailFromSearchRef.current = Boolean(opts?.fromSearch)
@@ -1589,6 +1593,7 @@ export function CalendarGrid({
           eventId: event.id,
           dayKey,
           anchor: panelAnchor,
+          pointerScreen: opts?.pointerScreen ?? null,
           fromSearch: opts?.fromSearch
         },
         panelAnchor
@@ -1605,19 +1610,30 @@ export function CalendarGrid({
   const handleSearchSelect = ({
     event,
     date,
-    dayKey
+    dayKey,
+    clientX,
+    clientY,
+    screenX,
+    screenY
   }: {
     event: CalendarEvent
     date: Date
     dayKey: string
+    clientX: number
+    clientY: number
+    screenX: number
+    screenY: number
   }): void => {
     if (!requireEdit()) return
-    setSearchOpen(false)
+    // Keep search open; detail opens at the click pointer.
     setViewDate(date)
     setSelectedKey(dayKey)
     setViewMode('month')
-    // MDC: search result → centered detail (null anchor).
-    openEventDetail(event, null, { dayKey, fromSearch: true })
+    openEventDetail(event, { x: clientX, y: clientY }, {
+      dayKey,
+      fromSearch: true,
+      pointerScreen: { x: screenX, y: screenY }
+    })
   }
 
   const handleReorderEvents = useCallback(

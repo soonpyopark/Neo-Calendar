@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, screen, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, powerMonitor, screen, shell } from 'electron'
 import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
 import { join } from 'node:path'
@@ -206,6 +206,7 @@ function isForeignClickAtPoint(pt: { x: number; y: number }): boolean {
 }
 
 function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolean {
+  if (isNativeDialogOpen()) return false
   if (panelWindowManager?.isPointInsideAnyPanel(pt)) return false
   return shouldProcessEmbeddedGlobalClick(mainWindow, pt)
 }
@@ -999,7 +1000,8 @@ function bootApp(): void {
       return live ?? locked
     },
     isForeignAppAtPoint: (pt) => isForeignClickAtPoint(pt),
-    shouldSkipClick: (pt) => panelWindowManager?.isPointInsideAnyPanel(pt) ?? false,
+    shouldSkipClick: (pt) =>
+      isNativeDialogOpen() || (panelWindowManager?.isPointInsideAnyPanel(pt) ?? false),
     onEmbed: () => {
       desktopMode.resumeUnderIcons()
     }
@@ -1038,6 +1040,16 @@ function bootApp(): void {
   screen.on('display-added', onDisplayChanged)
   screen.on('display-removed', onDisplayChanged)
   screen.on('display-metrics-changed', onDisplayChanged)
+
+  // Sleep/hibernate wake: re-resolve preferred monitor after displays settle.
+  try {
+    powerMonitor.on('resume', () => {
+      console.log('[desktop] powerMonitor resume → reaffirm display placement')
+      desktopMode.onPowerResume()
+    })
+  } catch (error) {
+    console.warn('[desktop] powerMonitor resume unavailable:', error)
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

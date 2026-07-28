@@ -22,14 +22,15 @@ export function SearchPanelHost({ init }: { init: Init }): ReactElement | null {
         calendars={store.calendars}
         tags={store.tags}
         onClose={closePanel}
-        onSelectResult={({ event, dayKey }) => {
-          closePanel()
+        onSelectResult={({ event, dayKey, screenX, screenY }) => {
+          // Keep search open; open detail at the click pointer (screen DIP).
           routePanel({
             kind: 'eventDetail',
             eventId: event.id,
             dayKey,
             fromSearch: true,
-            anchor: null
+            anchor: null,
+            pointerScreen: { x: screenX, y: screenY }
           })
         }}
       />

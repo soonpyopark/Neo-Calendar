@@ -173,6 +173,14 @@ export type StoreSettings = {
     alwaysOnTop: boolean
     bounds: WidgetBounds
     margins?: Record<string, number>
+    /** Preferred monitor + relative offsets (multi-monitor restore). */
+    displayPlacement?: {
+      displayId: number
+      offsetX: number
+      offsetY: number
+      width: number
+      height: number
+    } | null
   }
   dayColors: Record<string, string>
   dayColorsByLoginId?: Record<string, Record<string, string>>

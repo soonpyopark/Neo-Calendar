@@ -20,7 +20,13 @@ export class SettingsStore {
     return this.calendarStore.getWidgetBounds()
   }
 
-  setWidget(patch: { launchMode?: LaunchMode; bounds?: WidgetBounds }): AppSettings {
+  setWidget(
+    patch: {
+      launchMode?: LaunchMode
+      bounds?: WidgetBounds
+      displayPlacement?: AppSettings['widget']['displayPlacement']
+    }
+  ): AppSettings {
     return this.calendarStore.setWidget(patch)
   }
 

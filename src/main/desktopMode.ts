@@ -1,8 +1,13 @@
 import { BrowserWindow } from 'electron'
 import { DEFAULT_WIDGET_BOUNDS, MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../shared/constants'
-import type { LaunchMode, ModeStatus, WidgetBounds } from '../shared/ipc'
+import type { LaunchMode, ModeStatus, WidgetBounds, WidgetDisplayPlacement } from '../shared/ipc'
 import type { SettingsStore } from './settingsStore'
-import { centerOnCursorDisplay, normalizeBoundsToDisplay } from './displayGeometry'
+import {
+  captureDisplayPlacement,
+  centerOnCursorDisplay,
+  normalizeBoundsToDisplay,
+  resolveDisplayPlacement
+} from './displayGeometry'
 import { clearWallpaperPin, isWorkerEmbedded, setAsWallpaper } from './wallpaper'
 import { focusWindowForTextInput } from './windowFocus'
 
@@ -10,10 +15,6 @@ type DesktopModeOptions = {
   getWindow: () => BrowserWindow | null
   store: SettingsStore
   onModeChanged?: (status: ModeStatus) => void
-}
-
-function normalizeBounds(bounds: WidgetBounds): WidgetBounds {
-  return normalizeBoundsToDisplay(bounds)
 }
 
 /**
@@ -27,9 +28,13 @@ function normalizeBounds(bounds: WidgetBounds): WidgetBounds {
 export class DesktopModeController {
   private mode: LaunchMode = 'window'
   private lockedBounds: WidgetBounds | null = null
+  /** Preferred monitor footprint — kept even when that display is temporarily offline. */
+  private preferredPlacement: WidgetDisplayPlacement | null = null
   private modeSwitchAllowed = true
   private switchGateGeneration = 0
   private switchGateTimer: ReturnType<typeof setTimeout> | null = null
+  private topologyTimer: ReturnType<typeof setTimeout> | null = null
+  private topologyRetryTimer: ReturnType<typeof setTimeout> | null = null
   private inputLockedUntil = 0
   private inputUnlockTimer: ReturnType<typeof setTimeout> | null = null
   /**
@@ -115,6 +120,75 @@ export class DesktopModeController {
       .catch(() => undefined)
   }
 
+  private readStoredPlacement(): WidgetDisplayPlacement | null {
+    const stored = this.store.getSettings().widget.displayPlacement
+    return stored ? { ...stored } : null
+  }
+
+  /**
+   * Normalize absolute bounds.
+   * When `updatePreferred` is true (default), also remember the monitor as preferred.
+   * Use `updatePreferred: false` for temporary hosts (preferred display offline).
+   */
+  private commitFootprint(
+    bounds: WidgetBounds,
+    options: { persist?: boolean; updatePreferred?: boolean } = {}
+  ): WidgetBounds {
+    const updatePreferred = options.updatePreferred !== false
+    const next = normalizeBoundsToDisplay(bounds)
+    this.lockedBounds = next
+    if (updatePreferred) {
+      this.preferredPlacement = captureDisplayPlacement(next)
+    }
+    if (options.persist !== false) {
+      if (updatePreferred) {
+        this.store.setWidget({
+          launchMode: this.mode,
+          bounds: next,
+          displayPlacement: this.preferredPlacement
+        })
+      } else {
+        this.store.setWidget({ launchMode: this.mode, bounds: next })
+      }
+    }
+    return next
+  }
+
+  /** Resolve preferred monitor placement → absolute DIP bounds. */
+  private resolveFootprint(fallback?: WidgetBounds | null): {
+    bounds: WidgetBounds
+    matchedPreferredDisplay: boolean
+  } {
+    const preferred = this.preferredPlacement ?? this.readStoredPlacement()
+    const absolute =
+      fallback ?? this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
+    const resolved = resolveDisplayPlacement(preferred, absolute)
+    this.lockedBounds = resolved.bounds
+    if (resolved.matchedPreferredDisplay) {
+      this.preferredPlacement = captureDisplayPlacement(resolved.bounds)
+    } else if (!this.preferredPlacement && preferred) {
+      this.preferredPlacement = preferred
+    } else if (!this.preferredPlacement) {
+      this.preferredPlacement = captureDisplayPlacement(resolved.bounds)
+    }
+    return {
+      bounds: resolved.bounds,
+      matchedPreferredDisplay: resolved.matchedPreferredDisplay
+    }
+  }
+
+  private applyFootprintToWindow(
+    bounds: WidgetBounds,
+    options: { reembed?: boolean } = {}
+  ): void {
+    const win = this.getWindow()
+    if (!win || win.isDestroyed()) return
+    win.setBounds(bounds)
+    if (options.reembed && this.mode === 'desktop' && !this.interactionSuspended) {
+      setAsWallpaper(win, bounds)
+    }
+  }
+
   getLaunchMode(): LaunchMode {
     return this.mode
   }
@@ -168,13 +242,16 @@ export class DesktopModeController {
       return
     }
 
-    const footprint = { ...this.lockedBounds }
+    const { bounds: footprint } = this.resolveFootprint(this.lockedBounds)
     this.interactionSuspended = false
     win.setBounds(footprint)
     setAsWallpaper(win, footprint)
     win.setIgnoreMouseEvents(true)
     win.showInactive()
-    console.log('[desktop] Resumed under-icons (principle #1)', footprint)
+    console.log('[desktop] Resumed under-icons (principle #1)', {
+      footprint,
+      displayId: this.preferredPlacement?.displayId
+    })
     this.onModeChanged?.(this.getStatus())
   }
 
@@ -196,16 +273,30 @@ export class DesktopModeController {
    */
   restoreFromSettings(): void {
     const settings = this.store.getSettings()
+    this.preferredPlacement = settings.widget.displayPlacement
+      ? { ...settings.widget.displayPlacement }
+      : null
     const saved = settings.widget.bounds
-    this.lockedBounds = saved
-      ? normalizeBounds(saved)
+    const fallback = saved
+      ? saved
       : centerOnCursorDisplay(DEFAULT_WIDGET_BOUNDS.width, DEFAULT_WIDGET_BOUNDS.height)
+    const { bounds, matchedPreferredDisplay } = this.resolveFootprint(fallback)
+    if (!this.preferredPlacement || matchedPreferredDisplay) {
+      this.preferredPlacement = captureDisplayPlacement(bounds)
+    }
 
     const mode = settings.widget.launchMode === 'desktop' ? 'desktop' : 'window'
-    console.log('[desktop] Restoring session', { mode, bounds: this.lockedBounds })
+    console.log('[desktop] Restoring session', {
+      mode,
+      bounds,
+      displayId: this.preferredPlacement.displayId,
+      matchedPreferredDisplay
+    })
 
     if (mode === 'desktop') {
-      this.restoreDesktopUnlocked(this.lockedBounds)
+      this.restoreDesktopUnlocked(bounds, {
+        updatePreferred: matchedPreferredDisplay || !this.preferredPlacement
+      })
       return
     }
 
@@ -228,12 +319,17 @@ export class DesktopModeController {
    * Cold-start desktop: locked footprint + unlocked (not WorkerW yet).
    * Idle embed bridge attaches under icons after 10s without input.
    */
-  private restoreDesktopUnlocked(bounds: WidgetBounds): void {
+  private restoreDesktopUnlocked(
+    bounds: WidgetBounds,
+    options: { updatePreferred?: boolean } = {}
+  ): void {
     const win = this.getWindow()
     if (!win || win.isDestroyed()) return
 
-    const footprint = normalizeBounds(bounds)
-    this.lockedBounds = footprint
+    const footprint = this.commitFootprint(bounds, {
+      persist: true,
+      updatePreferred: options.updatePreferred !== false
+    })
     this.mode = 'desktop'
     this.interactionSuspended = true
     this.armModeSwitchGate(250)
@@ -255,9 +351,9 @@ export class DesktopModeController {
     focusWindowForTextInput(win)
     win.setBounds(footprint)
 
-    this.store.setWidget({ launchMode: 'desktop', bounds: footprint })
     console.log('[desktop] Restored desktop unlocked (no WorkerW yet)', {
-      bounds: footprint
+      bounds: footprint,
+      displayId: this.preferredPlacement?.displayId
     })
     this.onModeChanged?.(this.getStatus())
 
@@ -274,40 +370,81 @@ export class DesktopModeController {
     const win = this.getWindow()
     let bounds: WidgetBounds
     if (this.mode === 'desktop') {
-      bounds = normalizeBounds(
-        this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
-      )
+      bounds = this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
     } else if (win && !win.isDestroyed()) {
-      bounds = normalizeBounds(win.getBounds())
+      bounds = win.getBounds()
     } else {
-      bounds = normalizeBounds(
-        this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
-      )
+      bounds = this.lockedBounds ?? this.store.getWidgetBounds() ?? DEFAULT_WIDGET_BOUNDS
     }
-    this.lockedBounds = bounds
-    this.store.setWidget({ launchMode: this.mode, bounds })
-    console.log('[desktop] Persisted session on quit', { mode: this.mode, bounds })
+    this.commitFootprint(bounds, { persist: true })
+    console.log('[desktop] Persisted session on quit', {
+      mode: this.mode,
+      bounds: this.lockedBounds,
+      displayId: this.preferredPlacement?.displayId
+    })
   }
 
-  /** Re-clamp / re-pin after monitor plug/unplug or DPI change. */
+  /**
+   * Debounced re-clamp / re-pin after monitor plug/unplug, DPI change, or sleep wake.
+   * Keeps preferred displayId even when that monitor is briefly offline.
+   */
   onDisplayTopologyChanged(): void {
-    if (!this.lockedBounds) return
-    const next = normalizeBounds(this.lockedBounds)
-    this.lockedBounds = next
+    if (this.topologyTimer) clearTimeout(this.topologyTimer)
+    this.topologyTimer = setTimeout(() => {
+      this.topologyTimer = null
+      this.applyDisplayTopology('topology')
+      // Sleep/wake often brings secondary monitors online a moment later.
+      if (this.topologyRetryTimer) clearTimeout(this.topologyRetryTimer)
+      this.topologyRetryTimer = setTimeout(() => {
+        this.topologyRetryTimer = null
+        this.applyDisplayTopology('topology-retry')
+      }, 1500)
+    }, 400)
+  }
+
+  /** Immediate re-apply after OS resume (sleep/hibernate). */
+  onPowerResume(): void {
+    if (this.topologyTimer) clearTimeout(this.topologyTimer)
+    this.topologyTimer = setTimeout(() => {
+      this.topologyTimer = null
+      this.applyDisplayTopology('power-resume')
+      if (this.topologyRetryTimer) clearTimeout(this.topologyRetryTimer)
+      this.topologyRetryTimer = setTimeout(() => {
+        this.topologyRetryTimer = null
+        this.applyDisplayTopology('power-resume-retry')
+      }, 2000)
+    }, 800)
+  }
+
+  private applyDisplayTopology(reason: string): void {
+    if (!this.preferredPlacement && !this.lockedBounds && !this.readStoredPlacement()) return
+
+    const { bounds: next, matchedPreferredDisplay } = this.resolveFootprint(this.lockedBounds)
     const win = this.getWindow()
     if (!win || win.isDestroyed()) return
 
-    if (this.mode === 'desktop') {
-      win.setBounds(next)
-      if (!this.interactionSuspended) {
-        setAsWallpaper(win, next)
-      }
-      this.store.setWidget({ launchMode: 'desktop', bounds: next })
-      console.log('[desktop] Re-applied desktop footprint after display change', next)
+    this.applyFootprintToWindow(next, {
+      reembed: this.mode === 'desktop' && !this.interactionSuspended
+    })
+
+    if (matchedPreferredDisplay) {
+      this.preferredPlacement = captureDisplayPlacement(next)
+      this.store.setWidget({
+        launchMode: this.mode,
+        bounds: next,
+        displayPlacement: this.preferredPlacement
+      })
+      console.log(`[desktop] Re-applied footprint (${reason}) on preferred display`, {
+        bounds: next,
+        displayId: this.preferredPlacement.displayId
+      })
     } else {
-      win.setBounds(next)
-      this.store.setWidget({ launchMode: 'window', bounds: next })
-      console.log('[desktop] Re-clamped window footprint after display change', next)
+      // Temporary host only — keep preferred displayPlacement in settings.
+      this.store.setWidget({ launchMode: this.mode, bounds: next })
+      console.log(`[desktop] Preferred display offline (${reason}) — temporary clamp`, {
+        bounds: next,
+        preferredDisplayId: this.preferredPlacement?.displayId
+      })
     }
     this.onModeChanged?.(this.getStatus())
   }
@@ -354,9 +491,9 @@ export class DesktopModeController {
       this.store.getWidgetBounds() ??
       win.getBounds()
 
-    this.lockedBounds = normalizeBounds(sourceBounds)
     this.mode = 'desktop'
     this.interactionSuspended = false
+    this.lockedBounds = this.commitFootprint(sourceBounds, { persist: options.persist !== false })
     this.armModeSwitchGate(250)
     this.lockInput(200)
 
@@ -374,11 +511,9 @@ export class DesktopModeController {
     else win.showInactive()
     this.blurRendererChrome()
 
-    if (options.persist !== false) {
-      this.store.setWidget({ launchMode: 'desktop', bounds: this.lockedBounds })
-    }
     console.log('[desktop] Desktop mode (under-icons)', {
       bounds: this.lockedBounds,
+      displayId: this.preferredPlacement?.displayId,
       workerEmbedded: isWorkerEmbedded()
     })
     const status = this.getStatus()
@@ -412,12 +547,16 @@ export class DesktopModeController {
     this.armModeSwitchGate(options.fromRestore ? 1500 : 250)
     this.lockInput(options.fromRestore ? 250 : 200)
 
-    const bounds = normalizeBounds(
+    const { bounds, matchedPreferredDisplay } = this.resolveFootprint(
       this.lockedBounds ?? this.store.getWidgetBounds() ?? win.getBounds() ?? DEFAULT_WIDGET_BOUNDS
     )
-    this.lockedBounds = bounds
+    this.lockedBounds = this.commitFootprint(bounds, {
+      persist: options.persist !== false,
+      // Cold-start restore may land on a temporary host — keep preferred monitor id.
+      updatePreferred: !options.fromRestore || matchedPreferredDisplay || !this.preferredPlacement
+    })
 
-    clearWallpaperPin(win, bounds)
+    clearWallpaperPin(win, this.lockedBounds)
     win.setSkipTaskbar(false)
     win.setMinimumSize(MIN_WIDGET_WIDTH, MIN_WIDGET_HEIGHT)
     win.setResizable(true)
@@ -427,7 +566,7 @@ export class DesktopModeController {
     win.setFullScreenable(false)
     win.setHasShadow(true)
     win.setOpacity(1)
-    win.setBounds(bounds)
+    win.setBounds(this.lockedBounds)
     win.setAlwaysOnTop(true, 'floating')
     win.setIgnoreMouseEvents(false)
     win.show()
@@ -435,11 +574,11 @@ export class DesktopModeController {
     win.moveTop()
     this.blurRendererChrome()
 
-    console.log('[desktop] Window mode bounds', bounds)
+    console.log('[desktop] Window mode bounds', {
+      bounds: this.lockedBounds,
+      displayId: this.preferredPlacement?.displayId
+    })
 
-    if (options.persist !== false) {
-      this.store.setWidget({ launchMode: 'window', bounds })
-    }
     const status = this.getStatus()
     this.onModeChanged?.(status)
     return status
@@ -448,15 +587,13 @@ export class DesktopModeController {
   persistWindowBounds(): void {
     const win = this.getWindow()
     if (!win) return
-    const bounds = normalizeBounds(win.getBounds())
-    this.lockedBounds = bounds
-    this.store.setWidget({ launchMode: this.mode, bounds })
+    this.commitFootprint(win.getBounds(), { persist: true })
   }
 
   getWindowBounds(): WidgetBounds {
     const win = this.getWindow()
     if (!win) return this.lockedBounds ?? this.store.getWidgetBounds()
-    return normalizeBounds(win.getBounds())
+    return normalizeBoundsToDisplay(win.getBounds())
   }
 
   getLockedBounds(): WidgetBounds | null {
@@ -468,10 +605,8 @@ export class DesktopModeController {
     if (!win || this.mode !== 'window') {
       return this.getWindowBounds()
     }
-    const next = normalizeBounds(bounds)
-    this.lockedBounds = next
+    const next = this.commitFootprint(bounds, { persist: true })
     win.setBounds(next)
-    this.store.setWidget({ launchMode: 'window', bounds: next })
     return next
   }
 }
