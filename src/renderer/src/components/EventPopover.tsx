@@ -5,7 +5,7 @@ import {
   type RefObject
 } from 'react'
 import { useAppDialog } from './AppDialogProvider'
-import { EventDetailCalendarFooter, EventDetailContent } from './EventDetailContent'
+import { EventDetailCalendarName, EventDetailContent } from './EventDetailContent'
 import {
   getAnchoredPopoverPosition,
   getCenteredPanelStyle,
@@ -14,6 +14,7 @@ import {
 } from '../lib/popoverPosition'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
+import { EVENT_DETAIL_PANEL_WIDTH } from '../../../shared/panelWindows'
 import type { AnchorRect } from './DayQuickEditPopover'
 
 const toolbarBtnClass =
@@ -57,7 +58,7 @@ export function EventPopover({
 }: EventPopoverProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const { confirm } = useAppDialog()
-  const popoverOptions = { width: 418, estimatedHeight: 360, padding: 12 }
+  const popoverOptions = { width: EVENT_DETAIL_PANEL_WIDTH, estimatedHeight: 360, padding: 12 }
   const resolvedAnchor = resolvePopoverAnchor(anchorRect)
   const { ref, style: anchoredStyle } = useAnchoredPopoverStyle(anchorRect, popoverOptions)
 
@@ -99,7 +100,7 @@ export function EventPopover({
           ...popoverOptions,
           anchorMode: resolvedAnchor.mode
         }))
-      : getCenteredPanelStyle({ padding: 16, maxWidth: 418 })
+      : getCenteredPanelStyle({ padding: 16, maxWidth: EVENT_DETAIL_PANEL_WIDTH })
 
   const emitEdit = (nativeEvent?: {
     clientX: number
@@ -133,8 +134,12 @@ export function EventPopover({
     >
       <div
         ref={ref as RefObject<HTMLDivElement | null>}
-        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex w-[418px] max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
-        style={panelStyle as CSSProperties}
+        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[51] flex max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
+        style={
+          isFloating
+            ? (panelStyle as CSSProperties)
+            : ({ ...(panelStyle as CSSProperties), width: EVENT_DETAIL_PANEL_WIDTH } as CSSProperties)
+        }
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={isFloating ? undefined : () => setIgnoreMouseEvents(false)}
         onMouseLeave={
@@ -143,24 +148,27 @@ export function EventPopover({
         role="dialog"
         aria-label="일정 상세"
       >
-        <div className="search-panel-line-b flex shrink-0 items-center justify-between gap-2 pl-5 pr-3 pt-2">
-          <label
-            className="inline-flex h-[34px] cursor-pointer items-center"
-            title={completed ? '완료 해제' : '완료로 표시'}
-          >
-            <input
-              type="checkbox"
-              className="event-popover-check"
-              checked={completed}
-              disabled={!canEdit}
-              aria-label={completed ? '완료 해제' : '완료로 표시'}
-              onChange={(e) => {
-                if (!canEdit) return
-                void onToggleCompleted?.(event, e.target.checked)
-              }}
-            />
-          </label>
-          <div className="flex items-center gap-0.5">
+        <div className="event-detail-header flex shrink-0 items-center justify-between gap-2 pl-5 pr-3 pt-2 pb-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <label
+              className="inline-flex h-[34px] shrink-0 cursor-pointer items-center"
+              title={completed ? '완료 해제' : '완료로 표시'}
+            >
+              <input
+                type="checkbox"
+                className="event-popover-check"
+                checked={completed}
+                disabled={!canEdit}
+                aria-label={completed ? '완료 해제' : '완료로 표시'}
+                onChange={(e) => {
+                  if (!canEdit) return
+                  void onToggleCompleted?.(event, e.target.checked)
+                }}
+              />
+            </label>
+            <EventDetailCalendarName calendar={calendar} color={calendar?.color ?? event.color} />
+          </div>
+          <div className="flex shrink-0 items-center gap-0.5">
             {canEdit ? (
               <>
                 <button
@@ -203,22 +211,16 @@ export function EventPopover({
         </div>
 
         <div
-          className={`settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pt-1${isFloating ? ' pb-0' : ' pb-5'}`}
+          className={`settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pt-1${isFloating ? ' pb-4' : ' pb-5'}`}
         >
           <EventDetailContent
             event={event}
             calendar={calendar}
             dayKey={dayKey}
             tags={tags}
-            hideCalendarFooter={isFloating}
             onTitleDoubleClick={canEdit ? () => emitEdit() : undefined}
           />
         </div>
-        {isFloating ? (
-          <div className="shrink-0 px-5 pb-4">
-            <EventDetailCalendarFooter calendar={calendar} />
-          </div>
-        ) : null}
       </div>
     </div>
   )

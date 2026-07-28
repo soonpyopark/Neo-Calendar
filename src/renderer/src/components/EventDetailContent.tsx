@@ -21,24 +21,35 @@ export type EventDetailContentProps = {
   dayKey?: string
   tags?: TagRecord[]
   onTitleDoubleClick?: () => void
-  /** Omit calendar name row (e.g. when pinned outside a floating panel scroll area). */
-  hideCalendarFooter?: boolean
 }
 
-export function EventDetailCalendarFooter({
-  calendar
+export function EventDetailCalendarName({
+  calendar,
+  color
 }: {
   calendar?: CalendarRecord | null
+  color?: string | null
 }): ReactElement {
+  const calendarColor = color ?? calendar?.color ?? '#039be5'
+  const theme = getCalendarTheme(calendarColor)
+  const iconColor = theme.accent ?? theme.base
+
   return (
-    <div className="search-panel-line-t mt-5 flex items-center gap-2 pt-4 text-sm text-gcal-muted">
-      <svg viewBox="0 0 24 24" width="16" height="16" className="shrink-0" aria-hidden="true">
+    <div className="flex min-w-0 items-center gap-1.5 text-sm text-gcal-muted">
+      <svg
+        viewBox="0 0 24 24"
+        width="16"
+        height="16"
+        className="shrink-0"
+        style={{ color: iconColor }}
+        aria-hidden="true"
+      >
         <path
           fill="currentColor"
           d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V10h14v10zM5 8V6h14v2H5z"
         />
       </svg>
-      <span>{calendar?.name ?? '기본 캘린더'}</span>
+      <span className="truncate">{calendar?.name ?? '기본 캘린더'}</span>
     </div>
   )
 }
@@ -54,8 +65,7 @@ export function EventDetailContent({
   calendar,
   dayKey,
   tags = [],
-  onTitleDoubleClick,
-  hideCalendarFooter = false
+  onTitleDoubleClick
 }: EventDetailContentProps): ReactElement {
   const calendarColor = calendar?.color ?? event.color ?? '#039be5'
   const theme = getCalendarTheme(calendarColor)
@@ -246,8 +256,6 @@ export function EventDetailContent({
           ) : null}
         </div>
       </div>
-
-      {hideCalendarFooter ? null : <EventDetailCalendarFooter calendar={calendar} />}
     </>
   )
 }

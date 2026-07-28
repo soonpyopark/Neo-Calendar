@@ -624,7 +624,9 @@ export function SearchPanel({
             </label>
           </div>
 
-          <div className="settings-scroll max-h-[min(70vh,560px)] overflow-y-auto">
+          <div
+            className={`settings-scroll overflow-y-auto${isFloating ? ' min-h-0 flex-1' : ' max-h-[min(55vh,400px)]'}`}
+          >
             {!trimmed ? (
               <p className="px-5 py-8 text-center text-sm text-gcal-muted">
                 제목, 설명, 위치, 캘린더, 태그, 바로가기, 첨부파일 이름으로 검색합니다.

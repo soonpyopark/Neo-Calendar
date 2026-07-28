@@ -936,7 +936,7 @@ input[type='search']::-ms-clear,
   border-top-color: var(--neo-panel-divider);
 }
 
-/* Event detail popover — match day-quick-edit outer border and section lines. */
+/* Event detail popover — match day-quick-edit outer border; header has no section divider. */
 .event-detail-shell {
   border: 1px solid var(--gcal-border);
   background: var(--gcal-surface);
