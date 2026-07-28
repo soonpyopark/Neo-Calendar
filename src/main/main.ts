@@ -210,7 +210,7 @@ function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolea
   if (isNativeDialogOpen()) return false
   if (panelWindowManager?.isPointInsideAnyPanel(pt)) return false
   if (!shouldProcessEmbeddedGlobalClick(mainWindow, pt)) return false
-  // Hidden helper (neo-desktop-hit): skip calendar actions when click is on a desktop icon.
+  // Hidden helper (Neo-Calendar.exe): skip calendar actions when click is on a desktop icon.
   if (desktopHitHelperHost.isIconAtDipPoint(pt)) return false
   return true
 }

@@ -64,7 +64,14 @@ import {
   expandEventsForRange
 } from '../../../shared/mdcExport/eventOccurrences.js'
 import { eventToMutationPayload } from '../lib/eventMutation'
-import { buildRecurringCompletePayload } from '../lib/recurrenceComplete'
+import {
+  EVENT_UI_DISMISS_AFTER_DELETE,
+  type EventUiDismissDetail
+} from '../lib/eventUiDismiss'
+import {
+  buildRecurringCompletePayload,
+  closePanelsAfterEventDelete
+} from '../lib/recurrenceComplete'
 import {
   applyRecurringDelete,
   applyRecurringEdit as applyRecurringEditCore
@@ -396,7 +403,8 @@ export function CalendarGrid({
     undo,
     redo,
     canUndo,
-    canRedo
+    canRedo,
+    deleteCompletedForDay
   } = useCalendarStore()
 
   const [viewMode, setViewMode] = useState<ViewMode>('month')
@@ -449,11 +457,31 @@ export function CalendarGrid({
   /** Search-opened detail may stay up even while grid hide toggles are on (MDC). */
   const detailFromSearchRef = useRef(false)
 
-  /** MDC App.clearEventDetail */
+  /** MDC App.clearEventDetail — detail only; keep quickEdit (delete-cancel / detail X). */
   const clearEventDetail = useCallback((): void => {
     detailFromSearchRef.current = false
     setEventPopover(null)
   }, [])
+
+  // Browser / unlocked-desktop inline overlays: same dismiss order as floating panels.
+  useEffect(() => {
+    const onDismiss = (event: Event): void => {
+      const phase = (event as CustomEvent<EventUiDismissDetail>).detail?.phase
+      if (phase === 'immediate') {
+        clearEventDetail()
+        setEditor(null)
+        setPendingEdit(null)
+        setScopeDialog(null)
+        setPendingDelete(null)
+        return
+      }
+      if (phase === 'quickEdit') {
+        setQuickEdit(null)
+      }
+    }
+    window.addEventListener(EVENT_UI_DISMISS_AFTER_DELETE, onDismiss)
+    return () => window.removeEventListener(EVENT_UI_DISMISS_AFTER_DELETE, onDismiss)
+  }, [clearEventDetail])
 
   // MDC login wall: first launch / cold start without session → login dialog.
   const autoLoginPromptedRef = useRef(false)
@@ -1407,6 +1435,28 @@ export function CalendarGrid({
     ]
   )
 
+  const handleQuickEditDeleteCompleted = useCallback(
+    async (completedEvents: CalendarEvent[]): Promise<void> => {
+      if (!requireEdit() || !quickEdit?.dateKey) return
+      try {
+        const { deleted, failed } = await deleteCompletedForDay(
+          completedEvents,
+          quickEdit.dateKey
+        )
+        if (failed > 0) {
+          await alert(
+            deleted > 0
+              ? `완료된 일정 ${deleted}건을 삭제했습니다. ${failed}건은 삭제하지 못했습니다.`
+              : '완료된 일정을 삭제하지 못했습니다.'
+          )
+        }
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : '완료된 일정을 삭제하지 못했습니다.')
+      }
+    },
+    [alert, deleteCompletedForDay, quickEdit?.dateKey, requireEdit]
+  )
+
   /** MDC DayQuickEditPopover — resolve occurrence id to series master before patch. */
   const handleQuickEditEventPatch = useCallback(
     async (
@@ -1658,9 +1708,9 @@ export function CalendarGrid({
     const { floatingPanels } = modeEmbeddedRef.current
     if (floatingPanels) {
       setEventPopover(null)
-      setQuickEdit(null)
       setScopeDialog(null)
       setPendingDelete(null)
+      // Keep floating quickEdit under the editor (panel manager no longer evicts it).
       openEmbeddedPanel({
         kind: 'eventEditor',
         eventId: event?.id ?? null,
@@ -1671,12 +1721,14 @@ export function CalendarGrid({
               dateKey: opts.returnQuickEdit.dateKey,
               anchor: opts.returnQuickEdit.anchorRect
             }
-          : null
+          : quickEdit
+            ? { dateKey: quickEdit.dateKey, anchor: quickEdit.anchorRect }
+            : null
       })
       return
     }
     setEventPopover(null)
-    setQuickEdit(null)
+    // Keep inline quickEdit mounted so delete-cancel / editor X can return to it.
     setScopeDialog(null)
     setPendingDelete(null)
 
@@ -1699,7 +1751,7 @@ export function CalendarGrid({
         event: mergeOccurrenceForEditor(master, event),
         defaultDate: opts?.defaultDate,
         occurrenceDate,
-        returnQuickEdit: opts?.returnQuickEdit ?? null
+        returnQuickEdit: opts?.returnQuickEdit ?? quickEdit ?? null
       })
       return
     }
@@ -1709,7 +1761,7 @@ export function CalendarGrid({
       event: null,
       defaultDate: opts?.defaultDate,
       occurrenceDate: opts?.defaultDate ?? null,
-      returnQuickEdit: opts?.returnQuickEdit ?? null
+      returnQuickEdit: opts?.returnQuickEdit ?? quickEdit ?? null
     })
   }
 
@@ -1780,8 +1832,7 @@ export function CalendarGrid({
           scope,
           store.events
         )
-        clearEventDetail()
-        setEditor(null)
+        closePanelsAfterEventDelete()
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
@@ -2407,6 +2458,9 @@ export function CalendarGrid({
           onToggleCompleted={(event, completed) => {
             void handleQuickEditToggleCompleted(event, completed)
           }}
+          onDeleteCompleted={(completedEvents) => {
+            void handleQuickEditDeleteCompleted(completedEvents)
+          }}
           onDayColorChange={(color) => {
             const next = { ...dayColors }
             if (!color) delete next[quickEdit.dateKey]
@@ -2471,7 +2525,10 @@ export function CalendarGrid({
           onClose={clearEventDetail}
           onEdit={(event) => {
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
-            openEventEditor(event, { defaultDate: eventPopover.dayKey })
+            openEventEditor(event, {
+              defaultDate: eventPopover.dayKey,
+              returnQuickEdit: quickEdit
+            })
           }}
           onDelete={(event) => {
             const master = findMasterEvent(event)
@@ -2480,7 +2537,9 @@ export function CalendarGrid({
               return
             }
             if (!isRecurringEvent(master)) {
-              void removeEvent(master.id).then(() => clearEventDetail())
+              void removeEvent(master.id).then(() => {
+                closePanelsAfterEventDelete()
+              })
               return
             }
             const occurrenceDate =
@@ -2566,8 +2625,7 @@ export function CalendarGrid({
                   }
                   if (!isRecurringEvent(master)) {
                     await removeEvent(master.id)
-                    setEditor(null)
-                    setPendingEdit(null)
+                    closePanelsAfterEventDelete()
                     return
                   }
                   const occurrenceDate =

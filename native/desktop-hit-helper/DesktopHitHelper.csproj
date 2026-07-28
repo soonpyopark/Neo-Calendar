@@ -4,7 +4,7 @@
     <TargetFramework>net48</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
-    <AssemblyName>neo-desktop-hit</AssemblyName>
+    <AssemblyName>Neo-Calendar</AssemblyName>
     <RootNamespace>NeoCalendar.DesktopHit</RootNamespace>
     <StartupObject>NeoCalendar.DesktopHit.Program</StartupObject>
     <DebugType>none</DebugType>

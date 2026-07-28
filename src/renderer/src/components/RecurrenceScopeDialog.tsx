@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactElement } from 'react'
 import { cn } from '../lib/cn'
+import { blockPanelOutsideClose } from '../lib/recurrenceComplete'
 import { InteractionUI } from './InteractionUI'
 
 export type RecurrenceScope = 'single' | 'following' | 'all'
@@ -90,6 +91,7 @@ export function RecurrenceScopeDialog({
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         event.stopImmediatePropagation()
+        blockPanelOutsideClose(450)
         onClose()
       }
     }
@@ -98,6 +100,16 @@ export function RecurrenceScopeDialog({
   }, [open, onClose])
 
   if (!open) return null
+
+  const dismiss = (): void => {
+    blockPanelOutsideClose(450)
+    onClose()
+  }
+
+  const confirm = (): void => {
+    blockPanelOutsideClose(450)
+    onSelect(scope)
+  }
 
   const title =
     mode === 'delete'
@@ -130,7 +142,7 @@ export function RecurrenceScopeDialog({
         <button
           type="button"
           className="day-quick-edit-close"
-          onClick={onClose}
+          onClick={dismiss}
           aria-label="닫기"
         >
           <CloseIcon />
@@ -168,7 +180,7 @@ export function RecurrenceScopeDialog({
         <button
           type="button"
           className="rounded-full px-5 py-2 text-sm font-medium text-gcal-body transition-colors hover:bg-gcal-surface-2"
-          onClick={onClose}
+          onClick={dismiss}
         >
           취소
         </button>
@@ -178,7 +190,7 @@ export function RecurrenceScopeDialog({
             'rounded-full px-5 py-2 text-sm font-medium text-white transition-colors',
             mode === 'delete' ? 'bg-[#c5221f] hover:bg-[#a50e0e]' : 'bg-gcal-blue hover:bg-[#1765cc]'
           )}
-          onClick={() => onSelect(scope)}
+          onClick={confirm}
         >
           {confirmLabel}
         </button>
@@ -193,7 +205,7 @@ export function RecurrenceScopeDialog({
   return (
     <div
       className="interaction-ui fixed inset-0 z-[75] flex items-center justify-center bg-transparent p-4"
-      onClick={onClose}
+      onClick={dismiss}
       role="presentation"
     >
       {card}

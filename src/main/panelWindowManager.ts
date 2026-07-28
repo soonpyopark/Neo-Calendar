@@ -97,6 +97,18 @@ export class PanelWindowManager {
       if (typeof kind === 'string' && kind) this.closeSlot(kind)
     })
 
+    // AppDialog / scope dismiss: suppress click-through that would close sibling panels (e.g. quickEdit).
+    ipcMain.on('panel-block-outside-close', (_event, ms?: number) => {
+      const duration =
+        typeof ms === 'number' && Number.isFinite(ms) && ms > 0 ? ms : OUTSIDE_CLOSE_GRACE_MS
+      this.blockOutsideClose(duration)
+    })
+
+    // Sequenced in main so closing the calling panel does not cancel the delayed quickEdit close.
+    ipcMain.on('panel-close-after-event-delete', () => {
+      this.closeAfterEventDelete()
+    })
+
     ipcMain.handle('panel-resize', (event, size: { width: number; height: number }) =>
       this.resizeFromSender(event, size)
     )
@@ -241,8 +253,9 @@ export class PanelWindowManager {
 
   private beforeOpenSlot(slot: PanelSlot): void {
     if (slot === 'eventEditor') {
+      // Close detail under the editor, but keep quickEdit so delete-cancel / editor X
+      // can return to the day list (desktop + window floating panels).
       this.evictSlot('eventDetail')
-      this.evictSlot('quickEdit')
     }
     if (slot === 'quickEdit') {
       this.evictSlot('eventDetail')
@@ -308,6 +321,25 @@ export class PanelWindowManager {
 
   closeSlot(slot: PanelSlot): void {
     this.evictSlot(slot)
+  }
+
+  /** Ignore global outside-clicks for a short grace (modal dismiss / panel swap). */
+  blockOutsideClose(ms = OUTSIDE_CLOSE_GRACE_MS): void {
+    this.outsideBlockedUntil = Math.max(this.outsideBlockedUntil, Date.now() + ms)
+  }
+
+  /**
+   * Delete success: close scope/editor/detail immediately, then quickEdit last.
+   * Must run in the main process — renderer setTimeout dies when the caller panel closes.
+   */
+  closeAfterEventDelete(): void {
+    this.blockOutsideClose(500)
+    for (const slot of ['recurrenceScope', 'eventEditor', 'eventDetail'] as const) {
+      this.closeSlot(slot)
+    }
+    setTimeout(() => {
+      this.closeSlot('quickEdit')
+    }, 180)
   }
 
   isOpen(): boolean {

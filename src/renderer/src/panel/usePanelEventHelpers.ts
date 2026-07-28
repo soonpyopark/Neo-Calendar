@@ -94,12 +94,13 @@ export function useApplyRecurringDelete(options: {
 }
 
 export function usePanelRouter(): {
+  /** Close only this panel window (keeps quickEdit open — e.g. detail X after canceling delete). */
   closePanel: () => void
   routePanel: (init: PanelWindowInit) => void
 } {
   const closePanel = useCallback((): void => {
+    window.neoCalendar.blockPanelOutsideClose?.(400)
     window.neoCalendar.closePanelWindow?.()
-    window.neoCalendar.closeQuickEditWindow?.()
   }, [])
 
   const routePanel = useCallback((init: PanelWindowInit): void => {

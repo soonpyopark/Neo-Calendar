@@ -92,7 +92,7 @@ function isInvalidHandle(handle: unknown): boolean {
 }
 
 /**
- * Hosts the hidden neo-desktop-hit.exe helper and queries icon hits over a named pipe.
+ * Hosts the hidden Neo-Calendar.exe helper and queries icon hits over a named pipe.
  * Uses synchronous Win32 pipe I/O so the mouse-hook path can decide without racing the event loop.
  * Fail-open: if the helper is unavailable, falls back to in-process hit-test.
  */
@@ -276,11 +276,11 @@ export class DesktopHitHelperHost {
 
 function resolveHelperExe(): string | null {
   const candidates = [
-    join(process.resourcesPath, 'desktop-hit-helper', 'neo-desktop-hit.exe'),
-    join(app.getAppPath(), 'resources', 'desktop-hit-helper', 'neo-desktop-hit.exe'),
-    join(app.getAppPath(), '..', '..', 'resources', 'desktop-hit-helper', 'neo-desktop-hit.exe'),
-    join(__dirname, '../../resources/desktop-hit-helper/neo-desktop-hit.exe'),
-    join(__dirname, '../../../resources/desktop-hit-helper/neo-desktop-hit.exe')
+    join(process.resourcesPath, 'desktop-hit-helper', 'Neo-Calendar.exe'),
+    join(app.getAppPath(), 'resources', 'desktop-hit-helper', 'Neo-Calendar.exe'),
+    join(app.getAppPath(), '..', '..', 'resources', 'desktop-hit-helper', 'Neo-Calendar.exe'),
+    join(__dirname, '../../resources/desktop-hit-helper/Neo-Calendar.exe'),
+    join(__dirname, '../../../resources/desktop-hit-helper/Neo-Calendar.exe')
   ]
   for (const candidate of candidates) {
     try {

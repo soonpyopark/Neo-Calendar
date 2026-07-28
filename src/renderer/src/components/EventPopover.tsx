@@ -71,6 +71,8 @@ export function EventPopover({
       if (panel?.contains(target)) return
       if (target instanceof Element && target.closest('.day-events-popover')) return
       if (target instanceof Element && target.closest('.app-dialog-root')) return
+      if (target instanceof Element && target.closest('.recurrence-scope-shell')) return
+      if (target instanceof Element && target.closest('.day-quick-edit')) return
       // Keep detail open while browsing search results (search stays open too).
       if (target instanceof Element && target.closest('.search-panel-shell')) return
       onClose()

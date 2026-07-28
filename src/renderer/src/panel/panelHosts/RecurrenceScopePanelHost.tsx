@@ -2,7 +2,11 @@ import { useCallback, useMemo, type ReactElement } from 'react'
 import { RecurrenceScopeDialog, type RecurrenceScope } from '../../components/RecurrenceScopeDialog'
 import { useAppDialog } from '../../components/AppDialogProvider'
 import { useCalendarStore } from '../../hooks/useCalendarStore'
-import { buildRecurringCompletePayload } from '../../lib/recurrenceComplete'
+import {
+  blockPanelOutsideClose,
+  buildRecurringCompletePayload,
+  closePanelsAfterEventDelete
+} from '../../lib/recurrenceComplete'
 import type { PanelWindowInit } from '../../../../shared/panelWindows'
 import { isRecurringEvent } from '../../../../shared/mdcExport/eventOccurrences.js'
 import {
@@ -15,15 +19,14 @@ import {
 type Init = Extract<PanelWindowInit, { kind: 'recurrenceScope' }>
 
 function closeThisPanel(): void {
-  // Do not call closeQuickEditWindow — this panel often opens above quick-edit/detail.
+  // Cancel / dismiss: keep detail + quickEdit. Block click-through after this window closes.
+  blockPanelOutsideClose(450)
   window.neoCalendar.closePanelWindow?.()
 }
 
-function closeSiblingPanels(kinds: Init['closePanels']): void {
-  if (!kinds?.length) return
-  for (const kind of kinds) {
-    window.neoCalendar.closePanelSlot?.(kind)
-  }
+function closeAfterDelete(): void {
+  // Detail → then quickEdit (helper); this scope slot is included in that order.
+  closePanelsAfterEventDelete()
 }
 
 export function RecurrenceScopePanelHost({ init }: { init: Init }): ReactElement | null {
@@ -74,13 +77,11 @@ export function RecurrenceScopePanelHost({ init }: { init: Init }): ReactElement
         if (init.mode === 'delete') {
           if (!isRecurringEvent(master)) {
             await removeEvent(master.id)
-            closeSiblingPanels(init.closePanels)
-            closeThisPanel()
+            closeAfterDelete()
             return
           }
           await applyRecurringDelete(master, init.occurrenceDate, scope)
-          closeSiblingPanels(init.closePanels)
-          closeThisPanel()
+          closeAfterDelete()
           return
         }
 
@@ -94,7 +95,6 @@ export function RecurrenceScopePanelHost({ init }: { init: Init }): ReactElement
       alert,
       applyRecurringDelete,
       applyRecurringEdit,
-      init.closePanels,
       init.completed,
       init.mode,
       init.occurrenceDate,

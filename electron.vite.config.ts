@@ -1,8 +1,28 @@
-import { resolve } from 'node:path'
+import { copyFileSync, mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import type { Plugin } from 'vite'
+
+/** Copy holidays seed into out/ so packaged builds can seed offline. */
+function copyHolidaySeedPlugin(): Plugin {
+  const from = resolve('src/shared/seed/holidays-kr.json')
+  const to = resolve('out/shared/seed/holidays-kr.json')
+  const copy = (): void => {
+    mkdirSync(dirname(to), { recursive: true })
+    copyFileSync(from, to)
+  }
+  return {
+    name: 'neo-copy-holiday-seed',
+    buildStart() {
+      copy()
+    },
+    closeBundle() {
+      copy()
+    }
+  }
+}
 
 /** Calendar HTTP API port (same default as CalendarWebServer). */
 function resolveDevApiPort(): number {
@@ -45,7 +65,7 @@ export default defineConfig({
         }
       }
     },
-    plugins: [externalizeDepsPlugin()]
+    plugins: [externalizeDepsPlugin(), copyHolidaySeedPlugin()]
   },
   preload: {
     build: {

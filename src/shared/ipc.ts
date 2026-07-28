@@ -202,6 +202,16 @@ export type NeoCalendarApi = {
   closePanelWindow: () => void
   /** Close a floating panel by kind (sibling slots; e.g. eventDetail after recurring delete). */
   closePanelSlot: (kind: PanelKind) => void
+  /**
+   * Suppress outside-click dismiss for a short grace (ms).
+   * Use when an in-panel modal closes so the same click does not wipe sibling panels.
+   */
+  blockPanelOutsideClose: (ms?: number) => void
+  /**
+   * Delete success: close detail/editor/scope, then quickEdit last (main-process timed).
+   * Safe to call from a panel that is about to close.
+   */
+  closeAfterEventDelete: () => void
   routePanelWindow: (init: PanelWindowInit) => Promise<boolean>
   /** Shrink a floating panel BrowserWindow to fit its content (keeps x/y). */
   resizePanelWindow: (size: { width: number; height: number }) => Promise<boolean>

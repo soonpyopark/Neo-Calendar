@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useState, type ReactElement } from 're
 import { useAppDialog } from '../../components/AppDialogProvider'
 import { EventEditor } from '../../components/EventEditor'
 import { RecurrenceScopeDialog } from '../../components/RecurrenceScopeDialog'
-import { openRecurrenceDeletePanel } from '../../lib/recurrenceComplete'
+import {
+  closePanelsAfterEventDelete,
+  openRecurrenceDeletePanel
+} from '../../lib/recurrenceComplete'
 import { useCalendarStore } from '../../hooks/useCalendarStore'
 import {
   expandEventsForRange,
@@ -93,7 +96,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
         const { master, occurrenceDate } = pendingDelete
         setPendingDelete(null)
         await applyRecurringDelete(master, occurrenceDate, scope)
-        closePanel()
+        closePanelsAfterEventDelete()
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
@@ -178,7 +181,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
                 }
                 if (!isRecurringEvent(master)) {
                   await removeEvent(master.id)
-                  closePanel()
+                  closePanelsAfterEventDelete()
                   return
                 }
                 const occurrenceDate =
@@ -187,8 +190,7 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
                   master.startDate
                 const opened = await openRecurrenceDeletePanel({
                   eventId: master.id,
-                  occurrenceDate,
-                  closePanels: ['eventEditor', 'quickEdit']
+                  occurrenceDate
                 })
                 if (!opened) {
                   setPendingDelete({ master, occurrenceDate })

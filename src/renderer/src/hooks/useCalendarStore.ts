@@ -23,6 +23,7 @@ import {
   isBrowserNeoCalendarHost,
   isAuthRequestError
 } from '../lib/browserNeoCalendar'
+import { deleteCompletedEventsForDay } from '../lib/deleteCompletedForDay'
 import { calendarToPatch, eventToMutationPayload } from '../lib/eventMutation'
 import {
   clearOfflineQueue,
@@ -73,6 +74,11 @@ export type UseCalendarStoreResult = {
   canUndo: boolean
   canRedo: boolean
   clearHistory: () => void
+  /** Bulk-delete completed day rows as one undo/redo entry (recurring = this date only). */
+  deleteCompletedForDay: (
+    completedEvents: CalendarEvent[],
+    dateKey: string
+  ) => Promise<{ deleted: number; failed: number }>
 }
 
 export function useCalendarStore(): UseCalendarStoreResult {
@@ -686,6 +692,58 @@ export function useCalendarStore(): UseCalendarStoreResult {
     })
   }, [store.events, store.settings.viewOptions.completedHidden, calendarsById])
 
+  const deleteCompletedForDay = useCallback(
+    async (completedEvents: CalendarEvent[], dateKey: string) => {
+      const { deleted, failed, steps } = await withoutHistory(() =>
+        deleteCompletedEventsForDay({
+          completedEvents,
+          dateKey,
+          getEvents: () => storeRef.current.events,
+          editEvent: performUpdateEvent,
+          removeEvent: performDeleteEvent
+        })
+      )
+
+      if (steps.length > 0) {
+        recordHistory({
+          undo: async () => {
+            await withoutHistory(async () => {
+              for (let i = steps.length - 1; i >= 0; i -= 1) {
+                const step = steps[i]
+                if (step.kind === 'deleted') {
+                  const restored = await performCreateEvent(step.restore)
+                  if (restored?.id) step.idRef.id = restored.id
+                } else {
+                  await performUpdateEvent(step.id, step.before)
+                }
+              }
+            })
+          },
+          redo: async () => {
+            await withoutHistory(async () => {
+              for (const step of steps) {
+                if (step.kind === 'deleted') {
+                  await performDeleteEvent(step.idRef.id)
+                } else {
+                  await performUpdateEvent(step.id, step.after)
+                }
+              }
+            })
+          }
+        })
+      }
+
+      return { deleted, failed }
+    },
+    [
+      performCreateEvent,
+      performDeleteEvent,
+      performUpdateEvent,
+      recordHistory,
+      withoutHistory
+    ]
+  )
+
   return {
     store,
     loading,
@@ -715,6 +773,7 @@ export function useCalendarStore(): UseCalendarStoreResult {
     redo: history.redo,
     canUndo: history.canUndo,
     canRedo: history.canRedo,
-    clearHistory: history.clear
+    clearHistory: history.clear,
+    deleteCompletedForDay
   }
 }

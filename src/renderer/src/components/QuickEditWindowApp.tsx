@@ -54,7 +54,8 @@ export function QuickEditWindowApp(): ReactElement | null {
     editEvent,
     removeEvent,
     patchStoreSettings,
-    visibleEvents
+    visibleEvents,
+    deleteCompletedForDay
   } = useCalendarStore()
 
   const [init, setInit] = useState<QuickEditWindowInit | null>(null)
@@ -204,6 +205,28 @@ export function QuickEditWindowApp(): ReactElement | null {
     [alert, canEdit, editEvent, findMasterEvent, init?.dateKey]
   )
 
+  const handleQuickEditDeleteCompleted = useCallback(
+    async (completedEvents: CalendarEvent[]): Promise<void> => {
+      if (!canEdit || !init?.dateKey) return
+      try {
+        const { deleted, failed } = await deleteCompletedForDay(
+          completedEvents,
+          init.dateKey
+        )
+        if (failed > 0) {
+          await alert(
+            deleted > 0
+              ? `완료된 일정 ${deleted}건을 삭제했습니다. ${failed}건은 삭제하지 못했습니다.`
+              : '완료된 일정을 삭제하지 못했습니다.'
+          )
+        }
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : '완료된 일정을 삭제하지 못했습니다.')
+      }
+    },
+    [alert, canEdit, deleteCompletedForDay, init?.dateKey]
+  )
+
   const handleReorderEvents = useCallback(
     async (ordered: DayReorderItem[], dayKey: string): Promise<void> => {
       if (!canEdit || !dayKey) return
@@ -309,6 +332,9 @@ export function QuickEditWindowApp(): ReactElement | null {
         }
         onToggleCompleted={(event, completed) => {
           void handleQuickEditToggleCompleted(event, completed)
+        }}
+        onDeleteCompleted={(completedEvents) => {
+          void handleQuickEditDeleteCompleted(completedEvents)
         }}
         onDayColorChange={(color) => {
           const next = { ...dayColors }

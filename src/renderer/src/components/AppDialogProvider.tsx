@@ -127,6 +127,8 @@ export function AppDialogProvider({ children }: { children: ReactNode }): ReactE
   const [dialog, setDialog] = useState<AppDialog | null>(null)
 
   const closeDialog = useCallback((result: boolean) => {
+    // Same click can fall through after the modal unmounts and wipe sibling panels (quickEdit).
+    window.neoCalendar?.blockPanelOutsideClose?.(450)
     setDialog((current) => {
       if (!current) return null
       if (current.type === 'confirm') current.resolve(result)

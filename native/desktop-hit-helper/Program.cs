@@ -214,7 +214,7 @@ namespace NeoCalendar.DesktopHit
                 try
                 {
                     File.AppendAllText(
-                        Path.Combine(Path.GetTempPath(), "neo-desktop-hit.log"),
+                        Path.Combine(Path.GetTempPath(), "Neo-Calendar-hit-helper.log"),
                         DateTime.Now.ToString("o") + " " + ex + "\n");
                 }
                 catch

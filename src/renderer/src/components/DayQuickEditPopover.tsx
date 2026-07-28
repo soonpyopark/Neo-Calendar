@@ -9,7 +9,9 @@ import {
   type ReactElement
 } from 'react'
 import { createPortal } from 'react-dom'
+import { useAppDialog } from './AppDialogProvider'
 import { InteractionUI } from './InteractionUI'
+import { listDeletableCompletedEvents } from '../lib/deleteCompletedForDay'
 import { DayColorPalette } from './DayColorPalette'
 import { EmojiPickerButton } from './EmojiPickerButton'
 import { EventAccentGlyph } from './EventAccentGlyph'
@@ -88,6 +90,8 @@ export type DayQuickEditPopoverProps = {
   ) => void
   onEditEvent?: (event: CalendarEvent) => void
   onAttachFiles?: (event: CalendarEvent) => void | Promise<void>
+  /** Bulk-delete completed rows for this day (recurring = this date only). */
+  onDeleteCompleted?: (completedEvents: CalendarEvent[]) => void | Promise<void>
 }
 
 
@@ -190,8 +194,10 @@ export function DayQuickEditPopover({
   onOpenMore,
   onEditEvent,
   onOpenEvent,
-  onAttachFiles
+  onAttachFiles,
+  onDeleteCompleted
 }: DayQuickEditPopoverProps): ReactElement {
+  const { confirm } = useAppDialog()
   const isFloating = surface === 'floating'
   const [title, setTitle] = useState('')
   const [draftCalendarId, setDraftCalendarId] = useState(() => defaultCalendarId(calendars))
@@ -202,6 +208,7 @@ export function DayQuickEditPopover({
   const [paletteStyle, setPaletteStyle] = useState<CSSProperties | undefined>()
   const [optimisticDayColor, setOptimisticDayColor] = useState<string | null>(dayColor)
   const [saving, setSaving] = useState(false)
+  const [deletingCompleted, setDeletingCompleted] = useState(false)
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
   const [dragSeriesId, setDragSeriesId] = useState<string | null>(null)
   const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
@@ -375,6 +382,30 @@ export function DayQuickEditPopover({
     return [...holidays, ...ordered]
   }, [storeDayEvents, orderOverride])
 
+  const completedDeletable = useMemo(
+    () => listDeletableCompletedEvents(dayEvents),
+    [dayEvents]
+  )
+
+  const handleDeleteCompleted = (): void => {
+    if (!canEdit || !onDeleteCompleted || deletingCompleted) return
+    const targets = listDeletableCompletedEvents(dayEvents)
+    if (targets.length === 0) return
+    void (async () => {
+      const ok = await confirm(
+        `완료된 일정 ${targets.length}건을 삭제할까요?\n(반복 일정은 이 날짜만 삭제됩니다.)`,
+        { variant: 'danger', confirmLabel: '삭제' }
+      )
+      if (!ok) return
+      setDeletingCompleted(true)
+      try {
+        await onDeleteCompleted(targets)
+      } finally {
+        setDeletingCompleted(false)
+      }
+    })()
+  }
+
   const displayDayColor = optimisticDayColor
 
   const activeCalendarId =
@@ -399,6 +430,7 @@ export function DayQuickEditPopover({
     setDragSeriesId(null)
     setDropSeriesId(null)
     setSaving(false)
+    setDeletingCompleted(false)
     const id = window.setTimeout(() => {
       if (!focusEvent) inputRef.current?.focus()
     }, 30)
@@ -508,7 +540,12 @@ export function DayQuickEditPopover({
       if (target.closest('.event-link-flyout')) return
       if (target.closest('.emoji-picker-panel')) return
       if (target.closest('.custom-color-panel')) return
+      // Sibling overlays opened from this day list (browser / unlocked desktop).
+      // Without these, clicking detail trash / delete confirm closes QE too early.
       if (target.closest('.app-dialog-root')) return
+      if (target.closest('.event-detail-shell')) return
+      if (target.closest('.recurrence-scope-shell')) return
+      if (target.closest('.event-editor-shell')) return
       onClose()
     }
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -904,6 +941,33 @@ export function DayQuickEditPopover({
                 />
               </svg>
             </button>
+            {onDeleteCompleted ? (
+              <button
+                type="button"
+                className="day-quick-edit-edit"
+                title={
+                  completedDeletable.length > 0
+                    ? `완료된 일정 ${completedDeletable.length}건 삭제`
+                    : '완료된 일정 삭제'
+                }
+                aria-label="완료된 일정 삭제"
+                disabled={
+                  !canEdit || completedDeletable.length === 0 || deletingCompleted
+                }
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  handleDeleteCompleted()
+                }}
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+                  <path
+                    fill="currentColor"
+                    d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                  />
+                </svg>
+              </button>
+            ) : null}
           </div>
         </footer>
       </InteractionUI>

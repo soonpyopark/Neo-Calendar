@@ -72,8 +72,12 @@
         "from": "resources/desktop-hit-helper",
         "to": "desktop-hit-helper",
         "filter": [
-          "neo-desktop-hit.exe"
+          "Neo-Calendar.exe"
         ]
+      },
+      {
+        "from": "src/shared/seed/holidays-kr.json",
+        "to": "seed/holidays-kr.json"
       }
     ],
     "win": {

@@ -39,6 +39,7 @@ import {
   projectViewOptionsForClient
 } from '../../shared/viewOptionsBySurface'
 import { resolveAdminCredentials } from '../dotEnv'
+import { findHolidaySeedPath } from './holidaySeedPaths'
 import { resolveDataRoot, sanitizeDataKey } from './paths'
 
 type SettingsFile = {
@@ -1373,9 +1374,29 @@ export class CalendarStore {
       const primary = DEFAULT_CALENDARS.find((c) => c.id === PRIMARY_CALENDAR_ID)!
       this.writeCalendarFile(primary, [])
     }
-    if (!this.hasCalendarWithId(HOLIDAYS_KR_CALENDAR_ID)) {
+    // Packaged builds used to miss the seed file and write an empty holidays
+    // calendar once — after that hasCalendarWithId stayed true forever. Reseed
+    // whenever the holidays calendar is missing or has zero events.
+    if (!this.hasCalendarWithId(HOLIDAYS_KR_CALENDAR_ID) || this.countHolidaysKrEvents() === 0) {
       this.seedHolidaysKr()
     }
+  }
+
+  private countHolidaysKrEvents(): number {
+    if (!existsSync(this.calendarsDir)) return 0
+    for (const name of readdirSync(this.calendarsDir)) {
+      if (!name.endsWith('.json')) continue
+      try {
+        const raw = JSON.parse(
+          readFileSync(join(this.calendarsDir, name), 'utf8')
+        ) as Partial<CalendarFile>
+        if (raw.calendar?.id !== HOLIDAYS_KR_CALENDAR_ID) continue
+        return Array.isArray(raw.events) ? raw.events.length : 0
+      } catch {
+        /* try next */
+      }
+    }
+    return 0
   }
 
   /** True if any calendars/*.json carries this calendar id (regardless of filename). */
@@ -1533,34 +1554,36 @@ export class CalendarStore {
 
   private seedHolidaysKr(): void {
     const holidaysMeta = DEFAULT_CALENDARS.find((c) => c.id === HOLIDAYS_KR_CALENDAR_ID)!
-    const candidates = [
-      join(__dirname, '../../shared/seed/holidays-kr.json'),
-      join(process.cwd(), 'src/shared/seed/holidays-kr.json'),
-      join(process.cwd(), 'out/shared/seed/holidays-kr.json')
-    ]
-    for (const seedPath of candidates) {
-      if (!existsSync(seedPath)) continue
-      try {
-        const dest = join(this.calendarsDir, `${HOLIDAYS_KR_CALENDAR_ID}.json`)
-        copyFileSync(seedPath, dest)
-        // Normalize wrapper if seed is { calendar, events }
-        const raw = JSON.parse(readFileSync(dest, 'utf8')) as Partial<CalendarFile> & {
-          calendar?: CalendarRecord
-          events?: CalendarEvent[]
-        }
-        if (raw.calendar && Array.isArray(raw.events)) {
-          this.writeCalendarFile(
-            { ...holidaysMeta, ...raw.calendar, id: HOLIDAYS_KR_CALENDAR_ID },
-            raw.events
-          )
-        }
-        console.log('[calendar-store] Seeded holidays-kr from', seedPath)
-        return
-      } catch (error) {
-        console.warn('[calendar-store] holidays seed failed', error)
+    const seedPath = findHolidaySeedPath()
+    if (!seedPath) {
+      console.warn(
+        '[calendar-store] holidays-kr seed file not found; leaving calendar empty until sync/seed is available'
+      )
+      if (!this.hasCalendarWithId(HOLIDAYS_KR_CALENDAR_ID)) {
+        this.writeCalendarFile(holidaysMeta, [])
       }
+      return
     }
-    this.writeCalendarFile(holidaysMeta, [])
+    try {
+      const dest = join(this.calendarsDir, `${HOLIDAYS_KR_CALENDAR_ID}.json`)
+      copyFileSync(seedPath, dest)
+      const raw = JSON.parse(readFileSync(dest, 'utf8')) as Partial<CalendarFile> & {
+        calendar?: CalendarRecord
+        events?: CalendarEvent[]
+      }
+      const events = Array.isArray(raw.events) ? raw.events : []
+      if (events.length === 0) {
+        console.warn('[calendar-store] holidays-kr seed has no events:', seedPath)
+        return
+      }
+      this.writeCalendarFile(
+        { ...holidaysMeta, ...(raw.calendar ?? {}), id: HOLIDAYS_KR_CALENDAR_ID },
+        events
+      )
+      console.log('[calendar-store] Seeded holidays-kr from', seedPath, `(${events.length})`)
+    } catch (error) {
+      console.warn('[calendar-store] holidays seed failed', error)
+    }
   }
 
   private readFromDisk(): CalendarStoreSnapshot {

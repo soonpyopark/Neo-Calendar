@@ -1,5 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readFileSync } from 'node:fs'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../shared/calendarDefaults'
 import type {
   CalendarEvent,
@@ -7,6 +6,7 @@ import type {
   SyncHolidaysResult
 } from '../../shared/calendarTypes'
 import type { CalendarStore } from './CalendarStore'
+import { holidaySeedCandidatePaths } from './holidaySeedPaths'
 
 type SeedFile = {
   events?: CalendarEvent[]
@@ -25,17 +25,11 @@ function encodeServiceKey(serviceKey: string): string {
 }
 
 function loadSeedEvents(): CalendarEvent[] {
-  const candidates = [
-    join(__dirname, '../../shared/seed/holidays-kr.json'),
-    join(process.cwd(), 'src/shared/seed/holidays-kr.json'),
-    join(process.cwd(), 'out/shared/seed/holidays-kr.json')
-  ]
-  for (const path of candidates) {
-    if (!existsSync(path)) continue
+  for (const path of holidaySeedCandidatePaths()) {
     try {
       const raw = JSON.parse(readFileSync(path, 'utf8')) as SeedFile | CalendarEvent[]
       const events = Array.isArray(raw) ? raw : raw.events
-      if (!Array.isArray(events)) continue
+      if (!Array.isArray(events) || events.length === 0) continue
       return events.map((e) => ({
         ...e,
         calendarId: HOLIDAYS_KR_CALENDAR_ID,

@@ -542,8 +542,8 @@ export function EventEditor({
       <InteractionUI
         className={
           isFloating
-            ? 'relative z-30 my-auto w-full max-h-full max-w-[720px] shrink-0'
-            : 'relative z-30 my-auto w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-32px)]'
+            ? 'event-editor-shell relative z-30 my-auto w-full max-h-full max-w-[720px] shrink-0'
+            : 'event-editor-shell relative z-30 my-auto w-[min(720px,calc(100vw-32px))] max-h-[calc(100vh-32px)]'
         }
         role="dialog"
         aria-modal="true"

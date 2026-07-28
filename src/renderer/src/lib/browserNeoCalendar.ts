@@ -352,6 +352,8 @@ export function installBrowserNeoCalendar(): void {
     openPanelWindow: async () => false,
     closePanelSlot: () => undefined,
     closePanelWindow: () => undefined,
+    blockPanelOutsideClose: () => undefined,
+    closeAfterEventDelete: () => undefined,
     routePanelWindow: async () => false,
     resizePanelWindow: async () => false,
     onQuickEditDeferred: () => () => undefined,

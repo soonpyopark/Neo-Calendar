@@ -11,6 +11,7 @@ import {
 } from '../../../../shared/mdcExport/eventOccurrences.js'
 import {
   buildRecurringCompletePayload,
+  closePanelsAfterEventDelete,
   openRecurrenceCompletePanel,
   openRecurrenceDeletePanel
 } from '../../lib/recurrenceComplete'
@@ -92,7 +93,7 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
         const { master, occurrenceDate } = pendingDelete
         setPendingDelete(null)
         await applyRecurringDelete(master, occurrenceDate, scope)
-        closePanel()
+        closePanelsAfterEventDelete()
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
@@ -135,14 +136,13 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
             }
             if (!isRecurringEvent(master)) {
               await removeEvent(master.id)
-              closePanel()
+              closePanelsAfterEventDelete()
               return
             }
             const occurrenceDate = getOccurrenceDate(target, dayKey) || master.startDate
             const opened = await openRecurrenceDeletePanel({
               eventId: master.id,
-              occurrenceDate,
-              closePanels: ['eventDetail', 'quickEdit']
+              occurrenceDate
             })
             if (!opened) {
               setPendingDelete({ master, occurrenceDate })
