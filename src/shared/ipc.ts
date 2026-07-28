@@ -108,7 +108,8 @@ export const EMBEDDED_FLOATING_CHROME_ACTIONS = new Set<string>([
 
 /** Header actions that detach from WorkerW and switch launch mode. */
 export const EMBEDDED_MODE_CHROME_ACTIONS = new Set<string>([
-  CHROME_TOOLBAR_ACTIONS.enterWindow
+  CHROME_TOOLBAR_ACTIONS.enterWindow,
+  CHROME_TOOLBAR_ACTIONS.enterDesktop
 ])
 
 /** Header export actions while WorkerW-embedded (undock briefly for dialogs). */

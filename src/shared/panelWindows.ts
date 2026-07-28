@@ -237,6 +237,7 @@ export function computePanelWindowBounds(options: {
       viewMode: init.viewMode,
       anchorClient,
       mainOrigin,
+      mainSize,
       workArea
     })
   }

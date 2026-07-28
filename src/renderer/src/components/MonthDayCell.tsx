@@ -94,7 +94,7 @@ export function MonthDayCell({
   onEventEdit,
   onReorderEvents
 }: MonthDayCellProps): ReactElement {
-  const interactive = true
+  const interactive = canEdit
   const dayKey = cell.dateKey
   const [dragSeriesId, setDragSeriesId] = useState<string | null>(null)
   const [dragDayKey, setDragDayKey] = useState<string | null>(null)
@@ -292,6 +292,7 @@ export function MonthDayCell({
               }}
               onClick={(e) => {
                 e.stopPropagation()
+                if (!canEdit) return
                 if (suppressEventClickRef.current) {
                   suppressEventClickRef.current = false
                   return
@@ -314,6 +315,7 @@ export function MonthDayCell({
               onContextMenu={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                if (!canEdit) return
                 clearEventClickTimer()
                 onEventDetail(event, e.clientX, e.clientY, dayKey)
               }}
@@ -338,7 +340,7 @@ export function MonthDayCell({
             </button>
           )
         })}
-        {!eventsHidden && hiddenEventCount > 0 ? (
+        {!eventsHidden && hiddenEventCount > 0 && canEdit ? (
           <EventMoreButton
             count={hiddenEventCount}
             lane={visibleSegments.length}

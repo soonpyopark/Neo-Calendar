@@ -51,6 +51,55 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function isPointerAnchorRect(anchor: QuickEditAnchorRect): boolean {
+  return anchor.width > 0 && anchor.height > 0 && anchor.width <= 32 && anchor.height <= 32
+}
+
+/** Year view (window mode): place near the pointer, clamped to the main calendar window. */
+function pointerAnchoredQuickEditBounds(options: {
+  pointerClient: { x: number; y: number }
+  mainOrigin: { x: number; y: number }
+  mainSize: { width: number; height: number }
+  panelWidth: number
+  panelHeight: number
+  gap?: number
+}): { x: number; y: number; width: number; height: number } {
+  const pad = QUICK_EDIT_VIEWPORT_PAD
+  const gap = options.gap ?? 8
+  const { pointerClient, mainOrigin, mainSize } = options
+  const panelWidth = Math.min(options.panelWidth, Math.max(0, mainSize.width - pad * 2))
+  const panelHeight = Math.min(options.panelHeight, Math.max(0, mainSize.height - pad * 2))
+  const boundsLeft = mainOrigin.x + pad
+  const boundsTop = mainOrigin.y + pad
+  const boundsRight = mainOrigin.x + mainSize.width - pad
+  const boundsBottom = mainOrigin.y + mainSize.height - pad
+
+  const screenX = mainOrigin.x + pointerClient.x
+  const screenY = mainOrigin.y + pointerClient.y
+
+  let left = screenX + gap
+  if (left + panelWidth > boundsRight) {
+    left = screenX - panelWidth - gap
+  }
+  left = clamp(left, boundsLeft, Math.max(boundsLeft, boundsRight - panelWidth))
+
+  let top = screenY + gap
+  if (top + panelHeight > boundsBottom) {
+    const aboveTop = screenY - gap - panelHeight
+    if (aboveTop >= boundsTop) {
+      top = aboveTop
+    }
+  }
+  top = clamp(top, boundsTop, Math.max(boundsTop, boundsBottom - panelHeight))
+
+  return {
+    x: Math.round(left),
+    y: Math.round(top),
+    width: Math.round(panelWidth),
+    height: Math.round(panelHeight)
+  }
+}
+
 /** Panel inner size (matches DayQuickEditPopover buildQuickEditStyle). */
 export function computeQuickEditPanelSize(options: {
   viewMode: QuickEditViewMode
@@ -85,14 +134,25 @@ export function computeQuickEditWindowBounds(options: {
   viewMode: QuickEditViewMode
   anchorClient: QuickEditAnchorRect | null
   mainOrigin: { x: number; y: number }
+  mainSize: { width: number; height: number }
   workArea: { x: number; y: number; width: number; height: number }
 }): { x: number; y: number; width: number; height: number } {
-  const { viewMode, anchorClient, mainOrigin, workArea } = options
+  const { viewMode, anchorClient, mainOrigin, mainSize, workArea } = options
   const pad = QUICK_EDIT_VIEWPORT_PAD
   const panel = computeQuickEditPanelSize({ viewMode, anchor: anchorClient })
 
   const usableAnchor =
     anchorClient && anchorClient.width > 0 && anchorClient.height > 0 ? anchorClient : null
+
+  if (viewMode === 'year' && usableAnchor && isPointerAnchorRect(usableAnchor)) {
+    return pointerAnchoredQuickEditBounds({
+      pointerClient: { x: usableAnchor.left, y: usableAnchor.top },
+      mainOrigin,
+      mainSize,
+      panelWidth: panel.width,
+      panelHeight: panel.height
+    })
+  }
 
   let left: number
   let top: number

@@ -83,6 +83,7 @@ import {
   desktopModeIconBtnClass,
   footerShellClass,
   headerShellClass,
+  iconBtnDisabledClass,
   navBtnClass,
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
@@ -99,6 +100,8 @@ import { openExternalUrl } from '../lib/openExternal'
 
 export type { CalendarEvent }
 export type ViewMode = 'year' | 'week' | 'month'
+
+const LOGIN_REQUIRED_TITLE = '로그인 후 사용할 수 있습니다'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
 const PERIOD_TOOLBAR_ACTION_ID_SET = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
@@ -482,6 +485,8 @@ export function CalendarGrid({
     embedded,
     floatingPanels: usesFloatingPanels(mode, embedded)
   })
+  const userRef = useRef(user)
+  userRef.current = user
   modeEmbeddedRef.current = {
     mode,
     embedded,
@@ -607,23 +612,25 @@ export function CalendarGrid({
         '.neo-cal-shell .day-cell[data-date-key]',
         '.neo-cal-shell .year-day[data-date-key]'
       ].join(', ')
-      const dayZones = Array.from(
-        document.querySelectorAll<HTMLElement>(dayZoneSelectors)
-      ).flatMap((el) => {
-        const dateKey = el.dataset.dateKey ?? ''
-        if (!dateKey) return []
-        if (el instanceof HTMLButtonElement && el.disabled) return []
-        const r = el.getBoundingClientRect()
-        if (r.width < 1 || r.height < 1) return []
-        if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
-        const hit = publishDayCellHitRect(el, r, weekStartsOn)
-        return [
-          {
-            ...hit,
-            dateKey
-          }
-        ]
-      })
+      const dayZones = userRef.current
+        ? Array.from(
+            document.querySelectorAll<HTMLElement>(dayZoneSelectors)
+          ).flatMap((el) => {
+            const dateKey = el.dataset.dateKey ?? ''
+            if (!dateKey) return []
+            if (el instanceof HTMLButtonElement && el.disabled) return []
+            const r = el.getBoundingClientRect()
+            if (r.width < 1 || r.height < 1) return []
+            if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
+            const hit = publishDayCellHitRect(el, r, weekStartsOn)
+            return [
+              {
+                ...hit,
+                dateKey
+              }
+            ]
+          })
+        : []
       api.setDayCellHitZones(dayZones)
 
       const excludeZones = Array.from(
@@ -684,7 +691,8 @@ export function CalendarGrid({
     settingsOpen,
     exporting,
     modeBusy,
-    switchReady
+    switchReady,
+    user
   ])
 
   // Re-publish after embed (WorkerW blocks forwarded mousemove).
@@ -713,7 +721,8 @@ export function CalendarGrid({
     settingsOpen,
     exporting,
     modeBusy,
-    switchReady
+    switchReady,
+    user
   ])
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -830,7 +839,7 @@ export function CalendarGrid({
       setViewDate(next)
     },
     // Desktop / window mode: never navigate month/week by wheel (wallpaper layer).
-    wheelLocked: wheelLocked || mode === 'desktop' || mode === 'window'
+    wheelLocked: wheelLocked || mode === 'desktop' || mode === 'window' || !canEdit
   })
 
   const scrollToMonthRef = useRef(scrollToMonth)
@@ -1046,18 +1055,21 @@ export function CalendarGrid({
   }
 
   const onPrev = (): void => {
+    if (!canEdit) return
     if (viewMode === 'year') shiftYear(-1)
     else if (viewMode === 'week') shiftWeek(-1)
     else shiftMonth(-1)
   }
 
   const onNext = (): void => {
+    if (!canEdit) return
     if (viewMode === 'year') shiftYear(1)
     else if (viewMode === 'week') shiftWeek(1)
     else shiftMonth(1)
   }
 
   const goToday = (): void => {
+    if (!canEdit) return
     const d = new Date()
     if (viewMode === 'month') {
       // Day-1 of current month so header + infinite scroll stay on this month.
@@ -1075,6 +1087,7 @@ export function CalendarGrid({
   }
 
   const handleViewModeChange = (nextMode: ViewMode): void => {
+    if (!canEdit) return
     if (nextMode === 'month' || nextMode === 'year') {
       setViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth(), 1))
     } else if (nextMode === 'week') {
@@ -1119,6 +1132,7 @@ export function CalendarGrid({
     cell: DayCell,
     eventOrRect?: MouseEvent | DOMRect | null
   ): void => {
+    if (!canEdit) return
     setEventPopover(null)
     focusDayCell(cell.dateKey)
     let anchorRect: AnchorRect | null = null
@@ -1207,6 +1221,7 @@ export function CalendarGrid({
     const api = window.neoCalendar
     if (!api?.onOpenDayQuickEdit) return
     return api.onOpenDayQuickEdit((payload) => {
+      if (!userRef.current) return
       // Legacy inline unlock path (non-embedded fallback).
       console.log('[day-dblclick] renderer open quick edit (inline)', payload)
       const date =
@@ -1404,7 +1419,7 @@ export function CalendarGrid({
   }, [])
 
   const handleOpenWebEditor = (): void => {
-    if (!webEditUrl) return
+    if (!canEdit || !webEditUrl) return
     void openExternalUrl(webEditUrl)
   }
 
@@ -1472,6 +1487,7 @@ export function CalendarGrid({
     anchorRect: EventPopoverAnchor = null,
     opts?: { dayKey?: string; fromSearch?: boolean }
   ): void => {
+    if (!canEdit) return
     detailFromSearchRef.current = Boolean(opts?.fromSearch)
     const panelAnchor = toPanelAnchor(anchorRect)
     const dayKey = opts?.dayKey ?? event.occurrenceDate ?? event.startDate
@@ -1543,7 +1559,7 @@ export function CalendarGrid({
       returnQuickEdit?: { dateKey: string; date: Date; anchorRect: AnchorRect | null } | null
     }
   ): void => {
-    if (!canEdit && event === null) return
+    if (!canEdit) return
     if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
     const { floatingPanels } = modeEmbeddedRef.current
     if (floatingPanels) {
@@ -1708,6 +1724,7 @@ export function CalendarGrid({
   }
 
   const setViewFlag = (patch: { eventsHidden?: boolean; completedHidden?: boolean }): void => {
+    if (!canEdit) return
     void patchStoreSettings({
       viewOptions: {
         ...store.settings.viewOptions,
@@ -1813,7 +1830,9 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className="year-month-title"
+              disabled={!canEdit}
               onClick={() => {
+                if (!canEdit) return
                 setViewDate(new Date(year, monthIndex, 1))
                 setViewMode('month')
               }}
@@ -1842,18 +1861,22 @@ export function CalendarGrid({
                     holidayKeys.has(cell.dateKey) && cell.inMonth && 'holiday'
                   )}
                   data-date-key={cell.dateKey}
-                  disabled={!cell.inMonth}
+                  disabled={!cell.inMonth || !canEdit}
                   onClick={(e) => {
                     e.stopPropagation()
-                    if (!cell.inMonth) return
+                    if (!cell.inMonth || !canEdit) return
                     setSelectedKey(cell.dateKey)
                     setViewDate(cell.date)
                   }}
                   onDoubleClick={(e) => {
                     e.preventDefault()
                     e.stopPropagation()
-                    if (!cell.inMonth) return
-                    openQuickEdit(cell)
+                    if (!cell.inMonth || !canEdit) return
+                    if (mode === 'window') {
+                      openQuickEdit(cell, new DOMRect(e.clientX, e.clientY, 1, 1))
+                      return
+                    }
+                    openQuickEdit(cell, e)
                   }}
                   aria-label={
                     cell.inMonth
@@ -1896,6 +1919,7 @@ export function CalendarGrid({
           switchReady={switchReady}
           chromeRef={chromeRef}
           onOpenSearch={() => {
+            if (!canEdit) return
             if (floatingPanels) {
               openEmbeddedPanel({ kind: 'search', eventsHidden })
               return
@@ -1904,6 +1928,7 @@ export function CalendarGrid({
             setSearchOpen(true)
           }}
           onOpenSettings={() => {
+            if (!canEdit) return
             if (floatingPanels) {
               openEmbeddedPanel({ kind: 'settings' })
               return
@@ -1928,9 +1953,10 @@ export function CalendarGrid({
               <InteractionUI
                 key={value}
                 as="button"
-                className={
-                  viewMode === value ? viewModeIconBtnActiveClass : viewModeIconBtnClass
-                }
+                className={cn(
+                  viewMode === value ? viewModeIconBtnActiveClass : viewModeIconBtnClass,
+                  iconBtnDisabledClass
+                )}
                 captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={
                   value === 'year'
@@ -1941,7 +1967,8 @@ export function CalendarGrid({
                 }
                 aria-label={`${label} 보기`}
                 aria-pressed={viewMode === value}
-                title={`${label} 보기`}
+                title={!canEdit ? LOGIN_REQUIRED_TITLE : `${label} 보기`}
+                disabled={!canEdit}
                 onClick={() => handleViewModeChange(value)}
               >
                 <Icon />
@@ -1953,19 +1980,23 @@ export function CalendarGrid({
             {viewMode === 'month' && (
               <InteractionUI
                 as="button"
-                className={yearNavBtnClass}
+                className={cn(yearNavBtnClass, iconBtnDisabledClass)}
                 captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prevYear}
-                onClick={() => shiftYear(-1)}
+                onClick={() => {
+                  if (!canEdit) return
+                  shiftYear(-1)
+                }}
                 aria-label="이전 연도"
-                title="이전 연도"
+                title={!canEdit ? LOGIN_REQUIRED_TITLE : '이전 연도'}
+                disabled={!canEdit}
               >
                 <DoubleChevronLeftIcon />
               </InteractionUI>
             )}
             <InteractionUI
               as="button"
-              className={`${navBtnClass} mr-5`}
+              className={cn(`${navBtnClass} mr-5`, iconBtnDisabledClass)}
               captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.prev}
               onClick={onPrev}
@@ -1973,8 +2004,15 @@ export function CalendarGrid({
                 viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'
               }
               title={
-                viewMode === 'year' ? '이전 연도' : viewMode === 'week' ? '이전 주' : '이전 월'
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : viewMode === 'year'
+                    ? '이전 연도'
+                    : viewMode === 'week'
+                      ? '이전 주'
+                      : '이전 월'
               }
+              disabled={!canEdit}
             >
               <ChevronLeftIcon />
             </InteractionUI>
@@ -1995,7 +2033,7 @@ export function CalendarGrid({
 
             <InteractionUI
               as="button"
-              className={`${navBtnClass} ml-5`}
+              className={cn(`${navBtnClass} ml-5`, iconBtnDisabledClass)}
               captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.next}
               onClick={onNext}
@@ -2003,20 +2041,31 @@ export function CalendarGrid({
                 viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'
               }
               title={
-                viewMode === 'year' ? '다음 연도' : viewMode === 'week' ? '다음 주' : '다음 월'
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : viewMode === 'year'
+                    ? '다음 연도'
+                    : viewMode === 'week'
+                      ? '다음 주'
+                      : '다음 월'
               }
+              disabled={!canEdit}
             >
               <ChevronRightIcon />
             </InteractionUI>
             {viewMode === 'month' && (
               <InteractionUI
                 as="button"
-                className={yearNavBtnClass}
+                className={cn(yearNavBtnClass, iconBtnDisabledClass)}
                 captureOnHover={captureToolbarOnHover}
                 data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.nextYear}
-                onClick={() => shiftYear(1)}
+                onClick={() => {
+                  if (!canEdit) return
+                  shiftYear(1)
+                }}
                 aria-label="다음 연도"
-                title="다음 연도"
+                title={!canEdit ? LOGIN_REQUIRED_TITLE : '다음 연도'}
+                disabled={!canEdit}
               >
                 <DoubleChevronRightIcon />
               </InteractionUI>
@@ -2026,11 +2075,12 @@ export function CalendarGrid({
           <div className="flex shrink-0 items-center gap-1.5">
             <InteractionUI
               as="button"
-              className={todayBtnClass}
+              className={cn(todayBtnClass, iconBtnDisabledClass)}
               captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.today}
               aria-label="오늘"
-              title="오늘"
+              title={!canEdit ? LOGIN_REQUIRED_TITLE : '오늘'}
+              disabled={!canEdit}
               onClick={goToday}
             >
               오늘
@@ -2043,11 +2093,13 @@ export function CalendarGrid({
               onClick={handleOpenWebEditor}
               aria-label="브라우저에서 편집"
               title={
-                webEditUrl
-                  ? `브라우저에서 편집 (${webEditUrl})`
-                  : '로컬 웹 서버가 꺼져 있습니다 (.env의 PORT 확인)'
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : webEditUrl
+                    ? `브라우저에서 편집 (${webEditUrl})`
+                    : '로컬 웹 서버가 꺼져 있습니다 (.env의 PORT 확인)'
               }
-              disabled={!webEditUrl}
+              disabled={!canEdit || !webEditUrl}
             >
               <WebBrowserIcon />
             </InteractionUI>
@@ -2063,7 +2115,14 @@ export function CalendarGrid({
               onClick={() => setViewFlag({ eventsHidden: !eventsHidden })}
               aria-label={eventsHidden ? '모든 일정 보이기' : '모든 일정 숨기기'}
               aria-pressed={eventsHidden}
-              title={eventsHidden ? '일정 다시 보이기' : '모든 일정 숨기기'}
+              title={
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : eventsHidden
+                    ? '일정 다시 보이기'
+                    : '모든 일정 숨기기'
+              }
+              disabled={!canEdit}
             >
               <HideEventsEyeIcon open={!eventsHidden} />
             </InteractionUI>
@@ -2079,7 +2138,14 @@ export function CalendarGrid({
               onClick={() => setViewFlag({ completedHidden: !completedHidden })}
               aria-label={completedHidden ? '완료 일정 보이기' : '완료 일정 숨기기'}
               aria-pressed={completedHidden}
-              title={completedHidden ? '완료된 일정 다시 보이기' : '완료된 일정만 숨기기'}
+              title={
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : completedHidden
+                    ? '완료된 일정 다시 보이기'
+                    : '완료된 일정만 숨기기'
+              }
+              disabled={!canEdit}
             >
               <HideCompletedCheckIcon checked={completedHidden} />
             </InteractionUI>

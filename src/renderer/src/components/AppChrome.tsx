@@ -87,10 +87,17 @@ export function AppChrome({
         <div className="flex items-baseline gap-2">
           <InteractionUI
             as="button"
-            className="app-chrome-no-drag whitespace-nowrap border-0 bg-transparent p-0 text-[22px] tracking-tight text-gcal-muted transition-colors hover:text-gcal-blue"
-            title="새로고침"
+            className={cn(
+              'app-chrome-no-drag whitespace-nowrap border-0 bg-transparent p-0 text-[22px] tracking-tight text-gcal-muted transition-colors hover:text-gcal-blue',
+              !loggedIn && 'cursor-not-allowed opacity-40 hover:text-gcal-muted'
+            )}
+            title={loggedIn ? '새로고침' : '로그인 후 사용할 수 있습니다'}
             aria-label="새로고침"
-            onClick={() => window.location.reload()}
+            disabled={!loggedIn}
+            onClick={() => {
+              if (!loggedIn) return
+              window.location.reload()
+            }}
           >
             {APP_NAME}
           </InteractionUI>
@@ -105,8 +112,14 @@ export function AppChrome({
           captureOnHover={captureOnHover}
           data-toolbar-action={CHROME_TOOLBAR_ACTIONS.search}
           aria-label="검색"
-          title={settingsOpen ? '설정을 닫은 후 검색할 수 있습니다' : '검색'}
-          disabled={settingsOpen}
+          title={
+            !loggedIn
+              ? '로그인 후 검색할 수 있습니다'
+              : settingsOpen
+                ? '설정을 닫은 후 검색할 수 있습니다'
+                : '검색'
+          }
+          disabled={!loggedIn || settingsOpen}
           onClick={onOpenSearch}
         >
           <SearchIcon />

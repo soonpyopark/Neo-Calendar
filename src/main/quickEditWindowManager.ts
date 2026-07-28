@@ -123,6 +123,7 @@ export class QuickEditWindowManager {
       viewMode,
       anchorClient,
       mainOrigin: origin,
+      mainSize: { width: mainBounds.width, height: mainBounds.height },
       workArea: display.workArea
     })
 
