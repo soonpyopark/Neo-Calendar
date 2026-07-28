@@ -74,11 +74,19 @@ const VIEWPORT_PAD = 5
 /** Event detail popover / floating panel width (px). */
 export const EVENT_DETAIL_PANEL_WIDTH = 530
 
-/** Floating search panel size (px). */
+/** Floating search panel size (px). Height caps; width = {@link computeSearchPanelWidth}. */
+export const SEARCH_PANEL_WIDTH_RATIO = 0.8
+/** @deprecated Use {@link computeSearchPanelWidth} — kept as upper hint for legacy layouts. */
 export const SEARCH_PANEL_WIDTH = 880
 export const SEARCH_PANEL_MIN_HEIGHT = 300
 export const SEARCH_PANEL_MAX_HEIGHT = 540
 export const SEARCH_PANEL_CHROME_PAD = 16
+
+/** Search panel width — 80% of main calendar / shell width. */
+export function computeSearchPanelWidth(containerWidth: number): number {
+  const inner = Math.max(0, containerWidth)
+  return Math.max(280, Math.round(inner * SEARCH_PANEL_WIDTH_RATIO))
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -155,6 +163,8 @@ function belowAnchoredBounds(options: {
   mainOrigin: { x: number; y: number }
   mainSize: { width: number; height: number }
   gap?: number
+  /** When true, horizontal center follows the main window (80% width panels). */
+  centerInMain?: boolean
 }): { x: number; y: number; width: number; height: number } {
   const pad = VIEWPORT_PAD
   const gap = options.gap ?? 8
@@ -170,7 +180,9 @@ function belowAnchoredBounds(options: {
     Math.max(0, workArea.height - pad * 2)
   )
 
-  let left = anchorScreen.left + anchorScreen.width / 2 - panelWidth / 2
+  let left = options.centerInMain
+    ? mainOrigin.x + (mainSize.width - panelWidth) / 2
+    : anchorScreen.left + anchorScreen.width / 2 - panelWidth / 2
   let top = anchorScreen.bottom + gap
 
   const boundsLeft = mainOrigin.x + pad
@@ -366,7 +378,10 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'search') {
-    const width = Math.min(SEARCH_PANEL_WIDTH, mainSize.width - 24, workArea.width - VIEWPORT_PAD * 2)
+    const width = Math.min(
+      computeSearchPanelWidth(mainSize.width),
+      workArea.width - VIEWPORT_PAD * 2
+    )
     const height = Math.min(SEARCH_PANEL_MIN_HEIGHT, workArea.height - VIEWPORT_PAD * 2)
     if (anchorClient && anchorClient.width > 0 && anchorClient.height > 0) {
       return belowAnchoredBounds({
@@ -380,7 +395,8 @@ export function computePanelWindowBounds(options: {
         panelHeight: height,
         workArea,
         mainOrigin,
-        mainSize
+        mainSize,
+        centerInMain: true
       })
     }
     return centeredBounds({

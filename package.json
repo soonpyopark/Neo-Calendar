@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "dev:restart": "node scripts/dev-restart.mjs",
+    "browser:dev": "node scripts/open-browser-dev.mjs",
     "stop": "node scripts/kill-dev.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",

@@ -13,8 +13,6 @@ import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import { formatTime24, isTimedEvent } from '../../../shared/mdcExport/eventBarFormat.js'
 import { openEventAttachment } from '../lib/eventAttachments'
 import { openExternalUrl } from '../lib/openExternal'
-import { getAnchoredPopoverPosition } from '../lib/popoverPosition'
-import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
 import {
   SEARCH_PAGE_SIZE_OPTIONS,
   buildSearchPageItems,
@@ -29,13 +27,50 @@ import {
   SEARCH_PANEL_CHROME_PAD,
   SEARCH_PANEL_MAX_HEIGHT,
   SEARCH_PANEL_MIN_HEIGHT,
-  SEARCH_PANEL_WIDTH
+  computeSearchPanelWidth
 } from '../../../shared/panelWindows'
 import { cn } from '../lib/cn'
 import DateInput from './DateInput'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
+import { clampRectToViewport, getMainShellBounds } from '../lib/popoverPosition'
 
-const PAGE_SIZE_OPTIONS = SEARCH_PAGE_SIZE_OPTIONS
+const SEARCH_PANEL_GAP_BELOW_HEADER = 8
+
+/** Bottom edge of the header icon row (AppChrome), not the period toolbar. */
+function resolveHeaderActionsBottom(anchorRef?: RefObject<HTMLElement | null>): number {
+  const row =
+    document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
+    anchorRef?.current
+  if (row) return row.getBoundingClientRect().bottom
+  const header = document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header"]')
+  if (header) return header.getBoundingClientRect().bottom
+  return getMainShellBounds().top
+}
+
+function computeInlineSearchPanelPlacement(anchorRef?: RefObject<HTMLElement | null>): {
+  top: number
+  left: number
+  width: number
+  maxHeight: number
+} {
+  const shell = getMainShellBounds()
+  const panelWidth = computeSearchPanelWidth(shell.width)
+  const top = resolveHeaderActionsBottom(anchorRef) + SEARCH_PANEL_GAP_BELOW_HEADER
+  const left = shell.left + (shell.width - panelWidth) / 2
+  const clamped = clampRectToViewport({
+    top,
+    left,
+    width: panelWidth,
+    height: SEARCH_PANEL_MAX_HEIGHT,
+    padding: 5
+  })
+  return {
+    top: Math.round(clamped.top),
+    left: Math.round(clamped.left),
+    width: Math.round(clamped.width),
+    maxHeight: Math.round(clamped.maxHeight)
+  }
+}
 
 const pagerBtnClass =
   'inline-flex h-8 w-8 items-center justify-center rounded-full text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading disabled:pointer-events-none disabled:opacity-35'
@@ -61,14 +96,7 @@ export type SearchPanelProps = {
   onSelectResult: (payload: SearchSelectPayload) => void
 }
 
-function resolveSearchAnchorRect(anchorRef?: RefObject<HTMLElement | null>): DOMRect | null {
-  const searchBtn = document.querySelector<HTMLElement>(
-    `.neo-cal-shell [data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.search}"]`
-  )
-  if (searchBtn) return searchBtn.getBoundingClientRect()
-  if (anchorRef?.current) return anchorRef.current.getBoundingClientRect()
-  return null
-}
+const PAGE_SIZE_OPTIONS = SEARCH_PAGE_SIZE_OPTIONS
 
 function shiftDateKeyByYears(dateKey: string, yearDelta: number): string {
   const date = dateFromDateKey(dateKey)
@@ -487,32 +515,29 @@ export function SearchPanel({
     }
 
     const place = (): void => {
-      const anchorRect = resolveSearchAnchorRect(anchorRef)
-      if (!anchorRect) {
-        setInlinePanelStyle(undefined)
-        return
-      }
-      const pos = getAnchoredPopoverPosition(anchorRect, {
-        width: SEARCH_PANEL_WIDTH,
-        estimatedHeight: SEARCH_PANEL_MAX_HEIGHT,
-        gap: 8,
-        padding: 5,
-        preferAbove: false,
-        anchorMode: 'element'
-      })
+      const pos = computeInlineSearchPanelPlacement(anchorRef)
       setInlinePanelStyle({
         position: 'fixed',
-        top: Math.round(pos.top),
-        left: Math.round(pos.left),
-        width: Math.round(pos.width),
-        maxHeight: Math.round(pos.maxHeight),
+        top: pos.top,
+        left: pos.left,
+        width: pos.width,
+        maxHeight: pos.maxHeight,
         zIndex: 56
       })
     }
 
     place()
     window.addEventListener('resize', place)
-    return () => window.removeEventListener('resize', place)
+    const header = document.querySelector('.neo-cal-shell [data-shell-chrome="header"]')
+    const ro =
+      header && typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => place())
+        : null
+    ro?.observe(header)
+    return () => {
+      window.removeEventListener('resize', place)
+      ro?.disconnect()
+    }
   }, [
     anchorRef,
     isFloating,
@@ -542,7 +567,7 @@ export function SearchPanel({
       const headerH = headerBlockRef.current?.offsetHeight ?? 0
       const resultsNatural = results.scrollHeight
       const contentH = headerH + resultsNatural
-      const width = SEARCH_PANEL_WIDTH
+      const width = Math.round(window.innerWidth)
       const maxContentH = SEARCH_PANEL_MAX_HEIGHT - SEARCH_PANEL_CHROME_PAD
 
       let windowH: number
@@ -607,7 +632,7 @@ export function SearchPanel({
       role="presentation"
     >
       <div
-        className={isFloating ? 'mx-auto flex w-full max-w-[880px] flex-col px-1' : 'pointer-events-auto'}
+        className={isFloating ? 'mx-auto flex w-full flex-col px-1' : 'pointer-events-auto'}
         style={isFloating ? undefined : inlinePanelStyle}
         onClick={(event) => event.stopPropagation()}
         role="dialog"

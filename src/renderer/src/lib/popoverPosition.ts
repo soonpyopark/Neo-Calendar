@@ -17,6 +17,28 @@ function getViewportSize() {
  * Electron window). Uses the shell's padding edge so rounded-corner inset
  * chrome is respected. Falls back to the window when `.neo-cal-shell` is missing.
  */
+/** Full `.neo-cal-shell` box — used to center overlays in the main program window. */
+export function getMainShellBounds(): {
+  left: number
+  top: number
+  width: number
+  height: number
+} {
+  const shell = document.querySelector('.neo-cal-shell')
+  if (shell) {
+    const r = shell.getBoundingClientRect()
+    if (r.width >= 32 && r.height >= 32) {
+      return { left: r.left, top: r.top, width: r.width, height: r.height }
+    }
+  }
+  return { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight }
+}
+
+/** Shell content box for Principle #4 overlays (`.neo-cal-shell` padding edge). */
+export function getShellContentBounds() {
+  return getOverlayBoundsRect()
+}
+
 function getOverlayBoundsRect() {
   const shell = document.querySelector('.neo-cal-shell');
   if (shell) {

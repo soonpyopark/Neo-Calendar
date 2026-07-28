@@ -36,10 +36,9 @@ import {
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { LoginDialog } from './LoginDialog'
 import {
-  fetchAuthUser,
   hasBrowserAuthToken,
   isBrowserNeoCalendarHost,
-  shouldApplyAuthUserUpdate
+  subscribeAuthUserSync
 } from '../lib/browserNeoCalendar'
 import {
   CHROME_TOOLBAR_ACTIONS,
@@ -486,12 +485,11 @@ export function CalendarGrid({
   const periodHeaderRef = useRef<HTMLDivElement | null>(null)
 
   const getSearchAnchorClient = useCallback((): PanelAnchorRect | null => {
-    const searchBtn = chromeRef.current?.querySelector<HTMLElement>(
-      `[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.search}"]`
-    )
-    const anchorEl = searchBtn ?? chromeRef.current
-    if (!anchorEl) return null
-    const rect = anchorEl.getBoundingClientRect()
+    const headerActions =
+      document.querySelector<HTMLElement>('.neo-cal-shell [data-shell-chrome="header-actions"]') ??
+      chromeRef.current
+    if (!headerActions) return null
+    const rect = headerActions.getBoundingClientRect()
     if (rect.width < 1 || rect.height < 1) return null
     return {
       top: rect.top,
@@ -572,12 +570,8 @@ export function CalendarGrid({
   }, [authReady, floatingPanels, loading, mode, onModeChange, openEmbeddedPanel, user])
 
   useEffect(() => {
-    const api = window.neoCalendar
-    if (!api?.onAuthChanged) return
-    return api.onAuthChanged(() => {
-      void fetchAuthUser().then((next) => {
-        if (shouldApplyAuthUserUpdate(next)) onUserChange(next)
-      })
+    return subscribeAuthUserSync((next) => {
+      onUserChange(next)
       void refresh()
     })
   }, [onUserChange, refresh])
@@ -1495,7 +1489,9 @@ export function CalendarGrid({
   }
 
   const handleAuthToggle = (): void => {
-    if (user) {
+    const authenticated =
+      Boolean(user) || (isBrowserNeoCalendarHost() && hasBrowserAuthToken())
+    if (authenticated) {
       void window.neoCalendar
         .logout()
         .then(async () => {

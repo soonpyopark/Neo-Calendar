@@ -2,16 +2,39 @@ import { resolve } from 'node:path'
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import type { Plugin } from 'vite'
 
 /** Calendar HTTP API port (same default as CalendarWebServer). */
-function resolveApiProxyTarget(): string {
+function resolveDevApiPort(): number {
   const raw = process.env.PORT || process.env.NEOCALENDAR_PORT || process.env.MYCALENDAR_PORT
   const port = Number.parseInt(String(raw ?? ''), 10)
-  const safe = Number.isFinite(port) && port > 0 ? port : 3010
-  return `http://127.0.0.1:${safe}`
+  return Number.isFinite(port) && port > 0 ? port : 3010
 }
 
+function resolveApiProxyTarget(): string {
+  return `http://127.0.0.1:${resolveDevApiPort()}`
+}
+
+const devApiPort = resolveDevApiPort()
 const apiProxyTarget = resolveApiProxyTarget()
+
+/** Print browser test URLs when Vite dev server listens. */
+function devBrowserHintPlugin(): Plugin {
+  return {
+    name: 'neo-dev-browser-hint',
+    configureServer(server) {
+      server.httpServer?.once('listening', () => {
+        const port = server.config.server.port ?? 5173
+        console.log('')
+        console.log('[dev:browser] Browser UI (use while `npm run dev` is running):')
+        console.log(`  → http://127.0.0.1:${port}/`)
+        console.log(`  → API proxy → http://127.0.0.1:${devApiPort}/api`)
+        console.log('[dev:browser] Or run: npm run browser:dev')
+        console.log('')
+      })
+    }
+  }
+}
 
 export default defineConfig({
   main: {
@@ -49,11 +72,14 @@ export default defineConfig({
           }
       }
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), devBrowserHintPlugin()],
     // Browser "인터넷" editor: open Vite directly (fast). Proxy API/WS to the
     // CalendarWebServer — do NOT load the UI through that server's Vite proxy
     // (hundreds of sequential module hops → multi-second waits on localhost).
     server: {
+      host: '127.0.0.1',
+      port: 5173,
+      strictPort: false,
       proxy: {
         '/api': {
           target: apiProxyTarget,

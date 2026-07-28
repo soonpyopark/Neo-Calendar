@@ -26,6 +26,18 @@ npm run dev:restart
 npm run stop
 ```
 
+### 브라우저에서 테스트 (개발 중)
+
+Electron 앱(`npm run dev`)이 실행 중일 때 HTTP API(기본 `:3010`)와 Vite UI(`:5173`)가 함께 뜹니다.
+
+1. 터미널 1: `npm run dev` (또는 `npm run dev:restart`)
+2. 터미널 2: `npm run browser:dev` — 준비되면 브라우저를 엽니다  
+   또는 직접 **[http://127.0.0.1:5173/](http://127.0.0.1:5173/)** 접속
+
+- UI는 **Vite(5173)** 에서 제공하고, `/api`·`/ws`는 Vite가 **CalendarWebServer(3010)** 로 프록시합니다.
+- `:3010`만 열면 dev 모드에서 Vite(5173)로 리다이렉트됩니다.
+- `.env`에 `PORT=3010`이 있어야 합니다 (`.env.example` 참고).
+
 Admin login credentials come from `.env` (`MYCALENDAR_ADMIN_ID` / `MYCALENDAR_ADMIN_PW`), with `NEOCALENDAR_*` / `ADMIN_*` aliases and built-in defaults as fallback.
 
 ## Build

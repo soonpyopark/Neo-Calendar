@@ -51,6 +51,57 @@ export async function fetchAuthUser(): Promise<AuthUser | null> {
   return user
 }
 
+/** Payload on `neo-auth-changed` — authoritative when present (avoids session probe race). */
+export type NeoAuthChangedDetail = { user: AuthUser | null }
+
+function dispatchNeoAuthChanged(user: AuthUser | null): void {
+  window.dispatchEvent(
+    new CustomEvent<NeoAuthChangedDetail>('neo-auth-changed', { detail: { user } })
+  )
+}
+
+/** When detail carries `user`, that value wins over `/api/auth/session`. */
+export function getAuthUserFromChangedEvent(event: Event): AuthUser | null | undefined {
+  const detail = (event as CustomEvent<NeoAuthChangedDetail>).detail
+  if (detail && typeof detail === 'object' && 'user' in detail) {
+    return detail.user ?? null
+  }
+  return undefined
+}
+
+export async function resolveAuthUserAfterChange(event?: Event): Promise<AuthUser | null> {
+  if (event) {
+    const fromDetail = getAuthUserFromChangedEvent(event)
+    if (fromDetail !== undefined) return fromDetail
+  }
+  return fetchAuthUser()
+}
+
+/**
+ * Sync React auth state after login/logout.
+ * Browser: listens to `neo-auth-changed` detail; Electron: IPC `onAuthChanged`.
+ */
+export function subscribeAuthUserSync(apply: (user: AuthUser | null) => void): () => void {
+  const sync = (event?: Event): void => {
+    void resolveAuthUserAfterChange(event).then((next) => {
+      if (event && getAuthUserFromChangedEvent(event) !== undefined) {
+        apply(next)
+        return
+      }
+      if (shouldApplyAuthUserUpdate(next)) apply(next)
+    })
+  }
+
+  if (isBrowserNeoCalendarHost()) {
+    const onWindow = (event: Event): void => sync(event)
+    window.addEventListener('neo-auth-changed', onWindow)
+    return () => window.removeEventListener('neo-auth-changed', onWindow)
+  }
+
+  const api = window.neoCalendar
+  return api?.onAuthChanged?.(() => sync()) ?? (() => undefined)
+}
+
 function setToken(token: string | null, remember: boolean): void {
   try {
     localStorage.removeItem(TOKEN_KEY)
@@ -339,7 +390,7 @@ export function installBrowserNeoCalendar(): void {
         return { ok: false, error: result.error ?? '로그인에 실패했습니다.' }
       }
       setToken(result.token, Boolean(remember))
-      window.dispatchEvent(new CustomEvent('neo-auth-changed'))
+      dispatchNeoAuthChanged(result.user)
       return { ok: true, user: result.user }
     },
     logout: async () => {
@@ -347,7 +398,7 @@ export function installBrowserNeoCalendar(): void {
         await http('POST', '/api/auth/logout')
       } finally {
         setToken(null, false)
-        window.dispatchEvent(new CustomEvent('neo-auth-changed'))
+        dispatchNeoAuthChanged(null)
         await clearOfflineSnapshot().catch(() => {
           /* best-effort */
         })

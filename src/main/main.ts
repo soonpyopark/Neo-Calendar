@@ -917,6 +917,13 @@ function bootApp(): void {
       const started = await webServer.tryStart({ mode, requirePortInEnv: false })
       if (!started.ok) {
         console.warn('[web-server] auto-start skipped:', started.message)
+      } else {
+        const info = webServer.getSyncInfo()
+        if (info.editorUrl) {
+          console.log(`[dev:browser] Browser test URL: ${info.editorUrl}`)
+        } else if (info.port) {
+          console.log(`[dev:browser] Browser test URL: http://127.0.0.1:${info.port}/`)
+        }
       }
     } catch (err) {
       console.warn('[web-server] auto-start failed', err)

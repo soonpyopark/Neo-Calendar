@@ -1,6 +1,6 @@
 import { execSync } from 'node:child_process'
 
-const ports = [5173, 5174, 5175, 5176, 5177, 5178]
+const ports = [5173, 5174, 5175, 5176, 5177, 5178, 3010]
 
 function run(command) {
   try {

@@ -5,7 +5,7 @@ import { WindowResizeHandles } from './components/WindowResizeHandles'
 import {
   fetchAuthUser,
   isBrowserNeoCalendarHost,
-  shouldApplyAuthUserUpdate
+  subscribeAuthUserSync
 } from './lib/browserNeoCalendar'
 import { applyOpacitySettings } from './lib/opacitySettings'
 import type { AppSettings, AuthUser, LaunchMode, ModeStatus } from '../../shared/ipc'
@@ -60,11 +60,7 @@ export default function App(): ReactElement {
       applyOpacitySettings(patch)
     })
     const unsubStore = api.onStoreChanged(refreshOpacityFromStore)
-    const unsubAuth = api.onAuthChanged?.(() => {
-      void fetchAuthUser().then((next) => {
-        if (shouldApplyAuthUserUpdate(next)) setUser(next)
-      })
-    })
+    const unsubAuth = subscribeAuthUserSync(setUser)
 
     return () => {
       unsubMode()
