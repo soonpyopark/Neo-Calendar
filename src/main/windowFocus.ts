@@ -6,7 +6,23 @@ type User32FocusApi = {
   SetFocus: (hwnd: bigint) => unknown
   BringWindowToTop: (hwnd: bigint) => number
   AllowSetForegroundWindow: (pid: number) => number
+  SetParent: (hwnd: unknown, parent: unknown) => unknown
+  SetWindowPos: (
+    hwnd: unknown,
+    insertAfter: unknown,
+    x: number,
+    y: number,
+    cx: number,
+    cy: number,
+    flags: number
+  ) => boolean
 }
+
+const HWND_TOPMOST = -1
+const SWP_NOMOVE = 0x0002
+const SWP_NOSIZE = 0x0001
+const SWP_NOACTIVATE = 0x0010
+const SWP_SHOWWINDOW = 0x0040
 
 let api: User32FocusApi | null = null
 
@@ -27,12 +43,65 @@ function getUser32(): User32FocusApi | null {
       BringWindowToTop: user32.func('BringWindowToTop', 'bool', ['void *']) as User32FocusApi['BringWindowToTop'],
       AllowSetForegroundWindow: user32.func('AllowSetForegroundWindow', 'bool', [
         'uint32'
-      ]) as User32FocusApi['AllowSetForegroundWindow']
+      ]) as User32FocusApi['AllowSetForegroundWindow'],
+      SetParent: user32.func('SetParent', 'void *', ['void *', 'void *']) as User32FocusApi['SetParent'],
+      SetWindowPos: user32.func('SetWindowPos', 'bool', [
+        'void *',
+        'void *',
+        'int',
+        'int',
+        'int',
+        'int',
+        'uint32'
+      ]) as User32FocusApi['SetWindowPos']
     }
     return api
   } catch (error) {
     console.warn('[focus] user32 load failed', error)
     return null
+  }
+}
+
+/**
+ * WorkerW-embedded desktop: ensure a floating panel is not owned by / parented
+ * to the wallpaper HWND (which would keep it under the main calendar layer).
+ */
+export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+
+  try {
+    win.setParentWindow(null)
+  } catch (error) {
+    console.warn('[focus] setParentWindow(null) failed', error)
+  }
+
+  try {
+    win.setAlwaysOnTop(true, 'screen-saver')
+    win.moveTop()
+  } catch (error) {
+    console.warn('[focus] panel alwaysOnTop failed', error)
+  }
+
+  if (process.platform !== 'win32') return
+  const user32 = getUser32()
+  if (!user32) return
+
+  try {
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    if (hwnd === 0n) return
+    user32.SetParent(hwnd, 0n)
+    user32.SetWindowPos(
+      hwnd,
+      HWND_TOPMOST,
+      0,
+      0,
+      0,
+      0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+    )
+    user32.BringWindowToTop(hwnd)
+  } catch (error) {
+    console.warn('[focus] native panel raise failed', error)
   }
 }
 

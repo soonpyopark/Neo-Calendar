@@ -933,7 +933,8 @@ function bootApp(): void {
     onPanelStackChanged: (hasOpenPanels) => {
       if (hasOpenPanels) shieldMainWindowWhilePanelsOpen()
       else restoreMainWindowMouseAfterPanels()
-    }
+    },
+    isWorkerEmbedded: () => desktopMode.isWorkerEmbedded()
   })
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.

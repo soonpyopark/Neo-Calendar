@@ -51,6 +51,26 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
+function clampBoundsToWorkArea(
+  bounds: { x: number; y: number; width: number; height: number },
+  workArea: { x: number; y: number; width: number; height: number },
+  pad: number
+): { x: number; y: number; width: number; height: number } {
+  const safeWidth = Math.min(bounds.width, Math.max(0, workArea.width - pad * 2))
+  const safeHeight = Math.min(bounds.height, Math.max(0, workArea.height - pad * 2))
+  const minLeft = workArea.x + pad
+  const minTop = workArea.y + pad
+  const maxLeft = workArea.x + workArea.width - pad - safeWidth
+  const maxTop = workArea.y + workArea.height - pad - safeHeight
+
+  return {
+    x: Math.round(clamp(bounds.x, minLeft, Math.max(minLeft, maxLeft))),
+    y: Math.round(clamp(bounds.y, minTop, Math.max(minTop, maxTop))),
+    width: Math.round(safeWidth),
+    height: Math.round(safeHeight)
+  }
+}
+
 function isPointerAnchorRect(anchor: QuickEditAnchorRect): boolean {
   return anchor.width > 0 && anchor.height > 0 && anchor.width <= 32 && anchor.height <= 32
 }
@@ -145,13 +165,14 @@ export function computeQuickEditWindowBounds(options: {
     anchorClient && anchorClient.width > 0 && anchorClient.height > 0 ? anchorClient : null
 
   if (viewMode === 'year' && usableAnchor && isPointerAnchorRect(usableAnchor)) {
-    return pointerAnchoredQuickEditBounds({
+    const pointerBounds = pointerAnchoredQuickEditBounds({
       pointerClient: { x: usableAnchor.left, y: usableAnchor.top },
       mainOrigin,
       mainSize,
       panelWidth: panel.width,
       panelHeight: panel.height
     })
+    return clampBoundsToWorkArea(pointerBounds, workArea, pad)
   }
 
   let left: number

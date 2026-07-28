@@ -1,6 +1,6 @@
 import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
-import { focusWindowForTextInput } from './windowFocus'
+import { focusWindowForTextInput, raiseFloatingPanelWindow } from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
 import { getWindowDipScreenBounds } from './wallpaper'
 import {
@@ -17,6 +17,16 @@ import type { WallpaperBrowserWindow } from './wallpaper'
 
 const OUTSIDE_CLOSE_GRACE_MS = 350
 const OUTSIDE_CLOSE_COOLDOWN_MS = 400
+/** Year grid publishes hundreds of mini day zones; month/week stay well below this. */
+const EMBEDDED_YEAR_GRID_ZONE_MIN = 120
+
+function isEmbeddedYearQuickEdit(
+  context: { viewMode: QuickEditViewMode },
+  zones: Array<{ width?: number; height?: number }>
+): boolean {
+  if (context.viewMode === 'year') return true
+  return zones.length >= EMBEDDED_YEAR_GRID_ZONE_MIN
+}
 
 function isWinAlive(win: BrowserWindow | null | undefined): win is BrowserWindow {
   if (!win) return false
@@ -50,11 +60,15 @@ type OpenEmbeddedOptions = {
   init: PanelWindowInit
   anchorClient: PanelAnchorRect | null
   mainWindow: WallpaperBrowserWindow
+  /** WorkerW desktop: top-level window above desktop icons (never parent to embedded main). */
+  topLevel?: boolean
 }
 
 type PanelWindowManagerOptions = {
   /** Fired when the floating panel stack becomes non-empty or empty. */
   onPanelStackChanged?: (hasOpenPanels: boolean) => void
+  /** WorkerW-embedded desktop: panels must be top-level (above desktop icons). */
+  isWorkerEmbedded?: () => boolean
 }
 
 export class PanelWindowManager {
@@ -349,7 +363,7 @@ export class PanelWindowManager {
   }
 
   openEmbedded(options: OpenEmbeddedOptions): void {
-    const { mainWindow, init, anchorClient } = options
+    const { mainWindow, init, anchorClient, topLevel: topLevelOption } = options
     if (mainWindow.isDestroyed()) return
 
     const slot = init.kind
@@ -387,13 +401,15 @@ export class PanelWindowManager {
     }
 
     const resizable = init.kind === 'eventEditor' || init.kind === 'settings'
+    const topLevel =
+      topLevelOption ?? (this.options.isWorkerEmbedded?.() ?? false)
 
     const win = new BrowserWindow({
       x: windowBounds.x,
       y: windowBounds.y,
       width: windowBounds.width,
       height: windowBounds.height,
-      parent: mainWindow,
+      ...(topLevel ? {} : { parent: mainWindow }),
       frame: false,
       transparent: true,
       skipTaskbar: true,
@@ -405,7 +421,7 @@ export class PanelWindowManager {
       focusable: true,
       show: false,
       hasShadow: false,
-      alwaysOnTop: false,
+      alwaysOnTop: topLevel,
       backgroundColor: '#00000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -424,10 +440,16 @@ export class PanelWindowManager {
 
     const webContentsId = win.webContents.id
     win.setIgnoreMouseEvents(false)
+    if (topLevel) {
+      raiseFloatingPanelWindow(win)
+    }
     this.registerEntry(slot, win, init, anchorScreen)
 
     win.once('ready-to-show', () => {
       if (win.isDestroyed()) return
+      if (topLevel) {
+        raiseFloatingPanelWindow(win)
+      }
       win.show()
       focusWindowForTextInput(win)
       this.outsideBlockedUntil = Math.max(
@@ -460,9 +482,11 @@ export class PanelWindowManager {
     let anchorClient: PanelAnchorRect | null = null
     const hasPointer =
       typeof payload.clientX === 'number' && typeof payload.clientY === 'number'
+    const yearView = isEmbeddedYearQuickEdit(context, zones)
+    const effectiveViewMode: QuickEditViewMode = yearView ? 'year' : context.viewMode
 
-    // Year view: anchor at the double-click pointer (same as window mode).
-    if (context.viewMode === 'year' && hasPointer) {
+    // Year view: pointer anchor (same as window mode CalendarGrid double-click).
+    if (yearView && hasPointer) {
       anchorClient = {
         left: payload.clientX,
         top: payload.clientY,
@@ -490,10 +514,11 @@ export class PanelWindowManager {
 
     this.openEmbedded({
       mainWindow,
+      topLevel: true,
       init: {
         kind: 'quickEdit',
         dateKey: payload.dateKey,
-        viewMode: context.viewMode,
+        viewMode: effectiveViewMode,
         eventsHidden: context.eventsHidden,
         anchor: anchorClient
       },
