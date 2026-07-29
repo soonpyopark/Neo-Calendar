@@ -201,6 +201,8 @@ const api: NeoCalendarApi = {
     }
   },
   getAuth: () => ipcRenderer.invoke('get-auth'),
+  showDefaultAdminHint: () =>
+    ipcRenderer.invoke('auth:show-default-admin-hint') as Promise<boolean>,
   getSyncInfo: () =>
     ipcRenderer.invoke('get-sync-info') as Promise<{
       running: boolean

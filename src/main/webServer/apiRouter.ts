@@ -58,6 +58,13 @@ export async function handleApiRequest(
     return { status: 200, body: { user } }
   }
 
+  if (p === '/api/auth/default-admin-hint' && m === 'GET') {
+    return {
+      status: 200,
+      body: { show: membersStore.isDefaultAdminPasswordActive() }
+    }
+  }
+
   if (p === '/api/auth/login' && m === 'POST') {
     const payload = (body ?? {}) as { loginId?: string; password?: string; remember?: boolean }
     const result = auth.loginBrowser(

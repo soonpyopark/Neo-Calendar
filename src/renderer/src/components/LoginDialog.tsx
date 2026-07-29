@@ -57,6 +57,7 @@ export function LoginDialog({
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [remember, setRemember] = useState(true)
+  const [showDefaultAdminHint, setShowDefaultAdminHint] = useState(false)
   const idInputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -65,9 +66,19 @@ export function LoginDialog({
     setPassword('')
     setShowPassword(false)
     setRemember(true)
+    setShowDefaultAdminHint(false)
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const show = await window.neoCalendar.showDefaultAdminHint?.()
+        if (!cancelled) setShowDefaultAdminHint(Boolean(show))
+      } catch {
+        if (!cancelled) setShowDefaultAdminHint(false)
+      }
+    })()
 
     // Retry focus briefly — desktop undock/activate can steal focus once.
-    let cancelled = false
     let attempts = 0
     const tryFocus = (): void => {
       if (cancelled) return
@@ -128,6 +139,11 @@ export function LoginDialog({
         로그인
       </h2>
       <p className="mdc-login-subtitle">회원 계정으로 로그인한 뒤 캘린더를 이용합니다.</p>
+      {showDefaultAdminHint ? (
+        <p className="mdc-login-default-hint">
+          최초 로그인 ID / PWD : admin / admin1234 (변경 후 사용)
+        </p>
+      ) : null}
 
       <div className="mdc-login-fields">
         <label className="mdc-login-label">

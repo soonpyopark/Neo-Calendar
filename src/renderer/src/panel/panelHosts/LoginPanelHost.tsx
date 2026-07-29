@@ -32,7 +32,7 @@ export function LoginPanelHost({ init }: { init: Init }): ReactElement {
     const observer = new ResizeObserver(fitToContent)
     observer.observe(root)
     return () => observer.disconnect()
-  }, [busy, error])
+  }, [busy, error, init.dismissible])
 
   const handleLogin = async (
     loginId: string,

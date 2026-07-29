@@ -587,6 +587,9 @@ function registerIpc(): void {
   ipcMain.handle('set-window-bounds', (_event, bounds) => desktopMode.setWindowBounds(bounds))
 
   ipcMain.handle('get-auth', () => auth.getUser())
+  ipcMain.handle('auth:show-default-admin-hint', () =>
+    membersStore.isDefaultAdminPasswordActive()
+  )
   ipcMain.handle('get-sync-info', () => webServer?.getSyncInfo() ?? {
     running: false,
     port: null,

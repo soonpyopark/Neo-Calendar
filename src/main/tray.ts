@@ -111,7 +111,7 @@ export function createAppTray(options: {
   }
 
   const showFromTray = (): void => {
-    // Tray → window mode (primary window-mode entry).
+    // Explicit "창 모드" command changes and persists the launch mode.
     options.desktopMode.enterWindow({ force: true })
     const win = options.getWindow()
     if (!win || win.isDestroyed()) return
@@ -123,10 +123,10 @@ export function createAppTray(options: {
   }
 
   const bringToFront = (): void => {
-    // Desktop → window mode. Window → raise.
+    // Preserve the current launch mode:
+    // desktop → temporary unlock, window → raise the normal window.
     if (options.desktopMode.getLaunchMode() === 'desktop') {
-      showFromTray()
-      return
+      options.desktopMode.suspendForInteraction()
     }
     const win = options.getWindow()
     if (!win || win.isDestroyed()) return
@@ -139,10 +139,9 @@ export function createAppTray(options: {
     setTimeout(() => {
       const current = options.getWindow()
       if (!current || current.isDestroyed()) return
-      if (options.desktopMode.getLaunchMode() === 'window') {
-        current.setAlwaysOnTop(false)
-      }
+      current.setAlwaysOnTop(false)
     }, 400)
+    rebuild()
   }
 
   const hideToTray = (): void => {
@@ -276,9 +275,9 @@ export function createAppTray(options: {
 
   rebuild()
 
-  // MDC: double-click → ShowFromTray (window unlock).
+  // Double-click reveals the app without changing the selected launch mode.
   tray.on('double-click', () => {
-    showFromTray()
+    bringToFront()
   })
 
   console.log('[tray] Tray icon ready (MDC menu)')

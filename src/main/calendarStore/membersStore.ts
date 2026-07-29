@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { BOOTSTRAP_ADMIN_MEMBER_ID, normalizeMemberRole } from '../../shared/members'
+import { DEFAULT_ADMIN_ID, DEFAULT_ADMIN_PW } from '../../shared/constants'
 import type { MemberRecord, MemberSaveInput } from '../../shared/calendarTypes'
 import { resolveAdminCredentials } from '../dotEnv'
 
@@ -58,6 +59,11 @@ export class MembersStore {
       }
     }
     return null
+  }
+
+  /** True while default admin / admin1234 credentials still authenticate. */
+  isDefaultAdminPasswordActive(): boolean {
+    return this.verifyLogin(DEFAULT_ADMIN_ID, DEFAULT_ADMIN_PW) !== null
   }
 
   saveMembers(members: MemberSaveInput[]): SaveMembersResult {

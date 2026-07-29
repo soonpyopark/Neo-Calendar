@@ -1226,6 +1226,13 @@ input[type='search']::-ms-clear,
   color: var(--gcal-muted);
 }
 
+.mdc-login-default-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--gcal-blue-dark, #174ea6);
+}
+
 .mdc-login-fields {
   display: flex;
   flex-direction: column;

@@ -256,6 +256,8 @@ export type NeoCalendarApi = {
   /** Main window: receive opacity preview from floating settings panel. */
   onMainOpacityPreview: (listener: (patch: OpacityPreviewPatch) => void) => () => void
   getAuth: () => Promise<AuthUser | null>
+  /** Show first-run admin/admin1234 hint on the login dialog. */
+  showDefaultAdminHint: () => Promise<boolean>
   /** Local/LAN HTTP editor status (MDC /api/sync-info). */
   getSyncInfo: () => Promise<{
     running: boolean

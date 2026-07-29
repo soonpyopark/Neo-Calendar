@@ -380,7 +380,7 @@ export function computePanelWindowBounds(options: {
       mainSize,
       workArea,
       width: 392,
-      height: 300
+      height: 340
     })
   }
 

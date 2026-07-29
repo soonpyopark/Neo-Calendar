@@ -378,6 +378,14 @@ export function installBrowserNeoCalendar(): void {
       )
       return result.user
     },
+    showDefaultAdminHint: async () => {
+      try {
+        const result = await http<{ show?: boolean }>('GET', '/api/auth/default-admin-hint')
+        return Boolean(result.show)
+      } catch {
+        return false
+      }
+    },
     getSyncInfo: () => http('GET', '/api/sync-info'),
     login: async (loginId, password, remember) => {
       const result = await http<{
