@@ -1,4 +1,5 @@
-export const APP_VERSION = '1.0.5'
+/** Continues the My Desktop Calendar line (dev 1.1.x) rather than restarting at 1.0. */
+export const APP_VERSION = '1.1.5'
 export const APP_NAME = 'Neo Desktop Calendar'
 export const APP_TITLE = `${APP_NAME} v${APP_VERSION}`
 export const SITE_URL = 'https://note4all.tistory.com'
