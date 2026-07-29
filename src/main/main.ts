@@ -69,6 +69,11 @@ import {
   getShellRunAtStartup,
   projectViewOptionsForClient
 } from '../shared/viewOptionsBySurface'
+import {
+  isSuperAdminUser,
+  stripMemberAdminSettingsPatch,
+  type AppCapability
+} from '../shared/members'
 
 function sanitizeClientHitRects(zones: unknown): ClientHitRect[] {
   if (!Array.isArray(zones)) return []
@@ -497,6 +502,16 @@ function createWindow(): void {
 }
 
 function registerIpc(): void {
+  const snapshotForUser = (
+    loginId: string | null | undefined = auth.getUser()?.loginId,
+    surface: 'native' | 'browser' = 'native'
+  ): CalendarStoreSnapshot => {
+    const user = auth.getUser()
+    const id = loginId ?? user?.loginId
+    return calendarStore.getSnapshotForLogin(id, surface, isSuperAdminUser(user))
+  }
+
+  const requireCap = (capability: AppCapability) => auth.requireCapability(capability)
   ipcMain.on(
     'set-ignore-mouse',
     (_event, ignore: boolean, options?: { forward?: boolean; forwardToOverlay?: boolean }) => {
@@ -590,6 +605,23 @@ function registerIpc(): void {
   ipcMain.handle('auth:show-default-admin-hint', () =>
     membersStore.isDefaultAdminPasswordActive()
   )
+  ipcMain.handle(
+    'auth:change-password',
+    (
+      _event,
+      input: { currentPassword?: string; nextPassword?: string }
+    ) => {
+      const user = auth.getUser()
+      if (!user) throw new Error('로그인이 필요합니다.')
+      const result = membersStore.changeOwnPassword(
+        user.loginId,
+        String(input?.currentPassword ?? ''),
+        String(input?.nextPassword ?? '')
+      )
+      if (!result.ok) throw new Error(result.error)
+      return { ok: true as const }
+    }
+  )
   ipcMain.handle('get-sync-info', () => webServer?.getSyncInfo() ?? {
     running: false,
     port: null,
@@ -625,38 +657,43 @@ function registerIpc(): void {
     mainWindow.webContents.send('main-opacity-preview', patch ?? {})
   })
 
-  ipcMain.handle('calendar:get-store', () => {
-    const snap = calendarStore.getSnapshotForLogin(auth.getUser()?.loginId)
-    return snap
-  })
+  ipcMain.handle('calendar:get-store', () => snapshotForUser())
   ipcMain.handle('calendar:get-data-root', () => calendarStore.dataRoot)
   ipcMain.handle('calendar:patch-settings', (_event, patch: Partial<StoreSettings>) => {
-    const loginId = auth.getUser()?.loginId
-    calendarStore.patchStoreSettings(patch ?? {}, loginId, 'native')
-    if (patch?.viewOptions && typeof patch.viewOptions.runAtStartup === 'boolean') {
+    const user = auth.getUser()
+    const loginId = user?.loginId
+    const safePatch = isSuperAdminUser(user)
+      ? (patch ?? {})
+      : (stripMemberAdminSettingsPatch({ ...(patch ?? {}) }) as Partial<StoreSettings>)
+    calendarStore.patchStoreSettings(safePatch, loginId, 'native')
+    if (safePatch?.viewOptions && typeof safePatch.viewOptions.runAtStartup === 'boolean') {
       syncLoginItemFromStore(calendarStore)
     }
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(loginId, 'native')
+    return snapshotForUser(loginId, 'native')
   })
   ipcMain.handle('calendar:replace-store', (_event, store: CalendarStoreSnapshot) => {
+    requireCap('importExportStore')
     const next = calendarStore.replaceStore(store)
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId) ?? next
+    return snapshotForUser() ?? next
   })
   ipcMain.handle('calendar:import-store', (_event, payload: unknown) => {
+    requireCap('importExportStore')
     const loginId = auth.getUser()?.loginId
     if (!loginId) {
       throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
     }
     calendarStore.importStore(payload, loginId)
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(loginId)
+    return snapshotForUser(loginId)
   })
   ipcMain.handle('calendar:export-backup-zip', async (event) => {
+    requireCap('backupStore')
     return exportBackupZip(calendarStore, resolveNativeDialogParent(event))
   })
   ipcMain.handle('calendar:import-backup-zip', async (event) => {
+    requireCap('backupStore')
     const loginId = auth.getUser()?.loginId
     if (!loginId) {
       throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
@@ -737,9 +774,7 @@ function registerIpc(): void {
       const created = calendarStore.createCalendar(input)
       const adminId = resolveAdminCredentials().id
       calendarStore.hideNewMemberCalendarForAdmin(created, adminId)
-      const projected = calendarStore
-        .getSnapshotForLogin(auth.getUser()?.loginId)
-        .calendars.find((c) => c.id === created.id)
+      const projected = snapshotForUser().calendars.find((c) => c.id === created.id)
       notifyStoreChanged()
       return projected ?? created
     }
@@ -760,9 +795,9 @@ function registerIpc(): void {
           ? calendarStore.patchCalendar(id, body)
           : (calendarStore.getSnapshot().calendars.find((c) => c.id === id) ?? null)
       if (!updated) throw new Error('캘린더를 찾을 수 없습니다.')
-      const projected = calendarStore
-        .getSnapshotForLogin(loginId || auth.getUser()?.loginId)
-        .calendars.find((c) => c.id === id)
+      const projected = snapshotForUser(loginId || auth.getUser()?.loginId).calendars.find(
+        (c) => c.id === id
+      )
       notifyStoreChanged()
       return projected ?? updated
     }
@@ -773,7 +808,7 @@ function registerIpc(): void {
       : []
     calendarStore.reorderCalendars(ids)
     notifyStoreChanged()
-    return calendarStore.getSnapshotForLogin(auth.getUser()?.loginId).calendars
+    return snapshotForUser().calendars
   })
   ipcMain.handle('calendar:delete-calendar', (_event, id: string) => {
     calendarStore.deleteCalendar(id)
@@ -821,12 +856,17 @@ function registerIpc(): void {
     calendarStore.deleteTag(id)
     notifyStoreChanged()
   })
-  ipcMain.handle('calendar:list-members', () => membersStore.listPublic())
+  ipcMain.handle('calendar:list-members', () => {
+    requireCap('manageMembers')
+    return membersStore.listPublic()
+  })
   ipcMain.handle('calendar:save-members', (_event, members: MemberSaveInput[]) => {
+    requireCap('manageMembers')
     const result = membersStore.saveMembers(Array.isArray(members) ? members : [])
     for (const loginId of result.deletedLoginIds) {
       try {
         calendarStore.purgeMemberOwnedData(loginId)
+        auth.revokeSessionsForLoginId(loginId)
       } catch (err) {
         console.warn('[members] purge failed', loginId, err)
       }
@@ -847,6 +887,7 @@ function registerIpc(): void {
     return result.members
   })
   ipcMain.handle('calendar:sync-holidays', async (_event, body: SyncHolidaysInput) => {
+    requireCap('syncHolidays')
     const result = await syncKoreanHolidays(calendarStore, body ?? {})
     notifyStoreChanged()
     return result
@@ -868,11 +909,11 @@ function registerIpc(): void {
         asAdmin?: boolean
       }
     ) => {
-      const loginId = auth.getUser()?.loginId
+      const user = auth.getUser()
+      const loginId = user?.loginId
+      if (!loginId) throw new Error('로그인이 필요합니다.')
       const excludeHidden = Boolean(input?.excludeHiddenCalendars)
-      const raw = loginId
-        ? calendarStore.getSnapshotForLogin(loginId, 'native')
-        : calendarStore.getSnapshot()
+      const raw = snapshotForUser(loginId, 'native')
       const projected: CalendarStoreSnapshot = excludeHidden
         ? raw
         : {
@@ -902,7 +943,7 @@ function registerIpc(): void {
           includeCompleted: input?.includeCompleted !== false,
           includeHolidays: input?.includeHolidays !== false,
           excludeHiddenCalendars: excludeHidden,
-          asAdmin: input?.asAdmin !== false
+          asAdmin: isSuperAdminUser(user) && input?.asAdmin !== false
         },
         parent && !parent.isDestroyed() ? parent : null
       )

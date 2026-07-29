@@ -66,6 +66,69 @@ export class MembersStore {
     return this.verifyLogin(DEFAULT_ADMIN_ID, DEFAULT_ADMIN_PW) !== null
   }
 
+  findActiveByLoginId(loginId: string | null | undefined): MemberRecord | null {
+    const id = String(loginId ?? '').trim()
+    if (!id) return null
+    const row = this.read().find((m) => m.active !== false && m.loginId === id)
+    if (!row) return null
+    const { passwordHash: _pw, ...rest } = row
+    return {
+      ...rest,
+      isBootstrapAdmin: rest.id === BOOTSTRAP_ADMIN_MEMBER_ID
+    }
+  }
+
+  /**
+   * Logged-in member changes their own password.
+   * Verifies currentPassword, then stores hash of nextPassword.
+   */
+  changeOwnPassword(
+    loginId: string,
+    currentPassword: string,
+    nextPassword: string
+  ): { ok: true } | { ok: false; error: string } {
+    const id = String(loginId ?? '').trim()
+    const current = String(currentPassword ?? '')
+    const next = String(nextPassword ?? '').trim()
+    if (!id) return { ok: false, error: '로그인이 필요합니다.' }
+    if (!current || !next) {
+      return { ok: false, error: '현재 비밀번호와 새 비밀번호를 입력하세요.' }
+    }
+    if (next.length < 6) {
+      return { ok: false, error: '비밀번호는 6자 이상이어야 합니다.' }
+    }
+    if (!this.verifyLogin(id, current)) {
+      return { ok: false, error: '현재 비밀번호가 올바르지 않습니다.' }
+    }
+
+    const members = this.read()
+    const index = members.findIndex((m) => m.active !== false && m.loginId === id)
+    if (index < 0) {
+      // Env-fallback admin without a row yet — create bootstrap hash update path.
+      const admin = resolveAdminCredentials()
+      if (id !== admin.id) {
+        return { ok: false, error: '회원 정보를 찾을 수 없습니다.' }
+      }
+      members.unshift({
+        id: BOOTSTRAP_ADMIN_MEMBER_ID,
+        loginId: admin.id,
+        displayName: admin.id,
+        role: 'super_admin',
+        active: true,
+        passwordHash: hashPassword(next)
+      })
+      this.write(members)
+      return { ok: true }
+    }
+
+    members[index] = {
+      ...members[index],
+      passwordHash: hashPassword(next)
+    }
+    this.write(members)
+    return { ok: true }
+  }
+
   saveMembers(members: MemberSaveInput[]): SaveMembersResult {
     const prev = this.read()
     const prevById = new Map(prev.map((m) => [m.id, m]))

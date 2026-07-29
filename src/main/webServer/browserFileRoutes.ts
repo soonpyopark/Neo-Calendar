@@ -6,6 +6,7 @@ import {
 } from '../calendarStore/backupZip'
 import type { CalendarStore } from '../calendarStore/CalendarStore'
 import { buildCalendarExportBuffer } from '../export/exportService'
+import { can, isSuperAdminUser } from '../../shared/members'
 import {
   contentTypeOf,
   getMultipartBoundary,
@@ -74,6 +75,10 @@ export async function tryHandleBrowserFileRequest(options: {
 
   try {
     if (isBackupExport) {
+      if (!can(user, 'backupStore')) {
+        sendJson(res, 403, { ok: false, error: '권한이 없습니다.' })
+        return true
+      }
       // Drain body if present (POST with empty JSON).
       if (method === 'POST') await readRawBody(req).catch(() => Buffer.alloc(0))
       const built = createBackupZipBuffer(calendarStore)
@@ -90,6 +95,10 @@ export async function tryHandleBrowserFileRequest(options: {
     }
 
     if (isBackupImport) {
+      if (!can(user, 'backupStore')) {
+        sendJson(res, 403, { ok: false, error: '권한이 없습니다.' })
+        return true
+      }
       const contentType = contentTypeOf(req)
       const boundary = getMultipartBoundary(contentType)
       let zipBuffer: Buffer | null = null
@@ -112,7 +121,11 @@ export async function tryHandleBrowserFileRequest(options: {
         ok: true,
         cancelled: false,
         attachmentFiles: result.attachmentFiles ?? 0,
-        store: calendarStore.getSnapshotForLogin(user.loginId, 'browser')
+        store: calendarStore.getSnapshotForLogin(
+          user.loginId,
+          'browser',
+          isSuperAdminUser(user)
+        )
       })
       return true
     }
@@ -134,7 +147,11 @@ export async function tryHandleBrowserFileRequest(options: {
         }
       }
       const excludeHiddenCalendars = Boolean(body.excludeHiddenCalendars)
-      const snap = calendarStore.getSnapshotForLogin(user.loginId, 'browser')
+      const snap = calendarStore.getSnapshotForLogin(
+        user.loginId,
+        'browser',
+        isSuperAdminUser(user)
+      )
       const store = excludeHiddenCalendars
         ? snap
         : {
@@ -152,7 +169,7 @@ export async function tryHandleBrowserFileRequest(options: {
         includeCompleted: body.includeCompleted !== false,
         includeHolidays: body.includeHolidays !== false,
         excludeHiddenCalendars,
-        asAdmin: body.asAdmin !== false
+        asAdmin: isSuperAdminUser(user) && body.asAdmin !== false
       })
       sendFile(res, built)
       return true

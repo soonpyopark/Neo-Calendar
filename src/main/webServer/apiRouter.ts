@@ -3,6 +3,13 @@ import type { AuthService } from '../auth'
 import type { CalendarStore } from '../calendarStore/CalendarStore'
 import type { MembersStore } from '../calendarStore/membersStore'
 import type { EventInput, MemberSaveInput, SyncHolidaysInput, TagRecord } from '../../shared/calendarTypes'
+import type { AuthUser } from '../../shared/ipc'
+import {
+  can,
+  isSuperAdminUser,
+  stripMemberAdminSettingsPatch,
+  type AppCapability
+} from '../../shared/members'
 import { stripBrowserShellSettingsPatch } from '../../shared/viewOptionsBySurface'
 import { syncKoreanHolidays } from '../calendarStore/holidaySync'
 import { resolveAdminCredentials } from '../dotEnv'
@@ -24,10 +31,21 @@ function jsonError(status: number, message: string): ApiResult {
   return { status, body: { ok: false, error: message } }
 }
 
-function requireUser(auth: AuthService, token: string | null): ApiResult | { user: { loginId: string } } {
+function requireUser(
+  auth: AuthService,
+  token: string | null
+): ApiResult | { user: AuthUser } {
   const user = auth.getBrowserUser(token)
   if (!user) return jsonError(401, '로그인이 필요합니다.')
   return { user }
+}
+
+function requireCap(
+  user: AuthUser,
+  capability: AppCapability
+): ApiResult | null {
+  if (!can(user, capability)) return jsonError(403, '권한이 없습니다.')
+  return null
 }
 
 /**
@@ -82,31 +100,49 @@ export async function handleApiRequest(
     return { status: 200, body: { ok: true } }
   }
 
+  if (p === '/api/auth/password' && m === 'POST') {
+    const gatePw = requireUser(auth, token)
+    if ('status' in gatePw) return gatePw
+    const payload = (body ?? {}) as { currentPassword?: string; nextPassword?: string }
+    const result = membersStore.changeOwnPassword(
+      gatePw.user.loginId,
+      String(payload.currentPassword ?? ''),
+      String(payload.nextPassword ?? '')
+    )
+    if (!result.ok) return jsonError(400, result.error)
+    return { status: 200, body: { ok: true } }
+  }
+
   // —— Authenticated routes ——
   const gate = requireUser(auth, token)
   if ('status' in gate) return gate
-  const loginId = gate.user.loginId
+  const user = gate.user
+  const loginId = user.loginId
+  const asSuperAdmin = isSuperAdminUser(user)
+  const snapshot = () => calendarStore.getSnapshotForLogin(loginId, 'browser', asSuperAdmin)
 
   if (p === '/api/store' && m === 'GET') {
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
+    return { status: 200, body: snapshot() }
   }
 
   if (p === '/api/settings' && m === 'PATCH') {
-    const patch = stripBrowserShellSettingsPatch((body ?? {}) as never)
+    let patch = stripBrowserShellSettingsPatch((body ?? {}) as never)
+    if (!asSuperAdmin) {
+      patch = stripMemberAdminSettingsPatch(patch as Record<string, unknown>) as typeof patch
+    }
     // dayColors are stored per login (dayColorsByLoginId), matching Electron IPC.
     // Presentation prefs go to viewOptionsBySurface.browser — not native.
     calendarStore.patchStoreSettings(patch as never, loginId, 'browser')
     onStoreMutated()
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
+    return { status: 200, body: snapshot() }
   }
 
   if (p === '/api/store/import' && m === 'POST') {
-    if (!loginId) {
-      return { status: 401, body: { ok: false, error: '로그인이 필요합니다.' } }
-    }
+    const denied = requireCap(user, 'importExportStore')
+    if (denied) return denied
     calendarStore.importStore(body, loginId)
     onStoreMutated()
-    return { status: 200, body: calendarStore.getSnapshotForLogin(loginId, 'browser') }
+    return { status: 200, body: snapshot() }
   }
 
   if (p === '/api/events' && m === 'POST') {
@@ -155,9 +191,7 @@ export async function handleApiRequest(
     const adminId = resolveAdminCredentials().id
     calendarStore.hideNewMemberCalendarForAdmin(created, adminId)
     onStoreMutated()
-    const projected = calendarStore
-      .getSnapshotForLogin(loginId, 'browser')
-      .calendars.find((c) => c.id === created.id)
+    const projected = snapshot().calendars.find((c) => c.id === created.id)
     return { status: 200, body: projected ?? created }
   }
 
@@ -190,9 +224,7 @@ export async function handleApiRequest(
           : calendarStore.getSnapshot().calendars.find((c) => c.id === id)
       if (!updated) return jsonError(404, '캘린더를 찾을 수 없습니다.')
       onStoreMutated()
-      const projected = calendarStore
-        .getSnapshotForLogin(loginId, 'browser')
-        .calendars.find((c) => c.id === id)
+      const projected = snapshot().calendars.find((c) => c.id === id)
       return { status: 200, body: projected ?? updated }
     }
     if (!sub && m === 'DELETE') {
@@ -249,10 +281,14 @@ export async function handleApiRequest(
   }
 
   if (p === '/api/members' && m === 'GET') {
+    const denied = requireCap(user, 'manageMembers')
+    if (denied) return denied
     return { status: 200, body: membersStore.listPublic() }
   }
 
   if (p === '/api/members' && m === 'PUT') {
+    const denied = requireCap(user, 'manageMembers')
+    if (denied) return denied
     const members = Array.isArray(body)
       ? (body as MemberSaveInput[])
       : Array.isArray((body as { members?: MemberSaveInput[] })?.members)
@@ -267,7 +303,7 @@ export async function handleApiRequest(
         /* ignore */
       }
     }
-    const adminId = auth.getUser()?.loginId ?? resolveAdminCredentials().id
+    const adminId = user.loginId || resolveAdminCredentials().id
     for (const member of result.members) {
       if (member.active === false) continue
       const mid = String(member.loginId ?? '').trim()
@@ -283,6 +319,8 @@ export async function handleApiRequest(
   }
 
   if (p === '/api/holidays/sync' && m === 'POST') {
+    const denied = requireCap(user, 'syncHolidays')
+    if (denied) return denied
     try {
       const result = await syncKoreanHolidays(
         calendarStore,

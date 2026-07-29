@@ -153,10 +153,13 @@ export class CalendarStore {
    * - Member: personal calendars/events + holidays-kr only
    * - viewOptions projected for native vs browser surface
    * Disk records stay untouched.
+   *
+   * @param isSuperAdmin When provided, overrides env-admin-id matching.
    */
   getSnapshotForLogin(
     loginId: string | null | undefined,
-    surface: ClientSurface = 'native'
+    surface: ClientSurface = 'native',
+    isSuperAdmin?: boolean
   ): CalendarStoreSnapshot {
     const snap = this.getSnapshot()
     const clientSurface = normalizeClientSurface(surface)
@@ -182,9 +185,12 @@ export class CalendarStore {
     }
 
     const adminId = resolveAdminCredentials().id.trim()
-    const isSuperAdmin = owner.toLowerCase() === adminId.toLowerCase()
+    const asSuperAdmin =
+      typeof isSuperAdmin === 'boolean'
+        ? isSuperAdmin
+        : owner.toLowerCase() === adminId.toLowerCase()
 
-    if (!isSuperAdmin) {
+    if (!asSuperAdmin) {
       const allowedIds = new Set<string>()
       snap.calendars = snap.calendars.filter((cal) => {
         if (cal.id === HOLIDAYS_KR_CALENDAR_ID) {
@@ -217,7 +223,7 @@ export class CalendarStore {
       Object.keys(byLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? null
     if (dayKey) {
       snap.settings.dayColors = { ...byLogin[dayKey] }
-    } else if (!isSuperAdmin) {
+    } else if (!asSuperAdmin) {
       snap.settings.dayColors = {}
     }
     delete snap.settings.dayColorsByLoginId

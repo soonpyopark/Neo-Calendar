@@ -63,7 +63,8 @@
     "dayColorsByLoginId": {},
     "hiddenCalendarIdsByLoginId": {
       "admin": [
-        "cal-aconite"
+        "cal-aconite",
+        "e56d2ee9-5579-46ae-980b-eeafc9b650e3"
       ]
     },
     "allowedIpCidrs": [
@@ -131,5 +132,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-29T07:51:45.771Z"
+  "updatedAt": "2026-07-29T10:39:13.774Z"
 }

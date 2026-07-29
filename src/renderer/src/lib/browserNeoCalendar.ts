@@ -372,7 +372,7 @@ export function installBrowserNeoCalendar(): void {
     onMainOpacityPreview: () => () => undefined,
 
     getAuth: async () => {
-      const result = await http<{ user: { loginId: string; role: 'admin' } | null }>(
+      const result = await http<{ user: { loginId: string; role: 'super_admin' | 'member' } | null }>(
         'GET',
         '/api/auth/session'
       )
@@ -386,11 +386,18 @@ export function installBrowserNeoCalendar(): void {
         return false
       }
     },
+    changePassword: async (input) => {
+      await http('POST', '/api/auth/password', {
+        currentPassword: input.currentPassword,
+        nextPassword: input.nextPassword
+      })
+      return { ok: true as const }
+    },
     getSyncInfo: () => http('GET', '/api/sync-info'),
     login: async (loginId, password, remember) => {
       const result = await http<{
         ok: boolean
-        user?: { loginId: string; role: 'admin' }
+        user?: { loginId: string; role: 'super_admin' | 'member' }
         token?: string
         error?: string
       }>('POST', '/api/auth/login', {

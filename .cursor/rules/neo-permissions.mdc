@@ -1,0 +1,47 @@
+---
+description: Neo Calendar member/admin permission policy
+alwaysApply: true
+---
+
+# Neo Calendar Permissions
+
+## Roles
+
+| Role | Meaning |
+| --- | --- |
+| `super_admin` | Full store + admin settings (members, security, holidays API, backup) |
+| `member` | Own calendars/events + holidays-kr view; no admin surfaces |
+| (guest) | Not logged in — empty projected store; login required to edit |
+
+Legacy stored role `admin` normalizes to `super_admin`.
+
+Session `AuthUser.role` must come from `members.json` (not a hardcoded `'admin'`).
+
+## Capabilities (`can(user, capability)`)
+
+Super admin only:
+
+- `manageMembers`
+- `manageMemberCalendars`
+- `manageSecurity`
+- `syncHolidays`
+- `backupStore`
+- `importExportStore`
+
+UI gates are not enough — enforce the same checks in IPC (`main.ts`) and HTTP (`apiRouter` / `browserFileRoutes`).
+
+## Data projection
+
+`CalendarStore.getSnapshotForLogin(loginId, surface, isSuperAdmin)`:
+
+- Guest: empty calendars/events/tags
+- Super admin: full store (+ per-login eye-toggle / dayColors projection)
+- Member: personal calendars/events + `holidays-kr` only; strip API keys / IP allowlists
+
+Prefer passing `isSuperAdmin` from `AuthUser.role === 'super_admin'` rather than comparing env admin id alone.
+
+## Member UX
+
+Members keep: 일반, 내 계정(비밀번호), 새 캘린더, 태그, 내/고정 캘린더 설정, 검색·일정 편집·Excel/PDF 내보내기(본인 스냅샷).
+
+Members lose: 가져오기/내보내기(전체), 보안, 회원 관리, 회원 캘린더 관리, 공휴일 API 동기화.

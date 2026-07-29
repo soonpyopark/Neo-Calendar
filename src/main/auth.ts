@@ -1,7 +1,14 @@
 import { randomBytes } from 'node:crypto'
 import type { AuthUser, LoginResult } from '../shared/ipc'
+import {
+  authUserFromMember,
+  can,
+  isSuperAdminUser,
+  type AppCapability
+} from '../shared/members'
 import type { MembersStore } from './calendarStore/membersStore'
 import type { SettingsStore } from './settingsStore'
+import { resolveAdminCredentials } from './dotEnv'
 
 export type BrowserLoginResult =
   | { ok: true; user: AuthUser; token: string }
@@ -23,12 +30,33 @@ export class AuthService {
     const saved = store.getAuthSession()
     if (saved) {
       this.sessionToken = saved.token
-      this.sessionUser = { loginId: saved.loginId, role: 'admin' }
+      this.sessionUser = this.resolveUserByLoginId(saved.loginId)
     }
   }
 
   getUser(): AuthUser | null {
-    return this.sessionUser ? { ...this.sessionUser } : null
+    if (!this.sessionUser) return null
+    // Re-resolve role so demotions apply without re-login when possible.
+    const fresh = this.resolveUserByLoginId(this.sessionUser.loginId)
+    if (!fresh) {
+      this.logout()
+      return null
+    }
+    this.sessionUser = fresh
+    return { ...fresh }
+  }
+
+  isSuperAdmin(): boolean {
+    return isSuperAdminUser(this.getUser())
+  }
+
+  requireCapability(capability: AppCapability): AuthUser {
+    const user = this.getUser()
+    if (!user) throw new Error('로그인이 필요합니다.')
+    if (!can(user, capability)) {
+      throw new Error('권한이 없습니다.')
+    }
+    return user
   }
 
   login(loginId: string, password: string, remember = false): LoginResult {
@@ -81,16 +109,37 @@ export class AuthService {
   getBrowserUser(token: string | null | undefined): AuthUser | null {
     const t = String(token ?? '').trim()
     if (!t) return null
-    const user = this.browserSessions.get(t)
-    if (user) return { ...user }
+    const cached = this.browserSessions.get(t)
+    if (cached) {
+      const fresh = this.resolveUserByLoginId(cached.loginId)
+      if (!fresh) {
+        this.browserSessions.delete(t)
+        return null
+      }
+      this.browserSessions.set(t, fresh)
+      return { ...fresh }
+    }
     // Accept persisted token from previous run (restore into map).
     const saved = this.store.getAuthSession()
     if (saved?.token === t && saved.loginId) {
-      const restored: AuthUser = { loginId: saved.loginId, role: 'admin' }
+      const restored = this.resolveUserByLoginId(saved.loginId)
+      if (!restored) return null
       this.browserSessions.set(t, restored)
       return { ...restored }
     }
     return null
+  }
+
+  requireBrowserCapability(
+    token: string | null | undefined,
+    capability: AppCapability
+  ): AuthUser {
+    const user = this.getBrowserUser(token)
+    if (!user) throw new Error('로그인이 필요합니다.')
+    if (!can(user, capability)) {
+      throw new Error('권한이 없습니다.')
+    }
+    return user
   }
 
   isBrowserTokenValid(token: string | null | undefined): boolean {
@@ -120,6 +169,18 @@ export class AuthService {
     return admin || null
   }
 
+  private resolveUserByLoginId(loginId: string | null | undefined): AuthUser | null {
+    const member = this.members.findActiveByLoginId(loginId)
+    if (member) return authUserFromMember(member)
+    const id = String(loginId ?? '').trim()
+    if (!id) return null
+    // Safety net: env bootstrap admin id without a members.json row.
+    if (id === resolveAdminCredentials().id) {
+      return { loginId: id, role: 'super_admin' }
+    }
+    return null
+  }
+
   private authenticate(
     loginId: string,
     password: string
@@ -133,6 +194,6 @@ export class AuthService {
     if (!member) {
       return { ok: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' }
     }
-    return { ok: true, user: { loginId: member.loginId, role: 'admin' } }
+    return { ok: true, user: authUserFromMember(member) }
   }
 }

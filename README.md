@@ -40,6 +40,19 @@ Electron 앱(`npm run dev`)이 실행 중일 때 HTTP API(기본 `:3010`)와 Vit
 
 Admin login credentials come from `.env` (`MYCALENDAR_ADMIN_ID` / `MYCALENDAR_ADMIN_PW`), with `NEOCALENDAR_*` / `ADMIN_*` aliases and built-in defaults as fallback.
 
+### Roles & permissions
+
+| Role | Can do |
+| --- | --- |
+| `super_admin` (총괄관리자) | Full calendar store, member management, security/IP, holiday API sync, ZIP backup/import |
+| `member` (일반사용자) | Own calendars & events, tags, account password change, Excel/PDF export of own data, view holidays |
+| Guest (logged out) | Empty store; must log in to edit |
+
+- Session role is loaded from `data/members.json` on login/restore.
+- Settings → **내 계정** is available to every logged-in user for password change.
+- Admin-only Settings tabs and matching IPC/HTTP APIs reject non-admins with “권한이 없습니다.”
+- Agent rule: `.cursor/rules/neo-permissions.mdc`
+
 ## Build
 
 ```bash

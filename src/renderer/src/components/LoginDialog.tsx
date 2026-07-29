@@ -90,9 +90,15 @@ export function LoginDialog({
         window.setTimeout(tryFocus, 50)
       }
     }
+    const focusAfterWindowActivation = (): void => {
+      attempts = 0
+      window.setTimeout(tryFocus, 0)
+    }
+    window.addEventListener('focus', focusAfterWindowActivation)
     const timer = window.setTimeout(tryFocus, 0)
     return () => {
       cancelled = true
+      window.removeEventListener('focus', focusAfterWindowActivation)
       window.clearTimeout(timer)
     }
   }, [open])
@@ -153,6 +159,7 @@ export function LoginDialog({
             type="text"
             className="mdc-login-input"
             value={loginId}
+            autoFocus
             autoComplete="username"
             disabled={busy}
             onChange={(event) => setLoginId(event.target.value)}

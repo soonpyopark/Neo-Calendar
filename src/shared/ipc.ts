@@ -63,9 +63,12 @@ export type AppSettings = {
 
 export type OpacityPreviewPatch = Pick<Partial<AppSettings>, 'headerOpacity' | 'shellOpacity'>
 
+export type { AuthUserRole } from './members'
+import type { AuthUserRole } from './members'
+
 export type AuthUser = {
   loginId: string
-  role: 'admin'
+  role: AuthUserRole
 }
 
 export type LoginResult =
@@ -258,6 +261,11 @@ export type NeoCalendarApi = {
   getAuth: () => Promise<AuthUser | null>
   /** Show first-run admin/admin1234 hint on the login dialog. */
   showDefaultAdminHint: () => Promise<boolean>
+  /** Logged-in user changes their own password. */
+  changePassword: (input: {
+    currentPassword: string
+    nextPassword: string
+  }) => Promise<{ ok: true }>
   /** Local/LAN HTTP editor status (MDC /api/sync-info). */
   getSyncInfo: () => Promise<{
     running: boolean

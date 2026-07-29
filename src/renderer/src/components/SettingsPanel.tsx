@@ -11,6 +11,7 @@ import { ImportExportPanel } from './ImportExportPanel'
 import { HolidaysSyncPanel } from './HolidaysSyncPanel'
 import { MemberCalendarsPanel } from './MemberCalendarsPanel'
 import { MembersPanel } from './MembersPanel'
+import { AccountPanel } from './AccountPanel'
 import { SecurityPanel } from './SecurityPanel'
 import { TagsPanel } from './TagsPanel'
 import { CalendarColorPalette } from './CalendarColorPalette'
@@ -43,6 +44,7 @@ import type {
   ViewOptions
 } from '../../../shared/calendarTypes'
 import type { AppSettings, AuthUser, OpacityPreviewPatch } from '../../../shared/ipc'
+import { isSuperAdminUser } from '../../../shared/members'
 import {
   applyAccentColor,
   applyColorScheme,
@@ -55,6 +57,7 @@ import { useAppDialog } from './AppDialogProvider'
 
 type SettingsSection =
   | 'general'
+  | 'account'
   | 'add-calendar'
   | 'import-export'
   | 'tags'
@@ -1065,7 +1068,7 @@ export function SettingsPanel({
   const [newCalColor, setNewCalColor] = useState(() => getDefaultCalendarColor(0))
 
   const currentLoginId = user?.loginId ?? ''
-  const isSuperAdmin = Boolean(user)
+  const isSuperAdmin = isSuperAdminUser(user)
 
   const sharedCalendars = useMemo(
     () => sortCalendarsByOrder(store.calendars.filter((c) => isSharedCalendar(c))),
@@ -1174,6 +1177,9 @@ export function SettingsPanel({
             <nav className="settings-scroll flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pt-2">
               <NavBtn active={section === 'general'} onClick={() => setSection('general')}>
                 일반
+              </NavBtn>
+              <NavBtn active={section === 'account'} onClick={() => setSection('account')}>
+                내 계정
               </NavBtn>
               <NavBtn active={section === 'add-calendar'} onClick={() => setSection('add-calendar')}>
                 새 캘린더 만들기
@@ -1314,6 +1320,8 @@ export function SettingsPanel({
               onRefresh={onRefresh}
             />
           )}
+
+          {section === 'account' && <AccountPanel user={user} />}
 
           {section === 'tags' && (
             <TagsPanel
