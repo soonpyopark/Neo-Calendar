@@ -47,6 +47,7 @@ import {
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   EMBEDDED_FOOTER_HINT_ACTIONS,
   EMBEDDED_MODE_CHROME_ACTIONS,
+  EMBEDDED_RELOAD_CHROME_ACTIONS,
   FOOTER_HINT_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../../../shared/ipc'
@@ -522,7 +523,8 @@ export function CalendarGrid({
     setEventPopover(null)
   }, [])
 
-  // Browser / unlocked-desktop inline overlays: same dismiss order as floating panels.
+  // Browser / unlocked-desktop inline overlays: close detail/editor/scope after delete.
+  // Keep quickEdit mounted — list refreshes from the shared store.
   useEffect(() => {
     const onDismiss = (event: Event): void => {
       const phase = (event as CustomEvent<EventUiDismissDetail>).detail?.phase
@@ -532,10 +534,6 @@ export function CalendarGrid({
         setPendingEdit(null)
         setScopeDialog(null)
         setPendingDelete(null)
-        return
-      }
-      if (phase === 'quickEdit') {
-        setQuickEdit(null)
       }
     }
     window.addEventListener(EVENT_UI_DISMISS_AFTER_DELETE, onDismiss)
@@ -678,23 +676,10 @@ export function CalendarGrid({
       return
     }
 
-    // Desktop cold-start (unlocked, not WorkerW yet): enterWindow hides inline LoginDialog
-    // because floatingPanels becomes true — open the floating login panel after switch.
-    if (mode === 'desktop') {
-      void window.neoCalendar
-        .enterWindow()
-        .then((status) => {
-          onModeChange(status.mode)
-        })
-        .catch(() => undefined)
-        .finally(() => {
-          openEmbeddedPanel({ kind: 'login', dismissible: false })
-        })
-      return
-    }
-
+    // Unlocked desktop cold-start: keep desktop mode so idle embed still arms.
+    // Do not enterWindow() — that permanently persists window mode.
     setLoginOpen(true)
-  }, [authReady, floatingPanels, loading, mode, onModeChange, openEmbeddedPanel, user])
+  }, [authReady, floatingPanels, loading, openEmbeddedPanel, user])
 
   useEffect(() => {
     return subscribeAuthUserSync((next) => {
@@ -772,7 +757,8 @@ export function CalendarGrid({
                 (!EMBEDDED_FLOATING_CHROME_ACTIONS.has(action) &&
                   !EMBEDDED_MODE_CHROME_ACTIONS.has(action) &&
                   !EMBEDDED_EXPORT_CHROME_ACTIONS.has(action) &&
-                  !EMBEDDED_AUTH_CHROME_ACTIONS.has(action))
+                  !EMBEDDED_AUTH_CHROME_ACTIONS.has(action) &&
+                  !EMBEDDED_RELOAD_CHROME_ACTIONS.has(action))
               )
                 return []
               const r = el.getBoundingClientRect()
@@ -1427,9 +1413,14 @@ export function CalendarGrid({
         ...Array.from(EMBEDDED_MODE_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_EXPORT_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_AUTH_CHROME_ACTIONS),
-        ...Array.from(EMBEDDED_FOOTER_HINT_ACTIONS)
+        ...Array.from(EMBEDDED_FOOTER_HINT_ACTIONS),
+        ...Array.from(EMBEDDED_RELOAD_CHROME_ACTIONS)
       ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
+      if (action === CHROME_TOOLBAR_ACTIONS.reload) {
+        window.location.reload()
+        return
+      }
       const btn = document.querySelector<HTMLElement>(
         `.neo-cal-shell [data-toolbar-action="${action}"]`
       )

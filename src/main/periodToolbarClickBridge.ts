@@ -1,5 +1,6 @@
 import type { WidgetBounds } from '../shared/ipc'
-import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
+import { EMBEDDED_DOUBLE_CLICK_ACTIONS } from '../shared/ipc'
+import { subscribeGlobalMouseDown, type MouseButton, type ScreenPoint } from './globalMouseHook'
 
 export type ClickForwardClientZone = {
   x: number
@@ -22,6 +23,7 @@ const COOLDOWN_MS = 350
 
 /**
  * WorkerW-embedded: single click on period toolbar → run action in renderer (stay embedded).
+ * Actions in EMBEDDED_DOUBLE_CLICK_ACTIONS require OS double-click instead.
  */
 export class PeriodToolbarClickBridge {
   private unsubscribe: (() => void) | null = null
@@ -37,7 +39,7 @@ export class PeriodToolbarClickBridge {
   start(): void {
     if (process.platform !== 'win32' || this.unsubscribe) return
     this.unsubscribe = subscribeGlobalMouseDown((pt, button) => {
-      if (button === 'left') this.handleMouseDown(pt)
+      if (button === 'left' || button === 'left-dblclick') this.handleMouseDown(pt, button)
     })
     console.log('[toolbar-click] period toolbar click → embedded armed')
   }
@@ -48,7 +50,7 @@ export class PeriodToolbarClickBridge {
     this.lastZoneCount = -1
   }
 
-  private handleMouseDown(pt: ScreenPoint): void {
+  private handleMouseDown(pt: ScreenPoint, button: MouseButton): void {
     if (!this.options.isArmed()) {
       this.lastZoneCount = -1
       return
@@ -69,6 +71,10 @@ export class PeriodToolbarClickBridge {
 
     const hit = this.hitZone(pt, origin, zones)
     if (!hit) return
+
+    const needsDbl = EMBEDDED_DOUBLE_CLICK_ACTIONS.has(hit.action)
+    if (needsDbl && button !== 'left-dblclick') return
+    if (!needsDbl && button === 'left-dblclick') return
 
     const now = Date.now()
     if (hit.action === this.lastAction && now - this.lastClickAt < COOLDOWN_MS) return

@@ -2,8 +2,9 @@
 /**
  * Static check: delete dismiss contract is wired for all modes.
  * - Success paths call closePanelsAfterEventDelete
- * - Shared helper dispatches inline dismiss phases (browser)
+ * - Shared helper dismisses detail/editor (inline) without closing quickEdit
  * - Floating editor open no longer evicts quickEdit
+ * - store-changed reaches floating panels
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -19,25 +20,37 @@ function assert(name, cond, detail = '') {
 
 const recurrence = read('src/renderer/src/lib/recurrenceComplete.ts')
 assert(
-  'closePanelsAfterEventDelete dispatches immediate + quickEdit phases',
+  'closePanelsAfterEventDelete dispatches immediate phase only',
   recurrence.includes("dispatchEventUiDismiss('immediate')") &&
-    recurrence.includes("dispatchEventUiDismiss('quickEdit')")
+    !recurrence.includes("dispatchEventUiDismiss('quickEdit')")
 )
 assert(
-  'floating delete uses main-process sequenced close (survives panel teardown)',
+  'floating delete uses main-process closeAfterEventDelete',
   recurrence.includes('closeAfterEventDelete')
 )
 assert(
-  'quickEdit closes after delay constant',
-  recurrence.includes('EVENT_UI_DISMISS_QUICK_EDIT_DELAY_MS')
+  'delete helper does not close quickEdit slot',
+  !recurrence.includes("closePanelSlot?.('quickEdit')") &&
+    !recurrence.includes('closeQuickEditWindow')
 )
 
 const panelMgr = read('src/main/panelWindowManager.ts')
 assert(
-  'main closeAfterEventDelete closes quickEdit last',
+  'main closeAfterEventDelete keeps quickEdit open',
   panelMgr.includes('closeAfterEventDelete()') &&
-    /closeSlot\('quickEdit'\)/.test(panelMgr) &&
-    panelMgr.includes("panel-close-after-event-delete")
+    panelMgr.includes('Keep quickEdit open') &&
+    !/closeAfterEventDelete\(\): void \{[\s\S]*?closeSlot\('quickEdit'\)/.test(panelMgr)
+)
+assert(
+  'panel manager broadcasts store-changed to floating panels',
+  panelMgr.includes('broadcastStoreChanged()') &&
+    panelMgr.includes("webContents.send('store-changed')")
+)
+
+const main = read('src/main/main.ts')
+assert(
+  'notifyStoreChanged pushes to panel windows',
+  main.includes('panelWindowManager?.broadcastStoreChanged()')
 )
 
 const dismiss = read('src/renderer/src/lib/eventUiDismiss.ts')
@@ -45,11 +58,19 @@ assert(
   'eventUiDismiss documents all modes',
   dismiss.includes('Desktop') && dismiss.includes('Window') && dismiss.includes('Browser')
 )
+assert(
+  'eventUiDismiss contract keeps quickEdit after delete',
+  dismiss.includes('quickEdit stays')
+)
 
 const grid = read('src/renderer/src/components/CalendarGrid.tsx')
 assert(
   'CalendarGrid listens for dismiss events (browser/unlocked desktop)',
-  grid.includes('EVENT_UI_DISMISS_AFTER_DELETE') && grid.includes("phase === 'quickEdit'")
+  grid.includes('EVENT_UI_DISMISS_AFTER_DELETE') && grid.includes("phase === 'immediate'")
+)
+assert(
+  'CalendarGrid delete dismiss does not clear quickEdit',
+  !grid.includes("phase === 'quickEdit'")
 )
 assert(
   'detail X clears detail only (clearEventDetail)',

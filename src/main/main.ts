@@ -62,6 +62,7 @@ import {
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   EMBEDDED_FOOTER_HINT_ACTIONS,
+  EMBEDDED_RELOAD_CHROME_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../shared/ipc'
 import {
@@ -158,11 +159,16 @@ function notifyStoreChanged(): void {
   } catch {
     /* ignore */
   }
-  // Push to Electron renderer so browser edits appear without restart.
+  // Push to Electron renderer + floating panels so QE/detail/editor stay in sync.
   try {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send('store-changed')
     }
+  } catch {
+    /* ignore */
+  }
+  try {
+    panelWindowManager?.broadcastStoreChanged()
   } catch {
     /* ignore */
   }
@@ -351,7 +357,8 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
     !EMBEDDED_FLOATING_CHROME_ACTIONS.has(payload.action) &&
     !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action) &&
     !EMBEDDED_AUTH_CHROME_ACTIONS.has(payload.action) &&
-    !EMBEDDED_FOOTER_HINT_ACTIONS.has(payload.action)
+    !EMBEDDED_FOOTER_HINT_ACTIONS.has(payload.action) &&
+    !EMBEDDED_RELOAD_CHROME_ACTIONS.has(payload.action)
   ) {
     return
   }

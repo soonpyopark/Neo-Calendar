@@ -1,9 +1,6 @@
 import type { CalendarEvent } from '../../../shared/calendarTypes'
 import type { PanelKind, PanelWindowInit } from '../../../shared/panelWindows'
-import {
-  dispatchEventUiDismiss,
-  EVENT_UI_DISMISS_QUICK_EDIT_DELAY_MS
-} from './eventUiDismiss'
+import { dispatchEventUiDismiss } from './eventUiDismiss'
 import { eventToMutationPayload } from './eventMutation'
 
 function toDateKey(year: number, month: number, day: number): string {
@@ -52,15 +49,14 @@ export type RecurrenceCompletePanelRequest = {
   completed: boolean
 }
 
-/** Event UI panels dismissed after a successful delete (not settings/search/login). */
+/** Event UI panels closed after a successful delete (quickEdit stays and refreshes). */
 export const PANELS_TO_CLOSE_AFTER_EVENT_DELETE = [
   'eventDetail',
-  'eventEditor',
-  'quickEdit'
-] as const satisfies ReadonlyArray<Exclude<PanelKind, 'recurrenceScope'>>
+  'eventEditor'
+] as const satisfies ReadonlyArray<Exclude<PanelKind, 'recurrenceScope' | 'quickEdit'>>
 
-/** Closed first on delete success; quickEdit closes last so cancel can keep working in QE. */
-const PANELS_BEFORE_QUICK_EDIT_ON_DELETE = [
+/** Closed on delete success; quickEdit stays open and updates via store-changed. */
+const PANELS_CLOSED_ON_EVENT_DELETE = [
   'recurrenceScope',
   'eventEditor',
   'eventDetail'
@@ -69,7 +65,7 @@ const PANELS_BEFORE_QUICK_EDIT_ON_DELETE = [
 export type RecurrenceDeletePanelRequest = {
   eventId: string
   occurrenceDate: string
-  /** Sibling panels to close after a successful delete. Defaults to all event UI panels. */
+  /** Sibling panels to close after a successful delete. Defaults to detail + editor. */
   closePanels?: Array<Exclude<PanelKind, 'recurrenceScope'>>
 }
 
@@ -79,9 +75,10 @@ export function blockPanelOutsideClose(ms = 400): void {
 }
 
 /**
- * After a successful delete: close detail/editor/scope first, then quickEdit last.
- * Floating panels: sequenced in the main process (renderer timers die with the caller panel).
- * Inline overlays (browser): CustomEvent phases in this window.
+ * After a successful delete: close detail/editor/scope. Keep quickEdit open so the list
+ * can refresh via store-changed.
+ * Floating panels: close slots in the main process (renderer timers die with the caller).
+ * Inline overlays (browser): CustomEvent clears local detail/editor state.
  * Cancel paths must not call this — quickEdit should stay available.
  */
 export function closePanelsAfterEventDelete(): void {
@@ -93,17 +90,10 @@ export function closePanelsAfterEventDelete(): void {
   if (typeof closeInMain === 'function') {
     closeInMain()
   } else {
-    for (const kind of PANELS_BEFORE_QUICK_EDIT_ON_DELETE) {
+    for (const kind of PANELS_CLOSED_ON_EVENT_DELETE) {
       window.neoCalendar.closePanelSlot?.(kind)
     }
-    window.neoCalendar.closePanelSlot?.('quickEdit')
-    window.neoCalendar.closeQuickEditWindow?.()
   }
-
-  // Browser inline quickEdit — schedule in this window (CalendarGrid listens).
-  window.setTimeout(() => {
-    dispatchEventUiDismiss('quickEdit')
-  }, EVENT_UI_DISMISS_QUICK_EDIT_DELAY_MS)
 }
 
 /** Opens a floating recurrence-scope panel. Returns false when unavailable (use inline). */

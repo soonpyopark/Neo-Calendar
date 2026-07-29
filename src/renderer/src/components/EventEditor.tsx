@@ -441,6 +441,16 @@ export function EventEditor({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [open, handleCloseRequest]);
 
+  // Floating panel: outside-click in main asks us to save-if-dirty then close.
+  useEffect(() => {
+    if (!open || !isFloating) return;
+    const api = window.neoCalendar;
+    if (!api?.onPanelRequestDismiss) return;
+    return api.onPanelRequestDismiss(() => {
+      handleCloseRequest();
+    });
+  }, [open, isFloating, handleCloseRequest]);
+
   if (!open) return null;
 
   const applyAttachmentResult = (updated) => {

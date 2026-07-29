@@ -326,12 +326,14 @@ export class DesktopModeController {
     const win = this.getWindow()
     if (!win || win.isDestroyed()) return
 
+    // Set desktop before commitFootprint — otherwise launchMode is persisted as the
+    // controller default (`window`) and the next reboot/auto-start restores window mode.
+    this.mode = 'desktop'
+    this.interactionSuspended = true
     const footprint = this.commitFootprint(bounds, {
       persist: true,
       updatePreferred: options.updatePreferred !== false
     })
-    this.mode = 'desktop'
-    this.interactionSuspended = true
     this.armModeSwitchGate(250)
 
     clearWallpaperPin(win, footprint)

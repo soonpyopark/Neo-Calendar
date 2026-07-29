@@ -30,7 +30,7 @@
       "source": "seed"
     },
     "widget": {
-      "launchMode": "window",
+      "launchMode": "desktop",
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
@@ -52,7 +52,7 @@
         "top": 0.05
       },
       "displayPlacement": {
-        "displayId": 1914067931,
+        "displayId": 2693925250,
         "offsetX": 610,
         "offsetY": 10,
         "width": 1300,
@@ -131,5 +131,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-28T14:57:25.713Z"
+  "updatedAt": "2026-07-29T05:30:56.141Z"
 }

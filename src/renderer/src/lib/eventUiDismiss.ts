@@ -8,7 +8,7 @@
  * Contract:
  * - Delete CANCEL must not call dismissAfterEventDelete (detail + quickEdit stay)
  * - Detail X closes detail only (quickEdit stays)
- * - Delete SUCCESS: detail/editor/scope first, then quickEdit last
+ * - Delete SUCCESS: detail/editor/scope close; quickEdit stays and refreshes via store-changed
  */
 
 export const EVENT_UI_DISMISS_AFTER_DELETE = 'neo-dismiss-event-ui-after-delete'
@@ -19,7 +19,7 @@ export type EventUiDismissDetail = {
   phase: EventUiDismissPhase
 }
 
-/** Pause so detail/editor can unmount before quickEdit (visible order in browser). */
+/** @deprecated QuickEdit is no longer closed after delete; kept for type/compat only. */
 export const EVENT_UI_DISMISS_QUICK_EDIT_DELAY_MS = 180
 
 export function dispatchEventUiDismiss(phase: EventUiDismissPhase): void {

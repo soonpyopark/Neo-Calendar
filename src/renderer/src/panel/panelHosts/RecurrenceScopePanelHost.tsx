@@ -25,7 +25,7 @@ function closeThisPanel(): void {
 }
 
 function closeAfterDelete(): void {
-  // Detail → then quickEdit (helper); this scope slot is included in that order.
+  // Close detail/editor/scope; keep quickEdit (store-changed refreshes the list).
   closePanelsAfterEventDelete()
 }
 

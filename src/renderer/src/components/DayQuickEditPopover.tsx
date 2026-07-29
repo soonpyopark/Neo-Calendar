@@ -490,6 +490,7 @@ export function DayQuickEditPopover({
       prevCount !== nextCount ||
       selectedEvent.completed !== live.completed ||
       selectedEvent.calendarId !== live.calendarId ||
+      selectedEvent.title !== live.title ||
       prevTags !== nextTags
     ) {
       setSelectedEvent(live)
@@ -506,6 +507,7 @@ export function DayQuickEditPopover({
     if (
       live.completed !== selectedEvent.completed
       || live.calendarId !== selectedEvent.calendarId
+      || live.title !== selectedEvent.title
       || (live.tagIds ?? []).join('\0') !== (selectedEvent.tagIds ?? []).join('\0')
       || live.markerShape !== selectedEvent.markerShape
       || JSON.stringify(live.links ?? []) !== JSON.stringify(selectedEvent.links ?? [])

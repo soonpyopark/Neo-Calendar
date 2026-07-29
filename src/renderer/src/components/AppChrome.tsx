@@ -101,9 +101,13 @@ export function AppChrome({
               'app-chrome-no-drag whitespace-nowrap border-0 bg-transparent p-0 text-[22px] tracking-tight text-gcal-muted transition-colors hover:text-gcal-blue',
               !loggedIn && 'cursor-not-allowed opacity-40 hover:text-gcal-muted'
             )}
-            title={loggedIn ? '새로고침' : '로그인 후 사용할 수 있습니다'}
+            captureOnHover={captureOnHover}
+            data-toolbar-action={CHROME_TOOLBAR_ACTIONS.reload}
+            title={loggedIn ? '더블클릭하여 새로고침' : '로그인 후 사용할 수 있습니다'}
             aria-label="새로고침"
-            onClick={() => {
+            onDoubleClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
               if (!loggedIn) {
                 onLoginRequired?.()
                 return

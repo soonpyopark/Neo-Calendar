@@ -104,7 +104,7 @@ export class PanelWindowManager {
       this.blockOutsideClose(duration)
     })
 
-    // Sequenced in main so closing the calling panel does not cancel the delayed quickEdit close.
+    // Close detail/editor/scope after delete; keep quickEdit open (store-changed refreshes it).
     ipcMain.on('panel-close-after-event-delete', () => {
       this.closeAfterEventDelete()
     })
@@ -329,17 +329,26 @@ export class PanelWindowManager {
   }
 
   /**
-   * Delete success: close scope/editor/detail immediately, then quickEdit last.
-   * Must run in the main process — renderer setTimeout dies when the caller panel closes.
+   * Delete success: close scope/editor/detail. Keep quickEdit open — it refreshes via store-changed.
+   * Must run in the main process — renderer timers die when the caller panel closes.
    */
   closeAfterEventDelete(): void {
     this.blockOutsideClose(500)
     for (const slot of ['recurrenceScope', 'eventEditor', 'eventDetail'] as const) {
       this.closeSlot(slot)
     }
-    setTimeout(() => {
-      this.closeSlot('quickEdit')
-    }, 180)
+  }
+
+  /** Notify all floating panel renderers that the calendar store mutated. */
+  broadcastStoreChanged(): void {
+    for (const entry of this.entriesBySlot.values()) {
+      if (!isWinAlive(entry.win)) continue
+      try {
+        entry.win.webContents.send('store-changed')
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   isOpen(): boolean {
@@ -379,6 +388,24 @@ export class PanelWindowManager {
   }
 
   closeAll(): void {
+    const editor = this.entriesBySlot.get('eventEditor')
+    if (editor && isWinAlive(editor.win)) {
+      this.blockOutsideClose(900)
+      for (const slot of Array.from(this.entriesBySlot.keys())) {
+        if (slot !== 'eventEditor') this.closeSlot(slot)
+      }
+      try {
+        editor.win.webContents.send('panel-request-dismiss')
+      } catch {
+        this.closeSlot('eventEditor')
+        return
+      }
+      // Fallback if renderer never closes (hung save / no listener).
+      setTimeout(() => {
+        if (this.entriesBySlot.has('eventEditor')) this.closeSlot('eventEditor')
+      }, 1200)
+      return
+    }
     for (const slot of Array.from(this.entriesBySlot.keys())) {
       this.closeSlot(slot)
     }
@@ -606,6 +633,23 @@ export class PanelWindowManager {
     if (insideAnyPanel) return
 
     this.lastOutsideCloseAt = now
+
+    // Event editor: ask renderer to save-if-dirty then close (do not destroy cold).
+    // Do not force-close on a timer — recurring edit may open a scope dialog and stay open.
+    const editor = this.entriesBySlot.get('eventEditor')
+    if (editor && isWinAlive(editor.win)) {
+      this.blockOutsideClose(900)
+      for (const slot of Array.from(this.entriesBySlot.keys())) {
+        if (slot !== 'eventEditor') this.closeSlot(slot)
+      }
+      try {
+        editor.win.webContents.send('panel-request-dismiss')
+      } catch {
+        this.closeSlot('eventEditor')
+      }
+      return
+    }
+
     for (const slot of Array.from(this.entriesBySlot.keys())) {
       this.closeSlot(slot)
     }

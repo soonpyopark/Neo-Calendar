@@ -125,6 +125,15 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('panel-route', init) as ReturnType<NeoCalendarApi['routePanelWindow']>,
   resizePanelWindow: (size) =>
     ipcRenderer.invoke('panel-resize', size) as ReturnType<NeoCalendarApi['resizePanelWindow']>,
+  onPanelRequestDismiss: (listener: () => void) => {
+    const handler = (): void => {
+      listener()
+    }
+    ipcRenderer.on('panel-request-dismiss', handler)
+    return () => {
+      ipcRenderer.removeListener('panel-request-dismiss', handler)
+    }
+  },
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

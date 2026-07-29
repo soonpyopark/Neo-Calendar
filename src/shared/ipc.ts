@@ -114,7 +114,9 @@ export const CHROME_TOOLBAR_ACTIONS = {
   exportPdf: 'export-pdf',
   enterDesktop: 'enter-desktop',
   enterWindow: 'enter-window',
-  authToggle: 'auth-toggle'
+  authToggle: 'auth-toggle',
+  /** App name double-click → full reload (WorkerW embedded). */
+  reload: 'reload'
 } as const
 
 /** Header actions that open floating panels while WorkerW-embedded. */
@@ -138,6 +140,16 @@ export const EMBEDDED_EXPORT_CHROME_ACTIONS = new Set<string>([
 /** Login / logout while WorkerW-embedded. */
 export const EMBEDDED_AUTH_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.authToggle
+])
+
+/** App-name reload while WorkerW-embedded (requires OS double-click). */
+export const EMBEDDED_RELOAD_CHROME_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.reload
+])
+
+/** Toolbar actions that fire only on WM_LBUTTONDBLCLK while embedded. */
+export const EMBEDDED_DOUBLE_CLICK_ACTIONS = new Set<string>([
+  CHROME_TOOLBAR_ACTIONS.reload
 ])
 
 /** Footer hint prev/pause/play/next while WorkerW-embedded. */
@@ -218,13 +230,18 @@ export type NeoCalendarApi = {
    */
   blockPanelOutsideClose: (ms?: number) => void
   /**
-   * Delete success: close detail/editor/scope, then quickEdit last (main-process timed).
+   * Delete success: close detail/editor/scope; keep quickEdit (refreshes via store-changed).
    * Safe to call from a panel that is about to close.
    */
   closeAfterEventDelete: () => void
   routePanelWindow: (init: PanelWindowInit) => Promise<boolean>
   /** Shrink a floating panel BrowserWindow to fit its content (keeps x/y). */
   resizePanelWindow: (size: { width: number; height: number }) => Promise<boolean>
+  /**
+   * Floating panel: main asks the renderer to dismiss itself (save-if-dirty for eventEditor).
+   * Outside-click uses this instead of destroying the window cold.
+   */
+  onPanelRequestDismiss: (listener: () => void) => () => void
   /** Main → renderer: open editor/detail after floating quick edit defers. */
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => () => void
   /** Main → renderer: run period toolbar action after embedded click unlock. */
