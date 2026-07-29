@@ -19,6 +19,7 @@ type User32FocusApi = {
 }
 
 const HWND_TOPMOST = -1
+const HWND_NOTOPMOST = -2
 const SWP_NOMOVE = 0x0002
 const SWP_NOSIZE = 0x0001
 const SWP_NOACTIVATE = 0x0010
@@ -102,6 +103,42 @@ export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined):
     user32.BringWindowToTop(hwnd)
   } catch (error) {
     console.warn('[focus] native panel raise failed', error)
+  }
+}
+
+/**
+ * Step a panel out of the topmost band so another app's window (browser, attachment
+ * viewer) can open above it. Pairs with {@link raiseFloatingPanelWindow}, which is
+ * called again as soon as the user returns to the panel.
+ */
+export function lowerFloatingPanelWindow(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+
+  try {
+    win.setAlwaysOnTop(false)
+  } catch (error) {
+    console.warn('[focus] panel alwaysOnTop(false) failed', error)
+  }
+
+  if (process.platform !== 'win32') return
+  const user32 = getUser32()
+  if (!user32) return
+
+  try {
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    if (hwnd === 0n) return
+    // raiseFloatingPanelWindow set WS_EX_TOPMOST natively — clear it the same way.
+    user32.SetWindowPos(
+      hwnd,
+      HWND_NOTOPMOST,
+      0,
+      0,
+      0,
+      0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    )
+  } catch (error) {
+    console.warn('[focus] native panel lower failed', error)
   }
 }
 

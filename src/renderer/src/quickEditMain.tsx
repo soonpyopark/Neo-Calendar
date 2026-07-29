@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AppDialogProvider } from './components/AppDialogProvider'
+import { AttachmentViewerProvider } from './components/AttachmentViewerProvider'
 import { QuickEditWindowApp } from './components/QuickEditWindowApp'
 import { installTextInputFocusBridge } from './lib/textInputFocus'
 import { bootstrapPanelWindowTheme } from './lib/colorScheme'
@@ -20,7 +21,9 @@ installTextInputFocusBridge()
 createRoot(container).render(
   <StrictMode>
     <AppDialogProvider>
-      <QuickEditWindowApp />
+      <AttachmentViewerProvider>
+        <QuickEditWindowApp />
+      </AttachmentViewerProvider>
     </AppDialogProvider>
   </StrictMode>
 )

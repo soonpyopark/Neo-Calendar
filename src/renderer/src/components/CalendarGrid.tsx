@@ -120,6 +120,7 @@ import {
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
   todayBtnClass,
+  todayIconBtnClass,
   viewModeIconBtnActiveClass,
   viewModeIconBtnClass,
   yearNavBtnClass
@@ -2359,21 +2360,6 @@ export function CalendarGrid({
               className={cn(
                 desktopModeIconBtnClass,
                 softBlueIconBtnClass,
-                !canEdit && LOGIN_MUTED_CLASS
-              )}
-              captureOnHover={captureToolbarOnHover}
-              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
-              onClick={openDayListPreview}
-              aria-label="세로보기"
-              title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
-            >
-              <PortraitPreviewIcon />
-            </InteractionUI>
-            <InteractionUI
-              as="button"
-              className={cn(
-                desktopModeIconBtnClass,
-                softBlueIconBtnClass,
                 eventsHidden && softBlueIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
@@ -2414,6 +2400,17 @@ export function CalendarGrid({
               }
             >
               <HideCompletedCheckIcon checked={completedHidden} />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(todayIconBtnClass, !canEdit && LOGIN_MUTED_CLASS)}
+              captureOnHover={captureToolbarOnHover}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
+              onClick={openDayListPreview}
+              aria-label="세로보기"
+              title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
+            >
+              <PortraitPreviewIcon />
             </InteractionUI>
           </div>
         </div>
@@ -2624,12 +2621,9 @@ export function CalendarGrid({
           month={month}
           eventsHidden={eventsHidden}
           completedHidden={completedHidden}
+          shortcutsSuspended={Boolean(editor)}
           onOpenDay={(dayKey) => {
-            setDayListPreviewOpen(false)
-            const date = parseDateKeyLocal(dayKey) ?? parseDateKey(dayKey)
-            if (!date) return
-            setViewDate(date)
-            openQuickEditFromDate(date)
+            openEventEditor(null, { defaultDate: dayKey })
           }}
           onClose={() => setDayListPreviewOpen(false)}
         />

@@ -7,27 +7,25 @@ import { usePanelRouter, usePanelTheme } from '../usePanelEventHelpers'
 type Init = Extract<PanelWindowInit, { kind: 'dayListPreview' }>
 
 export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement | null {
-  const { closePanel } = usePanelRouter()
+  const { closePanel, routePanel } = usePanelRouter()
   const { store, loading } = useCalendarStore()
   usePanelTheme(store.settings, loading)
 
   const eventsHidden = Boolean(store.settings.viewOptions.eventsHidden)
 
-  // Double-click a date: hand the day to a quick edit panel, then close this one.
-  const openDayQuickEdit = useCallback(
+  // Double-click a date: open a centered editor for a new event and keep this panel open.
+  // The saved event lands here through the main process `store-changed` broadcast.
+  const addEventOnDay = useCallback(
     (dayKey: string): void => {
-      void (async () => {
-        await window.neoCalendar.routePanelWindow?.({
-          kind: 'quickEdit',
-          dateKey: dayKey,
-          viewMode: 'month',
-          eventsHidden,
-          anchor: null
-        })
-        closePanel()
-      })()
+      routePanel({
+        kind: 'eventEditor',
+        eventId: null,
+        defaultDate: dayKey,
+        occurrenceDate: dayKey,
+        returnQuickEdit: null
+      })
     },
-    [closePanel, eventsHidden]
+    [routePanel]
   )
 
   if (loading) return null
@@ -42,7 +40,7 @@ export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement 
         month={init.month}
         eventsHidden={eventsHidden}
         completedHidden={Boolean(store.settings.viewOptions.completedHidden)}
-        onOpenDay={openDayQuickEdit}
+        onOpenDay={addEventOnDay}
         onClose={closePanel}
       />
     </div>

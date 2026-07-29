@@ -1,6 +1,10 @@
 import { BrowserWindow, ipcMain, screen, shell } from 'electron'
 import { join } from 'node:path'
-import { focusWindowForTextInput, raiseFloatingPanelWindow } from './windowFocus'
+import {
+  focusWindowForTextInput,
+  lowerFloatingPanelWindow,
+  raiseFloatingPanelWindow
+} from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
 import { isNativeDialogOpen } from './nativeDialogGuard'
 import { getWindowDipScreenBounds } from './wallpaper'
@@ -49,6 +53,12 @@ function winBounds(win: BrowserWindow): { x: number; y: number; width: number; h
 
 type PanelSlot = PanelKind
 
+/**
+ * Panels that only the user dismisses (X / Esc). The day-list preview is a reading
+ * surface: it stays put while links, attachments and editors are opened from it.
+ */
+const EXPLICIT_CLOSE_ONLY_SLOTS = new Set<PanelSlot>(['dayListPreview'])
+
 type PanelEntry = {
   slot: PanelSlot
   win: BrowserWindow
@@ -72,6 +82,8 @@ type PanelWindowManagerOptions = {
   isWorkerEmbedded?: () => boolean
   /** Calendar footprint in screen DIP (locked bounds when WorkerW-embedded). */
   getMainFootprint?: () => WidgetBounds | null
+  /** True when the topmost window at the click point belongs to another app. */
+  isForeignAppAtPoint?: (pt: ScreenPoint) => boolean
 }
 
 export class PanelWindowManager {
@@ -81,6 +93,8 @@ export class PanelWindowManager {
   private unsubscribeOutside: (() => void) | null = null
   private outsideBlockedUntil = 0
   private lastOutsideCloseAt = 0
+  /** A panel handed a link / attachment to another app — see {@link notePanelExternalOpen}. */
+  private awaitingReturnFromExternalApp = false
 
   constructor(
     private readonly getMainWindow: () => WallpaperBrowserWindow | null,
@@ -301,7 +315,12 @@ export class PanelWindowManager {
   }
 
   private notifyPanelStackChanged(): void {
-    this.options.onPanelStackChanged?.(this.entriesBySlot.size > 0)
+    // The day-list preview can stay open for a long time; it must not shield the
+    // calendar's mouse handling the way a transient popover does.
+    const hasBlockingPanel = Array.from(this.entriesBySlot.keys()).some(
+      (slot) => !EXPLICIT_CLOSE_ONLY_SLOTS.has(slot)
+    )
+    this.options.onPanelStackChanged?.(hasBlockingPanel)
   }
 
   /** Remove slot tracking and close the window without relying on `closed` cleanup. */
@@ -326,6 +345,43 @@ export class PanelWindowManager {
   /** Ignore global outside-clicks for a short grace (modal dismiss / panel swap). */
   blockOutsideClose(ms = OUTSIDE_CLOSE_GRACE_MS): void {
     this.outsideBlockedUntil = Math.max(this.outsideBlockedUntil, Date.now() + ms)
+  }
+
+  /**
+   * A panel opened a link / attachment in another app (browser, viewer, …).
+   * Clicks in that app must not dismiss the panel the user came from — it stays
+   * until they click back on the calendar or the desktop.
+   */
+  notePanelExternalOpen(): void {
+    if (this.entriesBySlot.size === 0) return
+    this.awaitingReturnFromExternalApp = true
+    // Panels sit in the topmost band; step aside so the viewer / browser opens above.
+    for (const entry of this.entriesBySlot.values()) {
+      lowerFloatingPanelWindow(entry.win)
+    }
+  }
+
+  /** Back on a panel: retake the topmost band the external app borrowed. */
+  private restoreTopMostPanels(): void {
+    for (const entry of this.entriesBySlot.values()) {
+      raiseFloatingPanelWindow(entry.win)
+    }
+  }
+
+  /**
+   * True while a click belongs to the app a panel just handed a link to.
+   * Clicking anything of ours clears the wait so normal dismissal resumes.
+   */
+  shouldKeepPanelsForForeignClick(pt: ScreenPoint): boolean {
+    if (!this.awaitingReturnFromExternalApp) return false
+    if (this.entriesBySlot.size === 0) {
+      this.awaitingReturnFromExternalApp = false
+      return false
+    }
+    if (this.options.isForeignAppAtPoint?.(pt)) return true
+    this.awaitingReturnFromExternalApp = false
+    this.restoreTopMostPanels()
+    return false
   }
 
   /**
@@ -387,11 +443,15 @@ export class PanelWindowManager {
     return false
   }
 
+  /** Mode switches / re-embed: tear down panels except the ones only the user closes. */
   closeAll(): void {
+    const dismissableSlots = Array.from(this.entriesBySlot.keys()).filter(
+      (slot) => !EXPLICIT_CLOSE_ONLY_SLOTS.has(slot)
+    )
     const editor = this.entriesBySlot.get('eventEditor')
     if (editor && isWinAlive(editor.win)) {
       this.blockOutsideClose(900)
-      for (const slot of Array.from(this.entriesBySlot.keys())) {
+      for (const slot of dismissableSlots) {
         if (slot !== 'eventEditor') this.closeSlot(slot)
       }
       try {
@@ -406,7 +466,7 @@ export class PanelWindowManager {
       }, 1200)
       return
     }
-    for (const slot of Array.from(this.entriesBySlot.keys())) {
+    for (const slot of dismissableSlots) {
       this.closeSlot(slot)
     }
   }
@@ -436,6 +496,10 @@ export class PanelWindowManager {
     // Block the outside-click listener on this same mousedown (day-dblclick opens then
     // handleOutsideClick would immediately close before the panel is shown).
     this.outsideBlockedUntil = Date.now() + OUTSIDE_CLOSE_GRACE_MS
+    if (this.awaitingReturnFromExternalApp) {
+      this.awaitingReturnFromExternalApp = false
+      this.restoreTopMostPanels()
+    }
     this.beforeOpenSlot(slot)
     this.lastMainWindow = mainWindow
     this.ensureOutsideListener()
@@ -529,6 +593,12 @@ export class PanelWindowManager {
       )
     })
 
+    win.on('focus', () => {
+      if (!this.awaitingReturnFromExternalApp) return
+      this.awaitingReturnFromExternalApp = false
+      this.restoreTopMostPanels()
+    })
+
     win.once('closed', () => {
       // Fallback if the window is destroyed without evictSlot (e.g. OS close).
       if (this.entriesBySlot.get(slot)?.webContentsId === webContentsId) {
@@ -608,6 +678,7 @@ export class PanelWindowManager {
   private stopOutsideListener(): void {
     this.unsubscribeOutside?.()
     this.unsubscribeOutside = null
+    this.awaitingReturnFromExternalApp = false
   }
 
   private handleOutsideClick(pt: ScreenPoint): void {
@@ -633,14 +704,20 @@ export class PanelWindowManager {
     // Click on any floating panel — keep all panels open (e.g. detail over desktop, QE stays).
     if (insideAnyPanel) return
 
+    // Working in the app a panel just opened a link / attachment in.
+    if (this.shouldKeepPanelsForForeignClick(pt)) return
+
     this.lastOutsideCloseAt = now
+    const dismissableSlots = Array.from(this.entriesBySlot.keys()).filter(
+      (slot) => !EXPLICIT_CLOSE_ONLY_SLOTS.has(slot)
+    )
 
     // Event editor: ask renderer to save-if-dirty then close (do not destroy cold).
     // Do not force-close on a timer — recurring edit may open a scope dialog and stay open.
     const editor = this.entriesBySlot.get('eventEditor')
     if (editor && isWinAlive(editor.win)) {
       this.blockOutsideClose(900)
-      for (const slot of Array.from(this.entriesBySlot.keys())) {
+      for (const slot of dismissableSlots) {
         if (slot !== 'eventEditor') this.closeSlot(slot)
       }
       try {
@@ -651,7 +728,7 @@ export class PanelWindowManager {
       return
     }
 
-    for (const slot of Array.from(this.entriesBySlot.keys())) {
+    for (const slot of dismissableSlots) {
       this.closeSlot(slot)
     }
   }

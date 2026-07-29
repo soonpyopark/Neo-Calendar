@@ -40,6 +40,10 @@ export const actionBtnBase =
 export const todayBtnClass =
   'h-9 shrink-0 rounded border border-gcal-border bg-gcal-red-soft px-[18px] font-medium text-gcal-heading transition-colors hover:bg-[#fad2cf] dark:hover:bg-gcal-surface-2'
 
+/** 「오늘」 fill in the square icon geometry (세로보기). */
+export const todayIconBtnClass =
+  'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded border border-gcal-border bg-gcal-red-soft text-gcal-heading transition-colors hover:bg-[#fad2cf] dark:hover:bg-gcal-surface-2'
+
 export const headerShellClass =
   'relative z-20 flex shrink-0 flex-col gap-2 border-b border-gcal-border-light px-4 py-2 neo-mdc-chrome'
 

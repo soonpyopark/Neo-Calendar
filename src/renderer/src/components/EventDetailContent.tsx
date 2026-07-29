@@ -2,7 +2,7 @@ import type { ReactElement } from 'react'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import { resolveEventTags } from '../../../shared/mdcExport/eventTags.js'
 import { getEventLinks } from '../lib/eventLinks'
-import { openEventAttachment } from '../lib/eventAttachments'
+import { useOpenAttachment } from './AttachmentViewerProvider'
 import {
   formatEventScheduleParts,
   formatRepeatLabel,
@@ -68,6 +68,7 @@ export function EventDetailContent({
   tags = [],
   onTitleDoubleClick
 }: EventDetailContentProps): ReactElement {
+  const openAttachment = useOpenAttachment()
   const calendarColor = calendar?.color ?? event.color ?? '#039be5'
   const theme = getCalendarTheme(calendarColor)
   const schedule = formatEventScheduleParts(event, dayKey)
@@ -238,7 +239,7 @@ export function EventDetailContent({
                     title="첨부 파일 열기"
                     onClick={() => {
                       if (!eventId || !item?.id) return
-                      void openEventAttachment(eventId, item.id)
+                      void openAttachment(eventId, item.id)
                     }}
                   >
                     {item.name || '(파일)'}

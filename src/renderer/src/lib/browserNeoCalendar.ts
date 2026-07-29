@@ -8,6 +8,7 @@ import type {
   StoreSettings,
   TagRecord
 } from '../../../shared/calendarTypes'
+import { isImageAttachment } from '../../../shared/attachmentKinds'
 import { clearOfflineQueue, clearOfflineSnapshot } from './offlineStore'
 
 const TOKEN_KEY = 'neo-calendar-auth-token'
@@ -214,6 +215,44 @@ async function findEventOrThrow(eventId: string): Promise<CalendarEvent> {
   const found = store.events.find((e) => e.id === eventId)
   if (!found) throw new Error('일정을 찾을 수 없습니다.')
   return found
+}
+
+async function fetchAttachment(
+  eventId: string,
+  attachmentId: string
+): Promise<{ blob: Blob; filename: string }> {
+  const token = getToken()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  const res = await fetch(
+    `/api/events/${encodeURIComponent(eventId)}/attachments/${encodeURIComponent(attachmentId)}/file`,
+    { headers }
+  )
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`
+    try {
+      const data = (await res.json()) as { error?: string }
+      if (data?.error) message = data.error
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message)
+  }
+  const blob = await res.blob()
+  const disposition = res.headers.get('Content-Disposition') ?? ''
+  const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  const plainMatch = /filename="([^"]+)"/i.exec(disposition)
+  const filename = utfMatch ? decodeURIComponent(utfMatch[1]) : plainMatch?.[1] || 'attachment'
+  return { blob, filename }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result ?? ''))
+    reader.onerror = () => reject(reader.error ?? new Error('첨부 파일을 읽을 수 없습니다.'))
+    reader.readAsDataURL(blob)
+  })
 }
 
 async function downloadAuthenticated(
@@ -521,30 +560,7 @@ export function installBrowserNeoCalendar(): void {
         `/api/events/${encodeURIComponent(eventId)}/attachments/${encodeURIComponent(attachmentId)}`
       ),
     openEventAttachment: async (eventId, attachmentId) => {
-      const token = getToken()
-      const headers: Record<string, string> = {}
-      if (token) headers.Authorization = `Bearer ${token}`
-      const res = await fetch(
-        `/api/events/${encodeURIComponent(eventId)}/attachments/${encodeURIComponent(attachmentId)}/file`,
-        { headers }
-      )
-      if (!res.ok) {
-        let message = `HTTP ${res.status}`
-        try {
-          const data = (await res.json()) as { error?: string }
-          if (data?.error) message = data.error
-        } catch {
-          /* ignore */
-        }
-        throw new Error(message)
-      }
-      const blob = await res.blob()
-      const disposition = res.headers.get('Content-Disposition') ?? ''
-      const utfMatch = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
-      const plainMatch = /filename="([^"]+)"/i.exec(disposition)
-      const filename = utfMatch
-        ? decodeURIComponent(utfMatch[1])
-        : plainMatch?.[1] || 'attachment'
+      const { blob, filename } = await fetchAttachment(eventId, attachmentId)
       const url = URL.createObjectURL(blob)
       try {
         const a = document.createElement('a')
@@ -557,6 +573,24 @@ export function installBrowserNeoCalendar(): void {
         a.remove()
       } finally {
         window.setTimeout(() => URL.revokeObjectURL(url), 30_000)
+      }
+    },
+    readEventAttachmentImage: async (eventId, attachmentId) => {
+      const event = await findEventOrThrow(eventId)
+      const attachments = event.attachments ?? []
+      const meta = attachments.find((item) => item.id === attachmentId)
+      if (!isImageAttachment(meta)) return { ok: false as const, reason: 'not-image' as const }
+      const { blob, filename } = await fetchAttachment(eventId, attachmentId)
+      // Data URL instead of a blob URL: the page CSP allows `img-src data:` only.
+      const dataUrl = await blobToDataUrl(blob)
+      return {
+        ok: true as const,
+        dataUrl,
+        name: meta?.name || filename,
+        mime: meta?.mime || blob.type || 'image/*',
+        images: attachments
+          .filter((item) => isImageAttachment(item))
+          .map((item) => ({ id: item.id, name: item.name }))
       }
     },
 

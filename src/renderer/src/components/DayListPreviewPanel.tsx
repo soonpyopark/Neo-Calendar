@@ -16,7 +16,7 @@ import {
 } from './CalendarHeaderIcons'
 import type { CalendarStoreSnapshot } from '../../../shared/calendarTypes'
 import { splitLinkifySegments } from '../lib/linkify'
-import { openEventAttachment } from '../lib/eventAttachments'
+import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import { cn } from '../lib/cn'
 import { useAppDialog } from './AppDialogProvider'
@@ -32,8 +32,13 @@ export type DayListPreviewPanelProps = {
   /** 눈 아이콘 — hide every event, keeping the date rows. */
   eventsHidden?: boolean
   completedHidden?: boolean
-  /** Double-click a date → close the preview and open that day's quick editor. */
+  /** Double-click a date → add a new event on that day (this preview stays open). */
   onOpenDay?: (dayKey: string) => void
+  /**
+   * Inline surface only: another overlay (the event editor) sits above this panel,
+   * so Esc / Ctrl+F must belong to that overlay instead of closing the preview.
+   */
+  shortcutsSuspended?: boolean
   onClose: () => void
 }
 
@@ -58,7 +63,6 @@ type PreviewDetailLine = {
 type PreviewEvent = {
   id: string
   color: string
-  completed: boolean
   /** Title line runs. */
   parts: TextPart[]
   /** 설명 / 링크 / 첨부 lines, rendered inside the boxed block. */
@@ -278,14 +282,17 @@ export function DayListPreviewPanel({
   eventsHidden = false,
   completedHidden = false,
   onOpenDay,
+  shortcutsSuspended = false,
   onClose
 }: DayListPreviewPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const { alert } = useAppDialog()
+  const openAttachmentInViewer = useOpenAttachment()
   // Month shown inside the panel; the props only seed it so the header arrows can browse.
   const [viewMonth, setViewMonth] = useState(() => year * 12 + month)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [fontScale, setFontScale] = useState(1)
+  const [todayRequest, setTodayRequest] = useState(0)
   const [findOpen, setFindOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
@@ -345,7 +352,6 @@ export function DayListPreviewPanel({
             return {
               id: event.id,
               color: event.color,
-              completed: event.completed,
               parts: split.parts,
               detailLines
             }
@@ -364,13 +370,9 @@ export function DayListPreviewPanel({
   const openAttachment = useCallback(
     async (attachment: AttachmentRef | null): Promise<void> => {
       if (!attachment) return
-      try {
-        await openEventAttachment(attachment.eventId, attachment.attachmentId)
-      } catch (error) {
-        await alert(error instanceof Error ? error.message : '첨부 파일을 열지 못했습니다.')
-      }
+      await openAttachmentInViewer(attachment.eventId, attachment.attachmentId)
     },
-    [alert]
+    [openAttachmentInViewer]
   )
 
   const stepFontScale = useCallback((delta: number): void => {
@@ -378,6 +380,12 @@ export function DayListPreviewPanel({
       const next = Math.round((prev + delta) * 10) / 10
       return Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, next))
     })
+  }, [])
+
+  const goToday = useCallback((): void => {
+    const now = new Date()
+    setViewMonth(now.getFullYear() * 12 + now.getMonth())
+    setTodayRequest((prev) => prev + 1)
   }, [])
 
   const closeFind = useCallback((): void => {
@@ -402,6 +410,16 @@ export function DayListPreviewPanel({
     scrollRef.current?.scrollTo({ top: 0 })
   }, [viewMonth])
 
+  // [오늘] — declared after the reset above so it wins when the month also changed.
+  useEffect(() => {
+    if (todayRequest === 0) return
+    const now = new Date()
+    const todayKey = toDateKey(now.getFullYear(), now.getMonth(), now.getDate())
+    scrollRef.current
+      ?.querySelector(`[data-day-key="${todayKey}"]`)
+      ?.scrollIntoView({ block: 'center' })
+  }, [rows, todayRequest])
+
   useEffect(() => {
     if (activeIndex >= matchCount) setActiveIndex(0)
   }, [activeIndex, matchCount])
@@ -422,7 +440,7 @@ export function DayListPreviewPanel({
   }, [activeIndex, findOpen, matchCount, rows])
 
   useEffect(() => {
-    if (!open) return
+    if (!open || shortcutsSuspended) return
     const onKeyDown = (event: KeyboardEvent): void => {
       if ((event.ctrlKey || event.metaKey) && !event.altKey && (event.key === 'f' || event.key === 'F')) {
         event.preventDefault()
@@ -440,7 +458,7 @@ export function DayListPreviewPanel({
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [closeFind, findOpen, onClose, open])
+  }, [closeFind, findOpen, onClose, open, shortcutsSuspended])
 
   if (!open) return null
 
@@ -494,6 +512,15 @@ export function DayListPreviewPanel({
                 title="이전 달"
               >
                 <ChevronLeftIcon />
+              </button>
+              <button
+                type="button"
+                className="day-list-preview-today"
+                onClick={goToday}
+                aria-label="오늘"
+                title="오늘"
+              >
+                오늘
               </button>
               <button
                 type="button"
@@ -648,15 +675,20 @@ export function DayListPreviewPanel({
                 const isSunday = row.dayOfWeek === 0 || row.isHoliday
                 const isWeekend = isSunday || row.dayOfWeek === 6
                 return (
-                  <div key={row.dayKey} className="day-list-preview-row">
+                  <div
+                    key={row.dayKey}
+                    className="day-list-preview-row"
+                    data-day-key={row.dayKey}
+                  >
                     <div
                       className={cn(
                         'day-list-preview-date',
                         isSunday && 'is-sunday',
                         !isSunday && row.dayOfWeek === 6 && 'is-saturday',
+                        isWeekend && 'is-weekend',
                         onOpenDay && 'is-openable'
                       )}
-                      title={onOpenDay ? '더블클릭: 퀵 편집기 열기' : undefined}
+                      title={onOpenDay ? '더블클릭: 이 날짜에 새 일정 추가' : undefined}
                       onDoubleClick={onOpenDay ? () => onOpenDay(row.dayKey) : undefined}
                     >
                       <HighlightedText parts={row.dateParts} activeIndex={activeIndex} />
@@ -666,12 +698,8 @@ export function DayListPreviewPanel({
                     >
                       {row.events.map((event) => (
                         <div key={event.id} className="day-list-preview-event">
-                          <p
-                            className={cn(
-                              'day-list-preview-line',
-                              event.completed && 'is-completed'
-                            )}
-                          >
+                          {/* 완료 표시는 내보내기와 마찬가지로 입히지 않는다 (인쇄물과 동일한 모습). */}
+                          <p className="day-list-preview-line">
                             <span
                               className="day-list-preview-dot"
                               style={{ backgroundColor: event.color }}
@@ -682,12 +710,7 @@ export function DayListPreviewPanel({
                             </span>
                           </p>
                           {event.detailLines.length ? (
-                            <div
-                              className={cn(
-                                'day-list-preview-details',
-                                event.completed && 'is-completed'
-                              )}
-                            >
+                            <div className="day-list-preview-details">
                               {event.detailLines.map((line, lineIndex) => (
                                 <p key={lineIndex} className="day-list-preview-detail-line">
                                   {line.attachment ? (

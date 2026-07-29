@@ -78,6 +78,40 @@ async function loadKoreanFontBuffer() {
   throw new Error('PDF 생성을 위한 한글 폰트를 찾을 수 없습니다.')
 }
 
+/** @type {Buffer | null} */
+let cachedKoreanBoldFont = null
+
+/**
+ * Bold Korean face — PDFKit has no synthetic bold, so 진하게 needs its own file.
+ * @returns {Promise<Buffer | null>} null when no bold font is installed (caller falls back).
+ */
+async function loadKoreanBoldFontBuffer() {
+  if (cachedKoreanBoldFont) return cachedKoreanBoldFont
+
+  const windir = process.env.WINDIR || 'C:\\Windows'
+  const candidates = [
+    join(windir, 'Fonts', 'malgunbd.ttf'),
+    join(windir, 'Fonts', 'gulim.ttc'),
+    join(process.cwd(), 'resources', 'fonts', 'NotoSansKR-Bold.otf'),
+    join(process.cwd(), 'fonts', 'NotoSansKR-Bold.otf')
+  ]
+
+  for (const path of candidates) {
+    try {
+      if (!existsSync(path)) continue
+      const buf = readFileSync(path)
+      if (buf.byteLength > 1000) {
+        cachedKoreanBoldFont = buf
+        return cachedKoreanBoldFont
+      }
+    } catch {
+      /* try next */
+    }
+  }
+
+  return null
+}
+
 function uint8FromBufferLike(value) {
   if (value instanceof ArrayBuffer) {
     return new Uint8Array(value);
@@ -134,14 +168,16 @@ const PDF_TEXT_GAP = 5;
 const PDF_CELL_PADDING = 4;
 const PDF_MIN_EVENT_BAR_HEIGHT = 10;
 const DAY_LIST_COLORS = {
-  headerBg: '#eef4df',
-  dateBg: '#f5f8eb',
-  weekendBg: '#fff0e5',
-  border: '#d9ddd2',
+  headerBg: '#deebd6',
+  dateBg: '#deebd6',
+  weekendBg: '#fff2cc',
+  border: '#a3af97',
+  /** 날짜/내용 머리글 + 평일 날짜·요일 글자. */
+  text: '#3a3858',
   saturday: '#174ea6',
   sunday: '#b3261e',
-  detailBg: '#f6f2fb',
-  detailBorder: '#ddd0ee',
+  detailBg: '#e5e0ec',
+  detailBorder: '#b9a3d6',
 };
 
 /** Padding inside the 설명/링크/첨부 box. */
@@ -159,7 +195,7 @@ function getDayListDayOfWeek(dayKey) {
 function getDayListDateColor(dayOfWeek, isHoliday = false) {
   if (dayOfWeek === 0 || isHoliday) return DAY_LIST_COLORS.sunday;
   if (dayOfWeek === 6) return DAY_LIST_COLORS.saturday;
-  return EXPORT_COLORS.heading;
+  return DAY_LIST_COLORS.text;
 }
 
 function getDayListBorder() {
@@ -723,7 +759,7 @@ async function buildExcelDayListBuffer(layout) {
   ;['날짜', '내용'].forEach((label, index) => {
     const cell = headerRow.getCell(index + 1);
     cell.value = label;
-    cell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: hexToArgb(EXPORT_COLORS.heading) } };
+    cell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: hexToArgb(DAY_LIST_COLORS.text) } };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
     cell.border = dayListBorder;
     cell.fill = {
@@ -754,7 +790,7 @@ async function buildExcelDayListBuffer(layout) {
     dateCell.font = {
       name: FONT_NAME,
       size: 10,
-      bold: isWeekend,
+      bold: true,
       color: { argb: hexToArgb(getDayListDateColor(dayOfWeek, isHoliday)) },
     };
     dateCell.alignment = { vertical: 'top', horizontal: 'center' };
@@ -762,7 +798,9 @@ async function buildExcelDayListBuffer(layout) {
     dateCell.fill = {
       type: 'pattern',
       pattern: 'solid',
-      fgColor: { argb: hexToArgb(DAY_LIST_COLORS.dateBg) },
+      fgColor: {
+        argb: hexToArgb(isWeekend ? DAY_LIST_COLORS.weekendBg : DAY_LIST_COLORS.dateBg),
+      },
     };
 
     const contentCell = excelRow.getCell(2);
@@ -825,6 +863,8 @@ async function buildExcelDayListBuffer(layout) {
 async function buildPdfDayListBuffer(layout) {
   const fontBuffer = await loadKoreanFontBuffer();
   const fontBytes = uint8FromBufferLike(fontBuffer);
+  const boldBuffer = await loadKoreanBoldFontBuffer();
+  const boldBytes = boldBuffer ? uint8FromBufferLike(boldBuffer) : fontBytes;
 
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
@@ -850,6 +890,7 @@ async function buildPdfDayListBuffer(layout) {
     doc.on('error', reject);
 
     doc.registerFont('Body', fontBytes);
+    doc.registerFont('Bold', boldBytes);
     doc.font('Body');
 
     const margin = 36;
@@ -883,16 +924,17 @@ async function buildPdfDayListBuffer(layout) {
       doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border)
         .rect(margin + dateColWidth, headerY, contentColWidth, headerHeight)
         .stroke();
-      doc.fillColor(EXPORT_COLORS.heading)
+      doc.font('Bold').fillColor(DAY_LIST_COLORS.text)
         .fontSize(10)
         .text('날짜', margin, headerY + 6, { width: dateColWidth, align: 'center', lineBreak: false });
-      doc.fillColor(EXPORT_COLORS.heading)
+      doc.fillColor(DAY_LIST_COLORS.text)
         .fontSize(10)
         .text('내용', margin + dateColWidth, headerY + 6, {
           width: contentColWidth,
           align: 'center',
           lineBreak: false,
         });
+      doc.font('Body');
       doc.restore();
       y = headerY + headerHeight;
     };
@@ -919,7 +961,10 @@ async function buildPdfDayListBuffer(layout) {
       const dayOfWeek = getDayListDayOfWeek(row.dayKey);
       const isHoliday = Boolean(row.isHoliday);
       const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 || isHoliday;
-      doc.fillColor(DAY_LIST_COLORS.dateBg).rect(margin, y, dateColWidth, rowHeight).fill();
+      // 휴일 / 토 / 일: 날짜칸도 내용칸과 같은 색으로 한 줄이 통째로 강조된다.
+      doc.fillColor(isWeekend ? DAY_LIST_COLORS.weekendBg : DAY_LIST_COLORS.dateBg)
+        .rect(margin, y, dateColWidth, rowHeight)
+        .fill();
       if (isWeekend) {
         doc.fillColor(DAY_LIST_COLORS.weekendBg)
           .rect(margin + dateColWidth, y, contentColWidth, rowHeight)
@@ -929,13 +974,16 @@ async function buildPdfDayListBuffer(layout) {
       doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border)
         .rect(margin + dateColWidth, y, contentColWidth, rowHeight)
         .stroke();
-      doc.fillColor(getDayListDateColor(dayOfWeek, isHoliday))
+      // 날짜는 평일까지 모두 진하게 — 내용 칸 본문과 구분되는 열 머리처럼 읽힌다.
+      doc.font('Bold')
+        .fillColor(getDayListDateColor(dayOfWeek, isHoliday))
         .fontSize(9)
         .text(row.dateLabel, margin + 4, y + rowPad, {
           width: dateColWidth - 8,
           align: 'center',
           lineBreak: false,
         });
+      doc.font('Body');
 
       let eventY = y + rowPad;
       for (const event of row.events) {

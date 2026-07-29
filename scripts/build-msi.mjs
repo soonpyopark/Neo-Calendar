@@ -7,8 +7,11 @@
  * 1) sync-version
  * 2) build desktop-hit helper + electron-vite build + electron-builder --win --dir → release/win-unpacked/
  * 3) stage into a no-space temp work dir (repo path has spaces; WiX Files Include splits on them)
- *    (+ .env with DATA_GO_KR_SERVICE_KEY)
+ *    (+ .env without any 공휴일 API key — the key never leaves the build machine)
  * 4) wix build Product.wxs → msi/Neo Desktop Calendar v{version}_YYMMDD_HHMMSS.msi
+ *
+ * 대한민국 공휴일은 커밋된 src/shared/seed/holidays-kr.json 을 그대로 번들한다.
+ * 갱신은 빌드와 분리된 수동 작업: npm run seed:holidays
  */
 
 import { execFileSync, execSync } from 'node:child_process'
@@ -111,121 +114,57 @@ function resolveAppIcon() {
   throw new Error('App icon (.ico) not found (expected build/icon.ico)')
 }
 
-function readEnvFile(dir) {
-  const envPath = path.join(dir, '.env')
-  if (!fs.existsSync(envPath)) {
-    return {}
-  }
-
-  /** @type {Record<string, string>} */
-  const result = {}
-  for (const line of fs.readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const idx = trimmed.indexOf('=')
-    if (idx <= 0) continue
-    const key = trimmed.slice(0, idx).trim()
-    let value = trimmed.slice(idx + 1).trim()
-    if (
-      (value.startsWith('"') && value.endsWith('"'))
-      || (value.startsWith("'") && value.endsWith("'"))
-    ) {
-      value = value.slice(1, -1)
-    }
-    if (!(key in result)) {
-      result[key] = value
-    }
-  }
-  return result
-}
-
-function readHolidayKeyFromSettings(settingsPath) {
-  if (!fs.existsSync(settingsPath)) {
-    return ''
-  }
-  try {
-    const raw = fs.readFileSync(settingsPath, 'utf8').replace(/^\uFEFF/, '')
-    const parsed = JSON.parse(raw)
-    const holidaysKr = parsed?.settings?.holidaysKr ?? parsed?.holidaysKr
-    if (holidaysKr?.rememberKey && String(holidaysKr?.serviceKey ?? '').trim()) {
-      return String(holidaysKr.serviceKey).trim()
-    }
-    if (String(holidaysKr?.serviceKey ?? '').trim()) {
-      return String(holidaysKr.serviceKey).trim()
-    }
-  } catch {
-    /* ignore */
-  }
-  return ''
-}
-
 /**
- * MSI 번들용 공휴일 API 키: `.env` → 로컬 settings.json (rememberKey) 순.
+ * 배포본에는 공휴일 API 키를 넣지 않는다 — 휴일은 3년치 시드로 이미 들어가 있고,
+ * 최신화가 필요한 사용자는 설정에서 본인 키로 동기화한다.
  */
-function resolveBuildHolidayServiceKey() {
-  const fileEnv = readEnvFile(ROOT)
-  const fromEnv = fileEnv.DATA_GO_KR_SERVICE_KEY ?? fileEnv.HOLIDAY_API_KEY
-  if (String(fromEnv ?? '').trim()) {
-    return { key: String(fromEnv).trim(), source: '.env' }
-  }
-
-  const candidates = [
-    path.join(ROOT, 'data', 'settings.json'),
-    path.join(ROOT, 'release', 'win-unpacked', 'data', 'settings.json')
-  ]
-
-  for (const settingsPath of candidates) {
-    const key = readHolidayKeyFromSettings(settingsPath)
-    if (key) {
-      return { key, source: path.relative(ROOT, settingsPath) }
-    }
-  }
-
-  return { key: '', source: '' }
+function stripHolidayKeyLines(content) {
+  const note = '# 공휴일 API 키는 배포본에 포함하지 않습니다 (필요하면 설정에서 직접 입력).'
+  let removed = 0
+  const lines = content.split(/\r?\n/).flatMap((line) => {
+    if (!/^\s*(DATA_GO_KR_SERVICE_KEY|HOLIDAY_API_KEY)\s*=/.test(line)) return [line]
+    removed += 1
+    return removed === 1 ? [note] : []
+  })
+  return { content: lines.join('\n'), removed }
 }
 
-function upsertEnvLine(content, key, value) {
-  const line = `${key}=${value}`
-  const pattern = new RegExp(`^${key}=.*$`, 'm')
-  if (pattern.test(content)) {
-    return content.replace(pattern, line)
-  }
-
-  const insertBlock = `\n# 공공데이터포털 특일 정보 API (대한민국 공휴일)\n${line}\n`
-  const markers = [
-    '\n# 공공데이터포털',
-    '\n# 데이터 폴더',
-    '\n# ---------------------------------------------------------------------------\n# HTTP'
-  ]
-  for (const marker of markers) {
-    const markerIndex = content.indexOf(marker)
-    if (markerIndex >= 0) {
-      return `${content.slice(0, markerIndex)}${insertBlock}${content.slice(markerIndex)}`
-    }
-  }
-
-  return `${content.trimEnd()}\n${insertBlock}`
-}
-
-function writeStagedEnv(stageDir, holidayKey) {
+function writeStagedEnv(stageDir) {
   const rootEnvPath = path.join(ROOT, '.env')
   const examplePath = path.join(ROOT, '.env.example')
   const targetPath = path.join(stageDir, '.env')
 
-  let content = ''
+  let raw = ''
   if (fs.existsSync(rootEnvPath)) {
-    content = fs.readFileSync(rootEnvPath, 'utf8')
+    raw = fs.readFileSync(rootEnvPath, 'utf8')
   } else if (fs.existsSync(examplePath)) {
-    content = fs.readFileSync(examplePath, 'utf8')
+    raw = fs.readFileSync(examplePath, 'utf8')
   }
 
-  if (holidayKey) {
-    content = upsertEnvLine(content, 'DATA_GO_KR_SERVICE_KEY', holidayKey)
+  const { content, removed } = stripHolidayKeyLines(raw)
+  if (/^\s*(DATA_GO_KR_SERVICE_KEY|HOLIDAY_API_KEY)\s*=\s*\S/m.test(content)) {
+    throw new Error('스테이징 .env 에 공휴일 API 키가 남아 있습니다 — 배포를 중단합니다.')
   }
-
   fs.writeFileSync(targetPath, content.replace(/\r?\n/g, '\r\n'), 'utf8')
   if (fs.existsSync(examplePath)) {
     fs.copyFileSync(examplePath, path.join(stageDir, '.env.example'))
+  }
+  return removed
+}
+
+/** 읽기 전용 — 어떤 휴일 데이터가 이 MSI 에 들어가는지 남긴다 (갱신은 하지 않음). */
+function logBundledHolidaySeed() {
+  const seedPath = path.join(ROOT, 'src', 'shared', 'seed', 'holidays-kr.json')
+  if (!fs.existsSync(seedPath)) {
+    log('holidays-kr seed 없음 — 첫 실행 시 휴일이 비어 있습니다 (npm run seed:holidays)')
+    return
+  }
+  try {
+    const events = JSON.parse(fs.readFileSync(seedPath, 'utf8')).events ?? []
+    const years = [...new Set(events.map((e) => String(e.startDate).slice(0, 4)))].sort()
+    log(`holidays-kr seed: ${events.length}건 (${years.join(', ')}) — 갱신: npm run seed:holidays`)
+  } catch (error) {
+    log(`holidays-kr seed 확인 실패: ${error.message ?? error}`)
   }
 }
 
@@ -277,17 +216,15 @@ function stageForMsi() {
     }
   }
 
-  const { key: holidayKey, source } = resolveBuildHolidayServiceKey()
-  writeStagedEnv(stageDir, holidayKey)
-  if (!holidayKey) {
-    throw new Error(
-      '대한민국 휴일 API 키가 없습니다. 프로젝트 루트 .env에 DATA_GO_KR_SERVICE_KEY를 넣거나 data/settings.json에 rememberKey+serviceKey를 저장한 뒤 다시 빌드하세요.'
-    )
-  }
+  const removedKeys = writeStagedEnv(stageDir)
+  log(
+    removedKeys > 0
+      ? `staged .env without holiday API key (${removedKeys} line(s) removed)`
+      : 'staged .env contains no holiday API key'
+  )
   // Do not ship data/ inside the MSI — first-launch writes then fail with access denied.
-  // Holiday key is applied from .env on first run.
+  // Holidays come from the bundled seed (resources/seed/holidays-kr.json) on first run.
   fs.rmSync(path.join(stageDir, 'data'), { recursive: true, force: true })
-  log(`included holiday API key in .env (first-run seed) from ${source}`)
   log(`staged: ${stageDir}`)
 }
 
@@ -346,6 +283,7 @@ function cleanupWorkDir() {
 function main() {
   ensureWix()
   run('node scripts/sync-version.mjs')
+  logBundledHolidaySeed()
   publishPortable()
   stageForMsi()
 

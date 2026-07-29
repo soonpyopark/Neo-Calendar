@@ -176,8 +176,8 @@ function assertDayListMultiDay() {
 
   const detail = byKey['2026-07-02'].events.find((e) => e.line.includes('하루 일정'))
   assert.ok(detail)
-  assert.ok(detail.line.includes('설명: 회의실 A'))
-  assert.ok(detail.line.includes('준비물 챙기기'))
+  // 여러 줄 설명은 라벨만 한 줄로 두고 본문을 다음 줄부터 들여쓴다.
+  assert.ok(detail.line.includes('설명:\n  회의실 A\n  준비물 챙기기'))
   assert.ok(detail.line.includes('링크: 회의 링크 — https://example.com/meet'))
   assert.ok(detail.line.includes('첨부: 자료.pdf'))
 }

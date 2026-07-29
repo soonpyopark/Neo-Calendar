@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs'
-import { HOLIDAYS_KR_CALENDAR_ID } from '../../shared/calendarDefaults'
+import { defaultHolidayYears, HOLIDAYS_KR_CALENDAR_ID } from '../../shared/calendarDefaults'
 import type {
   CalendarEvent,
   SyncHolidaysInput,
@@ -139,22 +139,25 @@ async function fetchFromApi(serviceKey: string, years: number[]): Promise<Calend
   return list
 }
 
-/** Seed `settings.holidaysKr.serviceKey` from `.env` when not already remembered. */
-export function applyHolidayKeyFromEnv(store: CalendarStore, serviceKey: string): boolean {
-  const key = serviceKey.trim()
-  if (!key) return false
+/**
+ * The API key never lives in settings on our behalf — it is a build-time input
+ * for the holiday seed only. Drops keys an older build injected from `.env`,
+ * leaving keys the user typed and saved themselves untouched.
+ */
+export function forgetEnvHolidayKey(store: CalendarStore, envServiceKey: string): boolean {
   const snap = store.getSnapshot()
   const hk = snap.settings.holidaysKr
-  if (hk.rememberKey && hk.serviceKey.trim()) return false
+  const stored = hk.serviceKey?.trim() ?? ''
+  if (!stored && !hk.rememberKey) return false
+
+  const envKey = envServiceKey.trim()
+  const fromEnv = hk.source === 'env' || (Boolean(envKey) && stored === envKey)
+  if (!fromEnv) return false
+
   store.patchStoreSettings({
-    holidaysKr: {
-      ...hk,
-      serviceKey: key,
-      rememberKey: true,
-      source: hk.source ?? 'env'
-    }
+    holidaysKr: { ...hk, serviceKey: '', rememberKey: false }
   })
-  console.log('[holidays-kr] Applied DATA_GO_KR_SERVICE_KEY into settings')
+  console.log('[holidays-kr] Removed env-injected service key from settings')
   return true
 }
 
@@ -172,9 +175,9 @@ export async function syncKoreanHolidays(
   let years = Array.isArray(body.years)
     ? body.years.filter((y) => Number.isFinite(y)).map((y) => Math.trunc(y))
     : []
+  // 기본 창은 번들 시드와 같은 "올해부터 3년" — 키 없이 동기화해도 시드가 잘리지 않는다.
   if (years.length === 0) {
-    const y = new Date().getFullYear()
-    years = [y - 1, y, y + 1]
+    years = defaultHolidayYears()
   }
 
   const seedEvents = loadSeedEvents()

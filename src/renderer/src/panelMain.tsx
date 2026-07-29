@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { AppDialogProvider } from './components/AppDialogProvider'
+import { AttachmentViewerProvider } from './components/AttachmentViewerProvider'
 import { PanelApp } from './panel/PanelApp'
 import { installTextInputFocusBridge } from './lib/textInputFocus'
 import { bootstrapPanelWindowTheme } from './lib/colorScheme'
@@ -21,7 +22,9 @@ createRoot(container).render(
   <StrictMode>
     <div className="neo-panel-shell h-screen w-screen overflow-hidden">
       <AppDialogProvider>
-        <PanelApp />
+        <AttachmentViewerProvider>
+          <PanelApp />
+        </AttachmentViewerProvider>
       </AppDialogProvider>
     </div>
   </StrictMode>

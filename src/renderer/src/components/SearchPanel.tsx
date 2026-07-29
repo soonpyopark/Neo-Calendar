@@ -8,7 +8,7 @@ import {
 import { getEventLinks } from '../lib/eventLinks'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import { formatTime24, isTimedEvent } from '../../../shared/mdcExport/eventBarFormat.js'
-import { openEventAttachment } from '../lib/eventAttachments'
+import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import {
   SEARCH_PAGE_SIZE_OPTIONS,
@@ -242,6 +242,7 @@ function SearchResourceDetail({
   detail: { type: 'links' | 'attachments'; event: CalendarEvent } | null
   onClose: () => void
 }): ReactElement | null {
+  const openAttachment = useOpenAttachment()
   if (!detail) return null
 
   const { type, event } = detail
@@ -312,7 +313,7 @@ function SearchResourceDetail({
                     disabled={!eventId || !item?.id}
                     onClick={() => {
                       if (!eventId || !item?.id) return
-                      void openEventAttachment(eventId, item.id)
+                      void openAttachment(eventId, item.id)
                     }}
                   >
                     <AttachGlyph className="shrink-0 text-sky-500" />

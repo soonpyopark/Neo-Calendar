@@ -195,6 +195,23 @@ export type DayDblClickLogPayload = {
   data?: Record<string, unknown>
 }
 
+/** One entry per image attachment of the event — lets the viewer page through them. */
+export type AttachmentImageEntry = {
+  id: string
+  name: string
+}
+
+export type AttachmentImageResult =
+  | {
+      ok: true
+      /** `data:` URL — renderer CSP allows `img-src data:` without extra origins. */
+      dataUrl: string
+      name: string
+      mime: string
+      images: AttachmentImageEntry[]
+    }
+  | { ok: false; reason: 'not-image' | 'too-large' }
+
 export type NeoCalendarApi = {
   setIgnoreMouse: (ignore: boolean, options?: SetIgnoreMouseOptions) => void
   getModeStatus: () => Promise<ModeStatus>
@@ -319,6 +336,11 @@ export type NeoCalendarApi = {
   addEventAttachments: (eventId: string) => Promise<CalendarEvent>
   removeEventAttachment: (eventId: string, attachmentId: string) => Promise<CalendarEvent>
   openEventAttachment: (eventId: string, attachmentId: string) => Promise<void>
+  /** Image attachment for the in-app viewer; non-images resolve to `{ ok: false }`. */
+  readEventAttachmentImage: (
+    eventId: string,
+    attachmentId: string
+  ) => Promise<AttachmentImageResult>
   createCalendar: (
     input: Partial<CalendarRecord> & { name: string; color: string }
   ) => Promise<CalendarRecord>

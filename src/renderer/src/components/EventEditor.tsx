@@ -29,11 +29,8 @@ import {
 } from '../lib/eventLinks'
 import { normalizeTagIds } from '../../../shared/mdcExport/eventTags.js'
 import { formatFileSize } from '../lib/formatFileSize'
-import {
-  addEventAttachments,
-  openEventAttachment,
-  removeEventAttachment
-} from '../lib/eventAttachments'
+import { addEventAttachments, removeEventAttachment } from '../lib/eventAttachments'
+import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import { isSaveShortcut } from '../lib/keyboard'
 import { InteractionUI } from './InteractionUI'
@@ -142,6 +139,7 @@ export function EventEditor({
 }: EventEditorProps) {
   const isFloating = surface === 'floating'
   const { alert, confirm } = useAppDialog()
+  const openAttachment = useOpenAttachment()
   const [title, setTitle] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
@@ -501,11 +499,7 @@ export function EventEditor({
 
   const handleOpenAttachment = async (attachmentId) => {
     if (!event?.id || !attachmentId) return;
-    try {
-      await openEventAttachment(event.id, attachmentId);
-    } catch (err) {
-      await alert(err instanceof Error ? err.message : '첨부 파일을 열지 못했습니다.');
-    }
+    await openAttachment(event.id, attachmentId);
   };
 
   const handleSubmit = (e) => {

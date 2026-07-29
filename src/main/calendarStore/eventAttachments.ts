@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   unlinkSync,
@@ -11,8 +12,10 @@ import {
 } from 'node:fs'
 import { basename, extname, join } from 'node:path'
 import { shell } from 'electron'
+import { isImageAttachment } from '../../shared/attachmentKinds'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../shared/calendarDefaults'
 import type { CalendarEvent, EventAttachment } from '../../shared/calendarTypes'
+import type { AttachmentImageResult } from '../../shared/ipc'
 import type { CalendarStore } from './CalendarStore'
 
 export const MAX_ATTACHMENTS_PER_EVENT = 10
@@ -164,6 +167,29 @@ export class EventAttachmentService {
     const { path } = this.resolveFilePath(eventId, attachmentId)
     const result = await shell.openPath(path)
     if (result) throw new Error(result)
+  }
+
+  /**
+   * Image bytes as a `data:` URL for the in-app viewer, plus the event's other
+   * images so the viewer can page through them without another round-trip.
+   */
+  readImage(eventId: string, attachmentId: string): AttachmentImageResult {
+    const { path, meta } = this.resolveFilePath(eventId, attachmentId)
+    if (!isImageAttachment(meta)) return { ok: false, reason: 'not-image' }
+    const bytes = readFileSync(path)
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) return { ok: false, reason: 'too-large' }
+
+    const mime = meta.mime && meta.mime.startsWith('image/') ? meta.mime : guessMime(extname(path))
+    const current = this.requireEditableEvent(eventId)
+    return {
+      ok: true,
+      dataUrl: `data:${mime};base64,${bytes.toString('base64')}`,
+      name: meta.name || basename(path),
+      mime,
+      images: (current.attachments ?? [])
+        .filter((item) => isImageAttachment(item))
+        .map((item) => ({ id: item.id, name: item.name }))
+    }
   }
 
   deleteAllForEvent(eventId: string): void {

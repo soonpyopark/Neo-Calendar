@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactElement } from 'react'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
-import { openEventAttachment } from '../lib/eventAttachments'
+import { useOpenAttachment } from './AttachmentViewerProvider'
 import { cn } from '../lib/cn'
 import type { CalendarEvent } from '../../../shared/calendarTypes'
 
@@ -15,6 +15,7 @@ export function EventAttachIcon({
   className,
   title
 }: EventAttachIconProps): ReactElement | null {
+  const openAttachment = useOpenAttachment()
   const attachments = Array.isArray(event?.attachments) ? event.attachments : []
   if (attachments.length === 0) return null
 
@@ -37,7 +38,7 @@ export function EventAttachIcon({
         e.preventDefault()
         e.stopPropagation()
         if (!eventId || !first?.id) return
-        void openEventAttachment(eventId, first.id)
+        void openAttachment(eventId, first.id)
       }}
     >
       <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">

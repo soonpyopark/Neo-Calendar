@@ -255,6 +255,10 @@ const api: NeoCalendarApi = {
     ) as Promise<CalendarEvent>,
   openEventAttachment: (eventId: string, attachmentId: string) =>
     ipcRenderer.invoke('calendar:open-attachment', eventId, attachmentId) as Promise<void>,
+  readEventAttachmentImage: (eventId: string, attachmentId: string) =>
+    ipcRenderer.invoke('calendar:read-attachment-image', eventId, attachmentId) as ReturnType<
+      NeoCalendarApi['readEventAttachmentImage']
+    >,
   createCalendar: (input: Partial<CalendarRecord> & { name: string; color: string }) =>
     ipcRenderer.invoke('calendar:create-calendar', input) as Promise<CalendarRecord>,
   patchCalendar: (id: string, patch: Partial<CalendarRecord>) =>

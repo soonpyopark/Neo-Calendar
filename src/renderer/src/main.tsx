@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { AppDialogProvider } from './components/AppDialogProvider'
+import { AttachmentViewerProvider } from './components/AttachmentViewerProvider'
 import { installBrowserNeoCalendar } from './lib/browserNeoCalendar'
 import { installTextInputFocusBridge } from './lib/textInputFocus'
 import './index.css'
@@ -20,7 +21,9 @@ installTextInputFocusBridge()
 createRoot(container).render(
   <StrictMode>
     <AppDialogProvider>
-      <App />
+      <AttachmentViewerProvider>
+        <App />
+      </AttachmentViewerProvider>
     </AppDialogProvider>
   </StrictMode>
 )

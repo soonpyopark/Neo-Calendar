@@ -20,7 +20,7 @@ import {
 } from './periodToolbarClickBridge'
 import { getEnvValue, loadDotEnv, resolveAdminCredentials } from './dotEnv'
 import { exportBackupZip, importBackupZip } from './calendarStore/backupZip'
-import { applyHolidayKeyFromEnv, syncKoreanHolidays } from './calendarStore/holidaySync'
+import { forgetEnvHolidayKey, syncKoreanHolidays } from './calendarStore/holidaySync'
 import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
 import { createAppTray, type AppTray } from './tray'
@@ -250,6 +250,15 @@ function shieldMainWindowWhilePanelsOpen(): void {
   const win = mainWindow
   if (!win || win.isDestroyed()) return
   win.setIgnoreMouseEvents(true, { forward: false })
+}
+
+/**
+ * A floating panel opened a link / attachment elsewhere: keep the panel alive while
+ * the user works in that app (day-list preview links, event detail attachments, …).
+ */
+function notePanelHandedOffToExternalApp(event: Electron.IpcMainInvokeEvent): void {
+  if (!panelWindowManager?.isPanelWebContents(event.sender.id)) return
+  panelWindowManager.notePanelExternalOpen()
 }
 
 function resolveNativeDialogParent(event: Electron.IpcMainInvokeEvent): BrowserWindow | null {
@@ -583,11 +592,12 @@ function registerIpc(): void {
     desktopMode.focusForTextInput()
   })
 
-  ipcMain.handle('open-external', async (_event, url: string) => {
+  ipcMain.handle('open-external', async (event, url: string) => {
     const target = String(url ?? '').trim()
     if (!/^https?:\/\//i.test(target)) {
       throw new Error('지원하지 않는 URL입니다.')
     }
+    notePanelHandedOffToExternalApp(event)
     await shell.openExternal(target)
   })
 
@@ -767,9 +777,16 @@ function registerIpc(): void {
   )
   ipcMain.handle(
     'calendar:open-attachment',
-    async (_event, eventId: string, attachmentId: string) => {
+    async (event, eventId: string, attachmentId: string) => {
+      notePanelHandedOffToExternalApp(event)
       await attachmentService.open(eventId, attachmentId)
     }
+  )
+  // Stays in-app (no external handoff), so panels keep their z-order untouched.
+  ipcMain.handle(
+    'calendar:read-attachment-image',
+    (_event, eventId: string, attachmentId: string) =>
+      attachmentService.readImage(eventId, attachmentId)
   )
   ipcMain.handle(
     'calendar:create-calendar',
@@ -1024,8 +1041,8 @@ function bootApp(): void {
   loadDotEnv()
   calendarStore = new CalendarStore()
   attachmentService = new EventAttachmentService(calendarStore)
-  const holidayKey = getEnvValue('DATA_GO_KR_SERVICE_KEY', 'HOLIDAY_API_KEY')
-  if (holidayKey) applyHolidayKeyFromEnv(calendarStore, holidayKey)
+  // 공휴일 키는 빌드 시점(npm run seed:holidays) 전용 — 설정에는 심지 않고, 예전에 심긴 키는 지운다.
+  forgetEnvHolidayKey(calendarStore, getEnvValue('DATA_GO_KR_SERVICE_KEY', 'HOLIDAY_API_KEY') ?? '')
   membersStore = new MembersStore(calendarStore.dataRoot)
   settingsStore = new SettingsStore(calendarStore)
   auth = new AuthService(settingsStore, membersStore)
@@ -1112,7 +1129,8 @@ function bootApp(): void {
       const live =
         mainWindow && !mainWindow.isDestroyed() ? getWindowDipScreenBounds(mainWindow) : null
       return live ?? locked
-    }
+    },
+    isForeignAppAtPoint: (pt) => isForeignClickAtPoint(pt)
   })
 
   // Cold-start unlocked desktop: 10s without input → WorkerW embed.
@@ -1140,7 +1158,10 @@ function bootApp(): void {
     },
     isForeignAppAtPoint: (pt) => isForeignClickAtPoint(pt),
     shouldSkipClick: (pt) =>
-      isNativeDialogOpen() || (panelWindowManager?.isPointInsideAnyPanel(pt) ?? false),
+      isNativeDialogOpen() ||
+      (panelWindowManager?.isPointInsideAnyPanel(pt) ?? false) ||
+      // Re-embedding closes every panel — not while a panel's link is being read elsewhere.
+      (panelWindowManager?.shouldKeepPanelsForForeignClick(pt) ?? false),
     onEmbed: () => {
       desktopMode.resumeUnderIcons()
     }

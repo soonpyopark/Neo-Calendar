@@ -989,11 +989,15 @@ input[type='search']::-ms-clear,
   --day-list-font-scale: 1;
   /* Base 날짜/내용 text size; the − / + buttons scale it. */
   --day-list-font-size: calc(11pt * var(--day-list-font-scale));
-  --day-list-head-bg: #eef4df;
-  --day-list-date-bg: #f5f8eb;
-  --day-list-weekend-bg: #fff0e5;
-  --day-list-detail-bg: #f6f2fb;
-  --day-list-detail-border: #ddd0ee;
+  --day-list-head-bg: #deebd6;
+  --day-list-date-bg: #deebd6;
+  --day-list-weekend-bg: #fff2cc;
+  --day-list-detail-bg: #e5e0ec;
+  --day-list-detail-border: #b9a3d6;
+  /* Table grid — same tone as the PDF export so both read as one document. */
+  --day-list-grid-border: #a3af97;
+  /* 날짜/내용 머리글 + 평일 날짜·요일 글자. */
+  --day-list-text: #3a3858;
   border: 1px solid var(--gcal-border);
   background-color: var(--gcal-page-solid);
   color: var(--gcal-heading);
@@ -1004,7 +1008,10 @@ input[type='search']::-ms-clear,
   --day-list-date-bg: #29312440;
   --day-list-weekend-bg: #3a2f2740;
   --day-list-detail-bg: #332c3e66;
-  --day-list-detail-border: #4c4159;
+  --day-list-detail-border: #6b5c85;
+  --day-list-grid-border: #6d7864;
+  /* 어두운 배경에서 #3a3858 은 읽히지 않으므로 다크 모드는 기본 제목색을 쓴다. */
+  --day-list-text: var(--gcal-heading);
 }
 
 .day-list-preview-header {
@@ -1024,6 +1031,33 @@ input[type='search']::-ms-clear,
   color: var(--gcal-heading);
 }
 
+/* 헤더 이동 묶음의 [오늘] — 아이콘 버튼과 높이를 맞춘 소형 텍스트 버튼. */
+.day-list-preview-today {
+  display: inline-flex;
+  height: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid var(--gcal-border);
+  border-radius: 9999px;
+  background: var(--gcal-red-soft);
+  padding: 0 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--gcal-heading);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.day-list-preview-today:hover {
+  background: #fad2cf;
+}
+
+.dark .day-list-preview-today:hover {
+  background: var(--gcal-surface-2);
+}
+
 .day-list-preview-header .day-quick-edit-close:disabled {
   pointer-events: none;
   opacity: 0.35;
@@ -1037,7 +1071,7 @@ input[type='search']::-ms-clear,
 .day-list-preview-row {
   display: grid;
   grid-template-columns: calc(105px * var(--day-list-font-scale)) minmax(0, 1fr);
-  border-bottom: 1px solid var(--gcal-border-light);
+  border-bottom: 1px solid var(--day-list-grid-border);
 }
 
 .day-list-preview-row--head {
@@ -1053,17 +1087,19 @@ input[type='search']::-ms-clear,
   padding-top: 0.375rem;
   padding-bottom: 0.375rem;
   text-align: center;
-  color: var(--gcal-heading);
+  color: var(--day-list-text);
 }
 
 .day-list-preview-date {
-  border-right: 1px solid var(--gcal-border-light);
-  background: var(--day-list-date-bg);
+  --day-list-date-cell-bg: var(--day-list-date-bg);
+  border-right: 1px solid var(--day-list-grid-border);
+  background: var(--day-list-date-cell-bg);
   padding: 0.375rem 0.5rem;
   text-align: center;
   white-space: nowrap;
   font-size: var(--day-list-font-size);
-  color: var(--gcal-heading);
+  font-weight: 600;
+  color: var(--day-list-text);
 }
 
 .day-list-preview-row--head .day-list-preview-date {
@@ -1074,18 +1110,21 @@ input[type='search']::-ms-clear,
   cursor: pointer;
 }
 
+/* 휴일 / 토 / 일: 내용칸과 같은 배경으로 행 전체가 하나로 읽힌다. */
+.day-list-preview-date.is-weekend {
+  --day-list-date-cell-bg: var(--day-list-weekend-bg);
+}
+
 .day-list-preview-date.is-openable:hover {
-  background: color-mix(in srgb, var(--gcal-blue) 12%, var(--day-list-date-bg));
+  background: color-mix(in srgb, var(--gcal-blue) 12%, var(--day-list-date-cell-bg));
 }
 
 .day-list-preview-date.is-sunday {
   color: var(--gcal-sunday);
-  font-weight: 600;
 }
 
 .day-list-preview-date.is-saturday {
   color: var(--gcal-saturday);
-  font-weight: 600;
 }
 
 .day-list-preview-content {
@@ -1120,10 +1159,6 @@ input[type='search']::-ms-clear,
   background: var(--day-list-detail-bg);
   padding: 0.4em 0.6em;
   color: var(--gcal-body);
-}
-
-.day-list-preview-details.is-completed {
-  color: var(--gcal-muted);
 }
 
 .day-list-preview-detail-line {
@@ -1161,11 +1196,6 @@ input[type='search']::-ms-clear,
 .day-list-preview-detail-attach svg {
   flex-shrink: 0;
   align-self: center;
-}
-
-.day-list-preview-line.is-completed {
-  color: var(--gcal-muted);
-  text-decoration: line-through;
 }
 
 .day-list-preview-dot {
@@ -1861,6 +1891,63 @@ body.is-resizing-window {
 
 .neo-modal-shell-header {
   border-bottom: 1px solid var(--neo-panel-divider);
+}
+
+/* —— In-app image attachment viewer —— */
+/* Fills its surface like the 세로보기 panel — no frame of its own. */
+.attachment-viewer-header {
+  border-bottom: 1px solid var(--neo-panel-divider);
+  color: var(--gcal-heading);
+}
+
+.attachment-viewer-count {
+  color: var(--gcal-muted);
+}
+
+.attachment-viewer-btn,
+.attachment-viewer-zoom {
+  display: inline-flex;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--gcal-body);
+  transition: background-color 0.12s ease;
+}
+
+.attachment-viewer-zoom {
+  min-width: 3.75rem;
+  color: var(--gcal-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.attachment-viewer-btn-wide {
+  padding: 0 0.5rem;
+}
+
+.attachment-viewer-btn:hover,
+.attachment-viewer-zoom:hover {
+  background: var(--gcal-surface-2);
+}
+
+.attachment-viewer-canvas {
+  background: var(--gcal-surface-2);
+}
+
+.attachment-viewer-image {
+  display: block;
+  object-fit: contain;
+  user-select: none;
+}
+
+.attachment-viewer-image.is-fit {
+  max-width: 100%;
+  max-height: 100%;
 }
 
 .day-quick-edit-header {

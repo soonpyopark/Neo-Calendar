@@ -67,7 +67,12 @@ npm run build:msi
 ```
 
 사전 요구: [WiX CLI 7+](https://wixtoolset.org/) (`winget install WiXToolset.WiXCLI`) 후 `wix eula accept wix7`  
-프로젝트 루트 `.env`에 `DATA_GO_KR_SERVICE_KEY`가 있어야 합니다.  
+대한민국 공휴일은 커밋된 `src/shared/seed/holidays-kr.json`(현재 3년치)을 그대로 번들합니다.
+**빌드는 이 파일을 갱신하지 않습니다.** 갱신이 필요할 때만 `npm run seed:holidays`를 직접 실행하면
+실행 연도부터 3년치를 API에서 받아 다시 굽습니다. 이때만 `.env`(또는 환경 변수)의
+`DATA_GO_KR_SERVICE_KEY`를 사용하며, **API 키는 설치본과 앱 설정에 저장되지 않습니다** —
+사용자는 휴일 데이터를 키 없이 그대로 받고, 최신화가 필요하면 설정에서 본인 키로 동기화합니다
+(「저장」을 직접 체크한 경우에만 그 키가 설정에 남습니다).  
 → `msi/Neo Desktop Calendar v{버전}_YYMMDD_HHMMSS.msi` (현재 사용자 설치, 관리자 권한 불필요)  
 설치 마법사에서 **설치 폴더 선택** 가능 (`WixUI_InstallDir`).  
 MSI에는 Electron 런타임이 포함됩니다 (`Neo Desktop Calendar.exe` + `resources/app.asar` + DLL). 별도 Electron 설치 불필요.

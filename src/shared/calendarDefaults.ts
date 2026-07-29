@@ -7,6 +7,14 @@ import type {
 } from './calendarTypes'
 
 export const HOLIDAYS_KR_CALENDAR_ID = 'holidays-kr'
+
+/** 번들 시드에 굽는 창과 같아야 한다 — `scripts/build-holiday-seed.mjs`. */
+export const HOLIDAYS_KR_YEAR_SPAN = 3
+
+/** 동기화 기본 연도: 올해부터 3년 (시드 커버리지와 동일). */
+export function defaultHolidayYears(from = new Date().getFullYear()): number[] {
+  return Array.from({ length: HOLIDAYS_KR_YEAR_SPAN }, (_, index) => from + index)
+}
 export const PRIMARY_CALENDAR_ID = 'primary'
 export const PRIMARY_CALENDAR_COLOR = '#f6bf26'
 
