@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Neo Calendar — per-user MSI (no admin rights required).
+  Neo Desktop Calendar — per-user MSI (no admin rights required).
 
   Built by scripts/build-msi.mjs, which stages the electron-builder
   win-unpacked output into a space-free temp work dir as "payload\", then:
@@ -16,8 +16,8 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
   <Package
-    Name="Neo Calendar"
-    Manufacturer="Neo Calendar"
+    Name="Neo Desktop Calendar"
+    Manufacturer="Neo Desktop Calendar"
     Version="$(var.ProductVersion)"
     ProductCode="$(var.ProductCode)"
     UpgradeCode="C3B4E005-D17F-41E1-929D-2E1142A94075"
@@ -25,7 +25,7 @@
     Codepage="65001"
     Compressed="yes">
 
-    <SummaryInformation Manufacturer="Neo Calendar" Description="Neo Calendar 설치 관리자" />
+    <SummaryInformation Manufacturer="Neo Desktop Calendar" Description="Neo Desktop Calendar 설치 관리자" />
 
     <MajorUpgrade
       AllowSameVersionUpgrades="yes"
@@ -36,12 +36,22 @@
     <Icon Id="AppIcon.ico" SourceFile="$(var.MsiDir)\payload\app-icon.ico" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon.ico" />
     <Property Id="ARPURLINFOABOUT" Value="https://note4all.tistory.com" />
-    <!-- Wallpaper/Electron keeps Neo Calendar.exe (and DLLs) locked during upgrade.
+    <!-- Wallpaper/Electron keeps Neo Desktop Calendar.exe (and DLLs) locked during upgrade.
          MSI then schedules a reboot. Close the app first and never prompt to reboot —
          user can relaunch from the Start menu (MDC-style; no restart required). -->
     <Property Id="REBOOT" Value="ReallySuppress" />
     <util:CloseApplication
-      Id="CloseNeoCalendar"
+      Id="CloseNeoDesktopCalendar"
+      Target="Neo Desktop Calendar.exe"
+      CloseMessage="yes"
+      ElevatedCloseMessage="yes"
+      RebootPrompt="no"
+      TerminateProcess="1"
+      Timeout="8" />
+    <!-- Pre-rename installs still run as "Neo Calendar.exe"; close it so the
+         MajorUpgrade can remove the legacy install folder without a reboot. -->
+    <util:CloseApplication
+      Id="CloseLegacyNeoCalendar"
       Target="Neo Calendar.exe"
       CloseMessage="yes"
       ElevatedCloseMessage="yes"
@@ -55,7 +65,7 @@
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
 
     <StandardDirectory Id="LocalAppDataFolder">
-      <Directory Id="INSTALLFOLDER" Name="Neo Calendar">
+      <Directory Id="INSTALLFOLDER" Name="Neo Desktop Calendar">
         <!-- Harvests electron-builder win-unpacked output staged as payload/
              under a space-free temp MsiDir (repo path has spaces). -->
         <Files Include="$(var.MsiDir)\payload\**">
@@ -68,13 +78,13 @@
       <Component Id="StartMenuShortcut" Guid="*">
         <Shortcut
           Id="StartMenuShortcutLnk"
-          Name="Neo Calendar"
-          Target="[INSTALLFOLDER]Neo Calendar.exe"
+          Name="Neo Desktop Calendar"
+          Target="[INSTALLFOLDER]Neo Desktop Calendar.exe"
           WorkingDirectory="INSTALLFOLDER"
           Icon="AppIcon.ico" />
         <RegistryValue
           Root="HKCU"
-          Key="Software\Neo Calendar"
+          Key="Software\Neo Desktop Calendar"
           Name="StartMenuShortcut"
           Type="integer"
           Value="1"
@@ -86,13 +96,13 @@
       <Component Id="DesktopShortcut" Guid="*">
         <Shortcut
           Id="DesktopShortcutLnk"
-          Name="Neo Calendar"
-          Target="[INSTALLFOLDER]Neo Calendar.exe"
+          Name="Neo Desktop Calendar"
+          Target="[INSTALLFOLDER]Neo Desktop Calendar.exe"
           WorkingDirectory="INSTALLFOLDER"
           Icon="AppIcon.ico" />
         <RegistryValue
           Root="HKCU"
-          Key="Software\Neo Calendar"
+          Key="Software\Neo Desktop Calendar"
           Name="DesktopShortcut"
           Type="integer"
           Value="1"

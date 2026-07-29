@@ -49,7 +49,7 @@ function requireCap(
 }
 
 /**
- * MDC-style /api router over Neo CalendarStore (desktop-only routes rejected).
+ * MDC-style /api router over CalendarStore (desktop-only routes rejected).
  */
 export async function handleApiRequest(
   deps: ApiRouterDeps,

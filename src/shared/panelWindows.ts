@@ -14,6 +14,7 @@ export type PanelKind =
   | 'exportOptions'
   | 'recurrenceScope'
   | 'login'
+  | 'dayListPreview'
 
 export type PanelAnchorRect = QuickEditAnchorRect
 
@@ -73,6 +74,13 @@ export type PanelWindowInit =
       kind: 'login'
       /** When false, backdrop/close/cancel cannot dismiss (login wall). */
       dismissible?: boolean
+    }
+  | {
+      kind: 'dayListPreview'
+      /** Month shown in the portrait day-list preview (same layout as PDF export). */
+      year: number
+      /** 0-based month. */
+      month: number
     }
 
 export type OpenPanelWindowRequest = PanelWindowInit & {
@@ -349,7 +357,7 @@ export function computePanelWindowBounds(options: {
     })
   }
 
-  if (init.kind === 'settings' || init.kind === 'search') {
+  if (init.kind === 'settings' || init.kind === 'search' || init.kind === 'dayListPreview') {
     return centerInMainWindow({
       mainOrigin,
       mainSize,

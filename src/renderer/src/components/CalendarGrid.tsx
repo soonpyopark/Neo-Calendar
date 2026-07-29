@@ -46,6 +46,7 @@ import {
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   EMBEDDED_FOOTER_HINT_ACTIONS,
+  EMBEDDED_FOOTER_LINK_ACTIONS,
   EMBEDDED_MODE_CHROME_ACTIONS,
   EMBEDDED_RELOAD_CHROME_ACTIONS,
   FOOTER_HINT_ACTIONS,
@@ -60,6 +61,7 @@ import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { ExportOptionsPanel } from './ExportOptionsPanel'
+import { DayListPreviewPanel } from './DayListPreviewPanel'
 import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js'
 import type { ExportCalendarRequest } from '../../../shared/exportCalendar'
 import { useEventLayoutCssVars, useMaxVisibleEvents } from '../hooks/useMaxVisibleEvents'
@@ -102,6 +104,7 @@ import {
   HideCompletedCheckIcon,
   HideEventsEyeIcon,
   MonthViewIcon,
+  PortraitPreviewIcon,
   WebBrowserIcon,
   WeekViewIcon,
   YearViewIcon
@@ -471,6 +474,7 @@ export function CalendarGrid({
   const [viewDate, setViewDate] = useState(() => new Date(now.getFullYear(), now.getMonth(), now.getDate()))
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
+  const [dayListPreviewOpen, setDayListPreviewOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
@@ -599,6 +603,9 @@ export function CalendarGrid({
       case 'login':
         setLoginError(null)
         setLoginOpen(true)
+        break
+      case 'dayListPreview':
+        setDayListPreviewOpen(true)
         break
       default:
         break
@@ -793,7 +800,11 @@ export function CalendarGrid({
       ).flatMap((el) => {
         if (el instanceof HTMLButtonElement && el.disabled) return []
         const action = el.dataset.toolbarAction ?? ''
-        if (!action || !EMBEDDED_FOOTER_HINT_ACTIONS.has(action)) return []
+        if (
+          !action ||
+          (!EMBEDDED_FOOTER_HINT_ACTIONS.has(action) && !EMBEDDED_FOOTER_LINK_ACTIONS.has(action))
+        )
+          return []
         const r = el.getBoundingClientRect()
         if (r.width < 1 || r.height < 1) return []
         return [
@@ -928,6 +939,15 @@ export function CalendarGrid({
   ])
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
+
+  const openDayListPreview = useCallback((): void => {
+    if (!requireEdit()) return
+    if (!isBrowserNeoCalendarHost() && floatingPanels) {
+      openEmbeddedPanel({ kind: 'dayListPreview', year, month })
+      return
+    }
+    setDayListPreviewOpen(true)
+  }, [floatingPanels, month, openEmbeddedPanel, requireEdit, year])
   const weekdayLabels = useMemo(() => {
     if (weekStartsOn === 1) {
       return [...WEEKDAYS_KO.slice(1), WEEKDAYS_KO[0]]
@@ -1425,6 +1445,7 @@ export function CalendarGrid({
         ...Array.from(EMBEDDED_EXPORT_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_AUTH_CHROME_ACTIONS),
         ...Array.from(EMBEDDED_FOOTER_HINT_ACTIONS),
+        ...Array.from(EMBEDDED_FOOTER_LINK_ACTIONS),
         ...Array.from(EMBEDDED_RELOAD_CHROME_ACTIONS)
       ])
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
@@ -2338,6 +2359,21 @@ export function CalendarGrid({
               className={cn(
                 desktopModeIconBtnClass,
                 softBlueIconBtnClass,
+                !canEdit && LOGIN_MUTED_CLASS
+              )}
+              captureOnHover={captureToolbarOnHover}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
+              onClick={openDayListPreview}
+              aria-label="세로보기"
+              title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
+            >
+              <PortraitPreviewIcon />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
+                softBlueIconBtnClass,
                 eventsHidden && softBlueIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
@@ -2578,6 +2614,24 @@ export function CalendarGrid({
           tags={store.tags}
           onClose={() => setSearchOpen(false)}
           onSelectResult={handleSearchSelect}
+        />
+      ) : null}
+      {inlineOverlays ? (
+        <DayListPreviewPanel
+          open={dayListPreviewOpen}
+          store={store}
+          year={year}
+          month={month}
+          eventsHidden={eventsHidden}
+          completedHidden={completedHidden}
+          onOpenDay={(dayKey) => {
+            setDayListPreviewOpen(false)
+            const date = parseDateKeyLocal(dayKey) ?? parseDateKey(dayKey)
+            if (!date) return
+            setViewDate(date)
+            openQuickEditFromDate(date)
+          }}
+          onClose={() => setDayListPreviewOpen(false)}
         />
       ) : null}
       {inlineOverlays ? (

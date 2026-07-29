@@ -106,6 +106,7 @@ export const PERIOD_TOOLBAR_ACTIONS = {
   nextYear: 'next-year',
   today: 'today',
   webEditor: 'web-editor',
+  dayListPreview: 'day-list-preview',
   toggleEvents: 'toggle-events',
   toggleCompleted: 'toggle-completed'
 } as const
@@ -163,6 +164,13 @@ export const FOOTER_HINT_ACTIONS = {
 } as const
 
 export const EMBEDDED_FOOTER_HINT_ACTIONS = new Set<string>(Object.values(FOOTER_HINT_ACTIONS))
+
+/** Footer site link — opens in the OS browser while WorkerW-embedded. */
+export const FOOTER_LINK_ACTIONS = {
+  site: 'footer-site-link'
+} as const
+
+export const EMBEDDED_FOOTER_LINK_ACTIONS = new Set<string>(Object.values(FOOTER_LINK_ACTIONS))
 
 export type ToolbarClickPayload = {
   action: string

@@ -148,6 +148,22 @@ export function WebBrowserIcon(): ReactElement {
   )
 }
 
+/** Portrait day-list preview — tall page with 날짜/내용 rows. */
+export function PortraitPreviewIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none">
+      <rect x="5.25" y="2.75" width="13.5" height="18.5" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M10.25 2.75v18.5" stroke="currentColor" strokeWidth="1.4" />
+      <path
+        d="M12 7.25h5M12 11.5h5M12 15.75h5"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function HideEventsEyeIcon({ open }: { open: boolean }): ReactElement {
   if (open) {
     return (

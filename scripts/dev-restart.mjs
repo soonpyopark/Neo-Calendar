@@ -4,7 +4,12 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const helperExe = path.join(root, 'resources', 'desktop-hit-helper', 'Neo-Calendar.exe')
+const helperExe = path.join(
+  root,
+  'resources',
+  'desktop-hit-helper',
+  'Neo-Desktop-Calendar.exe'
+)
 
 console.log('[dev:restart] Stopping previous Electron/Vite processes...')
 execSync('node scripts/kill-dev.mjs', { cwd: root, stdio: 'inherit', windowsHide: true })

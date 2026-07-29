@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Neo Calendar — update npm dependencies and optionally rebuild.
+  Neo Desktop Calendar — update npm dependencies and optionally rebuild.
 
 .PARAMETER SkipGit
   Skip git pull.

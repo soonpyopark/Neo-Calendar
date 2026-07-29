@@ -1,9 +1,9 @@
 ---
-description: Neo Calendar core product principles (desktop embed, click-through, modal dialogs, in-app overlays)
+description: Neo Desktop Calendar core product principles (desktop embed, click-through, modal dialogs, in-app overlays)
 alwaysApply: true
 ---
 
-# Neo Calendar Principles
+# Neo Desktop Calendar Principles
 
 ## 원칙 1 — 바탕화면 고정 (WorkerW)
 Desktop mode attaches under desktop icons via WorkerW `SetParent`. Idle / default desktop state stays under icons.

@@ -1,11 +1,48 @@
-import { DEFAULT_VIEW_OPTIONS } from './constants.js'
-import { compareEventsForDayDisplay, formatDayListExportEventText } from './eventBarFormat.js'
-import { addDaysToDateKey, expandEventsForRange } from './eventOccurrences.js'
+import { DEFAULT_VIEW_OPTIONS, HOLIDAYS_KR_CALENDAR_ID } from './constants.js'
+import {
+  compareEventsForDayDisplay,
+  formatDayListExportEventParts,
+} from './eventBarFormat.js'
+import { addDaysToDateKey, expandEventsForRange, getSeriesId } from './eventOccurrences.js'
 import { filterEventsForExport, filterExpandedEventsForExport } from './exportFilters.js'
 import {
   formatDayListDateLabel,
   listDateKeysInRange,
 } from './exportRange.js'
+
+/**
+ * Dates covered by 대한민국의 휴일 events, so rows can borrow the Sunday style.
+ * Independent of the includeHolidays option: a date stays a holiday even when
+ * the holiday titles themselves are left out of the export.
+ *
+ * @param {object} store
+ * @param {string} startDate
+ * @param {string} endDate
+ * @param {{ excludeHiddenCalendars?: boolean, asAdmin?: boolean }} options
+ * @returns {Set<string>}
+ */
+function collectHolidayDateKeys(store, startDate, endDate, options) {
+  const keys = new Set()
+  const calendar = (store?.calendars ?? []).find((item) => item.id === HOLIDAYS_KR_CALENDAR_ID)
+  if (!calendar) return keys
+  const hidden = calendar.visible === false
+  if (hidden && (options.excludeHiddenCalendars || options.asAdmin === false)) return keys
+
+  for (const event of store?.events ?? []) {
+    if (event?.calendarId !== HOLIDAYS_KR_CALENDAR_ID) continue
+    const eventStart = event.startDate < startDate ? startDate : event.startDate
+    const eventEnd = (event.endDate || event.startDate) > endDate
+      ? endDate
+      : event.endDate || event.startDate
+    if (!eventStart || eventEnd < startDate || eventStart > endDate) continue
+    let cursor = eventStart
+    for (let i = 0; i < 400 && cursor <= eventEnd; i += 1) {
+      keys.add(cursor)
+      cursor = addDaysToDateKey(cursor, 1)
+    }
+  }
+  return keys
+}
 
 /**
  * Build a day-list export model for [startDate, endDate].
@@ -59,15 +96,24 @@ export function prepareDayListExportLayout(store, range, options = {}) {
     }
   }
 
+  const holidayKeys = collectHolidayDateKeys(store, startDate, endDate, options)
+
   const dateKeys = listDateKeysInRange(startDate, endDate)
   const rows = dateKeys.map((dayKey) => {
     const dayEvents = [...(byDay.get(dayKey) ?? [])]
       .sort((a, b) => compareEventsForDayDisplay(a, b, dayKey))
       .map((event) => {
         const color = calendarMap.get(event.calendarId)?.color ?? '#f6bf26'
+        const { head, details } = formatDayListExportEventParts(event, dayKey, tags)
         return {
           id: `${event.id}-${dayKey}`,
-          line: formatDayListExportEventText(event, dayKey, tags),
+          // Stored series id — lets viewers look the event back up (links, attachments).
+          eventId: getSeriesId(event) ?? event.id,
+          line: [head, ...details.map((item) => item.text)].join('\n'),
+          /** Title line. */
+          head,
+          /** 설명 / 링크 / 첨부 lines — viewers render them inside a boxed block. */
+          details,
           color,
           completed: Boolean(event.completed),
         }
@@ -76,6 +122,7 @@ export function prepareDayListExportLayout(store, range, options = {}) {
     return {
       dayKey,
       dateLabel: formatDayListDateLabel(dayKey),
+      isHoliday: holidayKeys.has(dayKey),
       events: dayEvents,
       contentText: dayEvents.map((event) => event.line).join('\n'),
     }

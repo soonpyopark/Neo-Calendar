@@ -1,9 +1,9 @@
 ---
-description: Neo Calendar member/admin permission policy
+description: Neo Desktop Calendar member/admin permission policy
 alwaysApply: true
 ---
 
-# Neo Calendar Permissions
+# Neo Desktop Calendar Permissions
 
 ## Roles
 

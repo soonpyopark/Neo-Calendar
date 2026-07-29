@@ -1,9 +1,9 @@
 {
-  "name": "neo-calendar",
+  "name": "neo-desktop-calendar",
   "version": "1.0.5",
-  "description": "Neo Calendar — desktop wallpaper calendar with click-through",
+  "description": "Neo Desktop Calendar — desktop wallpaper calendar with click-through",
   "main": "./out/main/main.js",
-  "author": "Neo Calendar",
+  "author": "Neo Desktop Calendar",
   "license": "MIT",
   "scripts": {
     "dev": "electron-vite dev",
@@ -52,8 +52,8 @@
     "vite": "^7.0.5"
   },
   "build": {
-    "appId": "com.neocalendar.app",
-    "productName": "Neo Calendar",
+    "appId": "com.neodesktopcalendar.app",
+    "productName": "Neo Desktop Calendar",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -73,7 +73,7 @@
         "from": "resources/desktop-hit-helper",
         "to": "desktop-hit-helper",
         "filter": [
-          "Neo-Calendar.exe"
+          "Neo-Desktop-Calendar.exe"
         ]
       },
       {

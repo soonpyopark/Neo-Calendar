@@ -10,9 +10,11 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const APP_NAME = 'Neo Calendar'
+const APP_NAME = 'Neo Desktop Calendar'
 const SITE_URL = 'https://note4all.tistory.com'
 const CONSTANTS_PATH = path.join(ROOT, 'src', 'shared', 'constants.ts')
+/** Matches the current heading and the pre-rename "Neo Calendar" one. */
+const HEADING_NAME = 'Neo (?:Desktop )?Calendar'
 
 function readVersion() {
   const constants = fs.readFileSync(CONSTANTS_PATH, 'utf8')
@@ -45,7 +47,10 @@ function syncReadme(version) {
   const filePath = path.join(ROOT, 'README.md')
   if (!fs.existsSync(filePath)) return
   let text = fs.readFileSync(filePath, 'utf8')
-  const next = text.replace(/^# Neo Calendar(?:\s+v[^\n]+)?/m, `# Neo Calendar v${version}`)
+  const next = text.replace(
+    new RegExp(`^# ${HEADING_NAME}(?:\\s+v[^\\n]+)?`, 'm'),
+    `# ${APP_NAME} v${version}`
+  )
   if (writeIfChanged(filePath, next)) {
     console.log(`[sync-version] README.md -> ${APP_NAME} v${version}`)
   }
@@ -55,10 +60,11 @@ function syncEnvExample(version) {
   const filePath = path.join(ROOT, '.env.example')
   if (!fs.existsSync(filePath)) return
   let text = fs.readFileSync(filePath, 'utf8')
-  if (/^# Neo Calendar/m.test(text)) {
-    text = text.replace(/^# Neo Calendar[^\n]*/m, `# Neo Calendar v${version} — Electron`)
+  const heading = `# ${APP_NAME} v${version} — Electron`
+  if (new RegExp(`^# ${HEADING_NAME}`, 'm').test(text)) {
+    text = text.replace(new RegExp(`^# ${HEADING_NAME}[^\\n]*`, 'm'), heading)
   } else {
-    text = `# Neo Calendar v${version} — Electron\n${text}`
+    text = `${heading}\n${text}`
   }
   if (writeIfChanged(filePath, text)) {
     console.log(`[sync-version] .env.example -> ${version}`)

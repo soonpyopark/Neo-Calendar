@@ -8,6 +8,7 @@ import { EventDetailPanelHost } from './panelHosts/EventDetailPanelHost'
 import { ExportOptionsPanelHost } from './panelHosts/ExportOptionsPanelHost'
 import { RecurrenceScopePanelHost } from './panelHosts/RecurrenceScopePanelHost'
 import { LoginPanelHost } from './panelHosts/LoginPanelHost'
+import { DayListPreviewPanelHost } from './panelHosts/DayListPreviewPanelHost'
 
 export function PanelApp(): ReactElement | null {
   const [init, setInit] = useState<PanelWindowInit | null>(null)
@@ -49,6 +50,8 @@ export function PanelApp(): ReactElement | null {
       return <RecurrenceScopePanelHost init={init} />
     case 'login':
       return <LoginPanelHost init={init} />
+    case 'dayListPreview':
+      return <DayListPreviewPanelHost init={init} />
     default:
       return null
   }

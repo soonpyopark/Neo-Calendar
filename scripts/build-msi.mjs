@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Build per-user Windows MSI for Neo Calendar (Electron).
+ * Build per-user Windows MSI for Neo Desktop Calendar (Electron).
  * Requires WiX CLI 7+ (winget install WiXToolset.WiXCLI) and: wix eula accept wix7
  *
  * Flow:
@@ -8,7 +8,7 @@
  * 2) build desktop-hit helper + electron-vite build + electron-builder --win --dir → release/win-unpacked/
  * 3) stage into a no-space temp work dir (repo path has spaces; WiX Files Include splits on them)
  *    (+ .env with DATA_GO_KR_SERVICE_KEY)
- * 4) wix build Product.wxs → msi/Neo Calendar v{version}_YYMMDD_HHMMSS.msi
+ * 4) wix build Product.wxs → msi/Neo Desktop Calendar v{version}_YYMMDD_HHMMSS.msi
  */
 
 import { execFileSync, execSync } from 'node:child_process'
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const APP_NAME = 'Neo Calendar'
+const APP_NAME = 'Neo Desktop Calendar'
 const SITE_URL = 'https://note4all.tistory.com'
 const PUBLISH_DIR = path.join(ROOT, 'release', 'win-unpacked')
 const MSI_OUT_DIR = path.join(ROOT, 'msi')
@@ -241,7 +241,7 @@ function publishPortable() {
 
 function prepareWorkDir() {
   // Temp paths are typically space-free (…\AppData\Local\Temp\…), unlike this repo folder.
-  workDir = path.join(os.tmpdir(), `neo-calendar-msi-${process.pid}`)
+  workDir = path.join(os.tmpdir(), `neo-desktop-calendar-msi-${process.pid}`)
   fs.rmSync(workDir, { recursive: true, force: true })
   fs.mkdirSync(workDir, { recursive: true })
   if (/\s/.test(workDir)) {

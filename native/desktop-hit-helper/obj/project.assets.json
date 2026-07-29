@@ -435,7 +435,7 @@
     "version": "1.0.0",
     "restore": {
       "projectUniqueName": "D:\\My_Cursor\\Neo Calendar\\native\\desktop-hit-helper\\DesktopHitHelper.csproj",
-      "projectName": "Neo-Calendar",
+      "projectName": "Neo-Desktop-Calendar",
       "projectPath": "D:\\My_Cursor\\Neo Calendar\\native\\desktop-hit-helper\\DesktopHitHelper.csproj",
       "packagesPath": "C:\\Users\\user\\.nuget\\packages\\",
       "outputPath": "D:\\My_Cursor\\Neo Calendar\\native\\desktop-hit-helper\\obj\\",

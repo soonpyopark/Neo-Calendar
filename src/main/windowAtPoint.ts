@@ -246,7 +246,7 @@ export function shouldProcessEmbeddedGlobalClick(
   if (isForeignProcessHwnd(user32, atPoint, ourHwnd)) return false
 
   // Empty desktop / WorkerW / icon listview — accept here.
-  // Desktop *icon items* are filtered by Neo-Calendar.exe helper in main.ts.
+  // Desktop *icon items* are filtered by Neo-Desktop-Calendar.exe helper in main.ts.
   if (isDesktopShellHwnd(user32, atPoint)) return true
 
   if (isOurHwnd(user32, atPoint, ourHwnd)) {

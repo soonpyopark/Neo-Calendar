@@ -10,6 +10,6 @@ data/
 .env.*
 !.env.example
 msi/payload/
-msi/Neo Calendar/
+msi/Neo Desktop Calendar/
 msi/*.msi
 msi/*.wixpdb

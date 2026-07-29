@@ -13,6 +13,7 @@ import { openExternalUrl } from '../lib/openExternal'
 import { getCalendarTheme } from '../lib/colors'
 import { cn } from '../lib/cn'
 import { EventTagIcons } from './EventTagIcons'
+import { LinkifiedText } from './LinkifiedText'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 
 export type EventDetailContentProps = {
@@ -251,7 +252,7 @@ export function EventDetailContent({
           ) : null}
           {description ? (
             <p className="mt-3 w-full max-w-full overflow-x-hidden whitespace-pre-wrap break-all text-sm leading-relaxed text-gcal-body">
-              {description}
+              <LinkifiedText text={description} />
             </p>
           ) : null}
         </div>

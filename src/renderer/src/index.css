@@ -983,6 +983,277 @@ input[type='search']::-ms-clear,
   border-top-color: var(--neo-panel-divider);
 }
 
+/* Portrait day-list preview — same 날짜/내용 table as the PDF export. */
+.day-list-preview-shell {
+  /* Light green header / date column matching the PDF export palette. */
+  --day-list-font-scale: 1;
+  /* Base 날짜/내용 text size; the − / + buttons scale it. */
+  --day-list-font-size: calc(11pt * var(--day-list-font-scale));
+  --day-list-head-bg: #eef4df;
+  --day-list-date-bg: #f5f8eb;
+  --day-list-weekend-bg: #fff0e5;
+  --day-list-detail-bg: #f6f2fb;
+  --day-list-detail-border: #ddd0ee;
+  border: 1px solid var(--gcal-border);
+  background-color: var(--gcal-page-solid);
+  color: var(--gcal-heading);
+}
+
+.dark .day-list-preview-shell {
+  --day-list-head-bg: #2f3a2a;
+  --day-list-date-bg: #29312440;
+  --day-list-weekend-bg: #3a2f2740;
+  --day-list-detail-bg: #332c3e66;
+  --day-list-detail-border: #4c4159;
+}
+
+.day-list-preview-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--neo-panel-divider);
+  padding: 0.5rem 0.75rem;
+}
+
+.day-list-preview-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gcal-heading);
+}
+
+.day-list-preview-header .day-quick-edit-close:disabled {
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+.day-list-preview-header .day-quick-edit-close.is-active {
+  background: var(--gcal-surface-2);
+  color: var(--gcal-blue);
+}
+
+.day-list-preview-row {
+  display: grid;
+  grid-template-columns: calc(105px * var(--day-list-font-scale)) minmax(0, 1fr);
+  border-bottom: 1px solid var(--gcal-border-light);
+}
+
+.day-list-preview-row--head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--day-list-head-bg);
+  font-weight: 600;
+}
+
+.day-list-preview-row--head .day-list-preview-date,
+.day-list-preview-row--head .day-list-preview-content {
+  padding-top: 0.375rem;
+  padding-bottom: 0.375rem;
+  text-align: center;
+  color: var(--gcal-heading);
+}
+
+.day-list-preview-date {
+  border-right: 1px solid var(--gcal-border-light);
+  background: var(--day-list-date-bg);
+  padding: 0.375rem 0.5rem;
+  text-align: center;
+  white-space: nowrap;
+  font-size: var(--day-list-font-size);
+  color: var(--gcal-heading);
+}
+
+.day-list-preview-row--head .day-list-preview-date {
+  background: transparent;
+}
+
+.day-list-preview-date.is-openable {
+  cursor: pointer;
+}
+
+.day-list-preview-date.is-openable:hover {
+  background: color-mix(in srgb, var(--gcal-blue) 12%, var(--day-list-date-bg));
+}
+
+.day-list-preview-date.is-sunday {
+  color: var(--gcal-sunday);
+  font-weight: 600;
+}
+
+.day-list-preview-date.is-saturday {
+  color: var(--gcal-saturday);
+  font-weight: 600;
+}
+
+.day-list-preview-content {
+  min-width: 0;
+  padding: 0.375rem 0.625rem;
+  font-size: var(--day-list-font-size);
+  color: var(--gcal-body);
+}
+
+.day-list-preview-content.is-weekend {
+  background: var(--day-list-weekend-bg);
+}
+
+.day-list-preview-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.day-list-preview-event + .day-list-preview-event {
+  margin-top: 0.25em;
+}
+
+/* 설명 / 링크 / 첨부 block — light purple card under the title line. */
+.day-list-preview-details {
+  margin: 0.25em 0 0.35em 1.05em;
+  border: 1px solid var(--day-list-detail-border);
+  border-radius: 0.25rem;
+  background: var(--day-list-detail-bg);
+  padding: 0.4em 0.6em;
+  color: var(--gcal-body);
+}
+
+.day-list-preview-details.is-completed {
+  color: var(--gcal-muted);
+}
+
+.day-list-preview-detail-line {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* URLs detected inside 설명/링크 text. */
+.day-list-preview-inline-link {
+  color: var(--gcal-blue);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+/* 첨부 line — single click opens the file (browser downloads it). */
+.day-list-preview-detail-attach {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3em;
+  border: 0;
+  border-radius: 0.1875rem;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: var(--gcal-blue);
+}
+
+.day-list-preview-detail-attach:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.day-list-preview-detail-attach svg {
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.day-list-preview-line.is-completed {
+  color: var(--gcal-muted);
+  text-decoration: line-through;
+}
+
+.day-list-preview-dot {
+  margin-top: 0.42em;
+  height: 0.67em;
+  width: 0.67em;
+  flex-shrink: 0;
+  border-radius: 9999px;
+}
+
+.day-list-preview-empty {
+  padding: 1.5rem 0.75rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: var(--gcal-muted);
+}
+
+/* In-panel find bar (Ctrl+F) */
+.day-list-find {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--neo-panel-divider);
+  background: var(--gcal-surface-2);
+  padding: 0.3125rem 0.5rem;
+}
+
+.day-list-find-input {
+  min-width: 0;
+  flex: 1;
+  border: 1px solid var(--gcal-border);
+  border-radius: 0.375rem;
+  background: var(--gcal-input-bg);
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--gcal-heading);
+}
+
+.day-list-find-input:focus {
+  border-color: var(--gcal-blue);
+  outline: none;
+}
+
+.day-list-find-count {
+  flex-shrink: 0;
+  min-width: 3rem;
+  text-align: right;
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--gcal-muted);
+}
+
+.day-list-find-btn {
+  display: inline-flex;
+  height: 1.5rem;
+  width: 1.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--gcal-muted);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.day-list-find-btn:hover:not(:disabled) {
+  background: var(--gcal-hover-panel);
+  color: var(--gcal-heading);
+}
+
+.day-list-find-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.day-list-find-hit {
+  border-radius: 2px;
+  background: var(--gcal-yellow-soft);
+  color: inherit;
+}
+
+.day-list-find-hit.is-active {
+  background: #f6bf26;
+  color: #202124;
+}
+
 /* Event detail popover — match day-quick-edit outer border; header has no section divider. */
 .event-detail-shell {
   border: 1px solid var(--gcal-border);

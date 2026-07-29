@@ -62,6 +62,7 @@ import {
   EMBEDDED_EXPORT_CHROME_ACTIONS,
   EMBEDDED_FLOATING_CHROME_ACTIONS,
   EMBEDDED_FOOTER_HINT_ACTIONS,
+  EMBEDDED_FOOTER_LINK_ACTIONS,
   EMBEDDED_RELOAD_CHROME_ACTIONS,
   PERIOD_TOOLBAR_ACTIONS
 } from '../shared/ipc'
@@ -222,7 +223,7 @@ function shouldProcessEmbeddedClickAtPoint(pt: { x: number; y: number }): boolea
   if (isNativeDialogOpen()) return false
   if (panelWindowManager?.isPointInsideAnyPanel(pt)) return false
   if (!shouldProcessEmbeddedGlobalClick(mainWindow, pt)) return false
-  // Hidden helper (Neo-Calendar.exe): skip calendar actions when click is on a desktop icon.
+  // Hidden helper (Neo-Desktop-Calendar.exe): skip calendar actions when click is on a desktop icon.
   if (desktopHitHelperHost.isIconAtDipPoint(pt)) return false
   return true
 }
@@ -363,6 +364,7 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
     !EMBEDDED_EXPORT_CHROME_ACTIONS.has(payload.action) &&
     !EMBEDDED_AUTH_CHROME_ACTIONS.has(payload.action) &&
     !EMBEDDED_FOOTER_HINT_ACTIONS.has(payload.action) &&
+    !EMBEDDED_FOOTER_LINK_ACTIONS.has(payload.action) &&
     !EMBEDDED_RELOAD_CHROME_ACTIONS.has(payload.action)
   ) {
     return
@@ -1009,7 +1011,7 @@ if (!gotSingleInstanceLock) {
       const message = error instanceof Error ? error.stack ?? error.message : String(error)
       console.error('[main] startup failed:', message)
       try {
-        dialog.showErrorBox('Neo Calendar 시작 실패', message)
+        dialog.showErrorBox(`${APP_NAME} 시작 실패`, message)
       } catch {
         /* ignore */
       }

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Build Neo-Calendar.exe into resources/desktop-hit-helper/
+ * Build Neo-Desktop-Calendar.exe into resources/desktop-hit-helper/
  * Uses .NET Framework 4.8 (preinstalled on Windows 10/11).
  */
 import { execFileSync } from 'node:child_process'
@@ -19,7 +19,9 @@ for (const stale of [
   'neo-desktop-hit.exe',
   'neo-desktop-hit.exe.config',
   'Neo-Calendar-hit.exe',
-  'Neo-Calendar-hit.exe.config'
+  'Neo-Calendar-hit.exe.config',
+  'Neo-Calendar.exe',
+  'Neo-Calendar.exe.config'
 ]) {
   try {
     fs.unlinkSync(path.join(outDir, stale))
@@ -33,7 +35,7 @@ execFileSync(
   { stdio: 'inherit', cwd: root, windowsHide: true }
 )
 
-const exe = path.join(outDir, 'Neo-Calendar.exe')
+const exe = path.join(outDir, 'Neo-Desktop-Calendar.exe')
 if (!fs.existsSync(exe)) {
   throw new Error(`Helper exe missing after publish: ${exe}`)
 }

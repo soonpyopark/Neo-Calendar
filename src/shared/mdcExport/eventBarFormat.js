@@ -264,31 +264,56 @@ function getExportEventLinks(event) {
 }
 
 /**
+ * Day-list export event split into the title line and the 설명 / 링크 / 첨부
+ * detail lines. Viewers box the details; `kind` / `url` / `attachmentId` let
+ * them make each link and attachment individually clickable.
+ * @param {object} event
+ * @param {string} dayKey
+ * @param {object[]} [tags]
+ * @returns {{
+ *   head: string,
+ *   details: { text: string, kind: 'description' | 'link' | 'attachment', url?: string, attachmentId?: string }[]
+ * }}
+ */
+export function formatDayListExportEventParts(event, dayKey, tags) {
+  const head = formatExportEventLineText(event, dayKey, tags);
+  const details = [];
+
+  const description = String(event?.description ?? '').trim();
+  if (description) {
+    description.split(/\r?\n/).forEach((part, index) => {
+      details.push({ text: index === 0 ? `설명: ${part}` : `  ${part}`, kind: 'description' });
+    });
+  }
+
+  for (const item of getExportEventLinks(event)) {
+    details.push({
+      text: item.title ? `링크: ${item.title} — ${item.url}` : `링크: ${item.url}`,
+      kind: 'link',
+      url: item.url,
+    });
+  }
+
+  const attachments = Array.isArray(event?.attachments) ? event.attachments : [];
+  for (const item of attachments) {
+    const name = String(item?.name ?? '').trim() || '(파일)';
+    details.push({
+      text: `첨부: ${name}`,
+      kind: 'attachment',
+      attachmentId: String(item?.id ?? ''),
+    });
+  }
+
+  return { head, details };
+}
+
+/**
  * Day-list export text: title line plus description / links / attachments when present.
  * @param {object} event
  * @param {string} dayKey
  * @param {object[]} [tags]
  */
 export function formatDayListExportEventText(event, dayKey, tags) {
-  const lines = [formatExportEventLineText(event, dayKey, tags)];
-
-  const description = String(event?.description ?? '').trim();
-  if (description) {
-    const descLines = description.split(/\r?\n/);
-    descLines.forEach((part, index) => {
-      lines.push(index === 0 ? `설명: ${part}` : `  ${part}`);
-    });
-  }
-
-  for (const item of getExportEventLinks(event)) {
-    lines.push(item.title ? `링크: ${item.title} — ${item.url}` : `링크: ${item.url}`);
-  }
-
-  const attachments = Array.isArray(event?.attachments) ? event.attachments : [];
-  for (const item of attachments) {
-    const name = String(item?.name ?? '').trim() || '(파일)';
-    lines.push(`첨부: ${name}`);
-  }
-
-  return lines.join('\n');
+  const { head, details } = formatDayListExportEventParts(event, dayKey, tags);
+  return [head, ...details.map((item) => item.text)].join('\n');
 }

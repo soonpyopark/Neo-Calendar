@@ -140,15 +140,24 @@ const DAY_LIST_COLORS = {
   border: '#d9ddd2',
   saturday: '#174ea6',
   sunday: '#b3261e',
+  detailBg: '#f6f2fb',
+  detailBorder: '#ddd0ee',
 };
+
+/** Padding inside the 설명/링크/첨부 box. */
+const PDF_DETAIL_PAD = 3;
+/** Indent of the box under the title line. */
+const PDF_DETAIL_INDENT = 6;
+const PDF_DETAIL_GAP = 2;
 
 function getDayListDayOfWeek(dayKey) {
   const [year, month, day] = String(dayKey).split('-').map(Number);
   return new Date(year, month - 1, day).getDay();
 }
 
-function getDayListDateColor(dayOfWeek) {
-  if (dayOfWeek === 0) return DAY_LIST_COLORS.sunday;
+/** 대한민국의 휴일 dates share the Sunday treatment. */
+function getDayListDateColor(dayOfWeek, isHoliday = false) {
+  if (dayOfWeek === 0 || isHoliday) return DAY_LIST_COLORS.sunday;
   if (dayOfWeek === 6) return DAY_LIST_COLORS.saturday;
   return EXPORT_COLORS.heading;
 }
@@ -183,6 +192,74 @@ function getPdfEventTextWidth(dayColumnWidth) {
 function measurePdfEventTextHeight(doc, line, textWidth) {
   doc.fontSize(PDF_EVENT_FONT_SIZE);
   return doc.heightOfString(line, { width: Math.max(1, textWidth) });
+}
+
+/** @param {{ details?: { text: string }[] }} event */
+function getDayListDetailText(event) {
+  const details = Array.isArray(event.details) ? event.details : [];
+  return details.map((item) => item.text).join('\n');
+}
+
+/**
+ * Day-list event height: title line plus the boxed 설명/링크/첨부 block.
+ * @param {import('pdfkit').default} doc
+ * @param {{ head?: string, line: string, details?: { text: string }[] }} event
+ * @param {number} textWidth
+ */
+function measureDayListEventHeight(doc, event, textWidth) {
+  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  const head = event.head ?? event.line;
+  let height = Math.max(
+    PDF_MIN_EVENT_BAR_HEIGHT,
+    doc.heightOfString(head, { width: Math.max(1, textWidth) }),
+  );
+  const detailText = getDayListDetailText(event);
+  if (detailText) {
+    const innerWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT - PDF_DETAIL_PAD * 2);
+    height +=
+      PDF_DETAIL_GAP + doc.heightOfString(detailText, { width: innerWidth }) + PDF_DETAIL_PAD * 2;
+  }
+  return height;
+}
+
+/**
+ * Draw one day-list event and return the height it consumed.
+ * @param {import('pdfkit').default} doc
+ * @param {{ head?: string, line: string, details?: { text: string }[], color: string }} event
+ * @param {number} textX
+ * @param {number} y
+ * @param {number} textWidth
+ */
+function drawDayListEvent(doc, event, textX, y, textWidth) {
+  const head = event.head ?? event.line;
+  const detailText = getDayListDetailText(event);
+
+  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  const headHeight = Math.max(
+    PDF_MIN_EVENT_BAR_HEIGHT,
+    doc.heightOfString(head, { width: Math.max(1, textWidth) }),
+  );
+  doc.fillColor(EXPORT_COLORS.body).text(head, textX, y, { width: textWidth, lineBreak: true });
+
+  if (!detailText) return headHeight;
+
+  const boxX = textX + PDF_DETAIL_INDENT;
+  const boxY = y + headHeight + PDF_DETAIL_GAP;
+  const boxWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT);
+  const innerWidth = Math.max(1, boxWidth - PDF_DETAIL_PAD * 2);
+  const boxHeight = doc.heightOfString(detailText, { width: innerWidth }) + PDF_DETAIL_PAD * 2;
+
+  doc.fillColor(DAY_LIST_COLORS.detailBg).roundedRect(boxX, boxY, boxWidth, boxHeight, 2).fill();
+  doc.lineWidth(0.45)
+    .strokeColor(DAY_LIST_COLORS.detailBorder)
+    .roundedRect(boxX, boxY, boxWidth, boxHeight, 2)
+    .stroke();
+  doc.fillColor(EXPORT_COLORS.body).text(detailText, boxX + PDF_DETAIL_PAD, boxY + PDF_DETAIL_PAD, {
+    width: innerWidth,
+    lineBreak: true,
+  });
+
+  return headHeight + PDF_DETAIL_GAP + boxHeight;
 }
 
 /**
@@ -671,13 +748,14 @@ async function buildExcelDayListBuffer(layout) {
 
     const dateCell = excelRow.getCell(1);
     const dayOfWeek = getDayListDayOfWeek(row.dayKey);
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    const isHoliday = Boolean(row.isHoliday);
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 || isHoliday;
     dateCell.value = row.dateLabel;
     dateCell.font = {
       name: FONT_NAME,
       size: 10,
       bold: isWeekend,
-      color: { argb: hexToArgb(getDayListDateColor(dayOfWeek)) },
+      color: { argb: hexToArgb(getDayListDateColor(dayOfWeek, isHoliday)) },
     };
     dateCell.alignment = { vertical: 'top', horizontal: 'center' };
     dateCell.border = dayListBorder;
@@ -821,11 +899,17 @@ async function buildPdfDayListBuffer(layout) {
 
     drawHeader();
 
+    const eventTextWidth = contentColWidth - 18;
+
     for (const row of layout.rows) {
-      const text = row.contentText || ' ';
-      doc.fontSize(9);
-      const textHeight = Math.max(14, doc.heightOfString(text, { width: contentColWidth - 12 }));
-      const rowHeight = textHeight + rowPad * 2;
+      let contentHeight = 14;
+      if (row.events.length > 0) {
+        contentHeight = row.events.reduce(
+          (sum, event) => sum + measureDayListEventHeight(doc, event, eventTextWidth) + PDF_EVENT_GAP,
+          -PDF_EVENT_GAP,
+        );
+      }
+      const rowHeight = Math.max(14, contentHeight) + rowPad * 2;
 
       if (y + rowHeight > pageHeight - margin) {
         drawHeader();
@@ -833,7 +917,8 @@ async function buildPdfDayListBuffer(layout) {
 
       doc.save();
       const dayOfWeek = getDayListDayOfWeek(row.dayKey);
-      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const isHoliday = Boolean(row.isHoliday);
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6 || isHoliday;
       doc.fillColor(DAY_LIST_COLORS.dateBg).rect(margin, y, dateColWidth, rowHeight).fill();
       if (isWeekend) {
         doc.fillColor(DAY_LIST_COLORS.weekendBg)
@@ -844,7 +929,7 @@ async function buildPdfDayListBuffer(layout) {
       doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border)
         .rect(margin + dateColWidth, y, contentColWidth, rowHeight)
         .stroke();
-      doc.fillColor(getDayListDateColor(dayOfWeek))
+      doc.fillColor(getDayListDateColor(dayOfWeek, isHoliday))
         .fontSize(9)
         .text(row.dateLabel, margin + 4, y + rowPad, {
           width: dateColWidth - 8,
@@ -853,23 +938,12 @@ async function buildPdfDayListBuffer(layout) {
         });
 
       let eventY = y + rowPad;
-      if (row.events.length === 0) {
-        // keep empty cell
-      } else {
-        for (const event of row.events) {
-          const stripeX = margin + dateColWidth + 6;
-          const textX = stripeX + PDF_STRIPE_WIDTH + PDF_TEXT_GAP;
-          const eventTextWidth = contentColWidth - 18;
-          const eventHeight = Math.max(
-            PDF_MIN_EVENT_BAR_HEIGHT,
-            measurePdfEventTextHeight(doc, event.line, eventTextWidth),
-          );
-          doc.fillColor(event.color).rect(stripeX, eventY + 1, PDF_STRIPE_WIDTH, eventHeight).fill();
-          doc.fillColor(EXPORT_COLORS.body)
-            .fontSize(PDF_EVENT_FONT_SIZE)
-            .text(event.line, textX, eventY, { width: eventTextWidth, lineBreak: true });
-          eventY += eventHeight + PDF_EVENT_GAP;
-        }
+      for (const event of row.events) {
+        const stripeX = margin + dateColWidth + 6;
+        const textX = stripeX + PDF_STRIPE_WIDTH + PDF_TEXT_GAP;
+        const eventHeight = drawDayListEvent(doc, event, textX, eventY, eventTextWidth);
+        doc.fillColor(event.color).rect(stripeX, eventY + 1, PDF_STRIPE_WIDTH, eventHeight).fill();
+        eventY += eventHeight + PDF_EVENT_GAP;
       }
       doc.restore();
       y += rowHeight;

@@ -2,7 +2,7 @@
 chcp 949 >nul 2>&1
 
 REM ============================================================================
-REM  Neo Calendar - Update npm dependencies (+ optional build / MSI)
+REM  Neo Desktop Calendar - Update npm dependencies (+ optional build / MSI)
 REM ============================================================================
 
 if /I not "%~1"=="_inner" if /I not "%~1"=="_quiet" (
@@ -62,7 +62,7 @@ goto parse_args
 :run
 echo.
 echo ============================================================
-echo  Neo Calendar - update_all
+echo  Neo Desktop Calendar - update_all
 echo ============================================================
 echo  Root : %APP_ROOT%
 echo  Log  : .cache\logs\update-all.log
