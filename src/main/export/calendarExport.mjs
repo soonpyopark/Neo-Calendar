@@ -655,7 +655,8 @@ async function buildExcelDayListBuffer(layout) {
       fgColor: { argb: hexToArgb(DAY_LIST_COLORS.headerBg) },
     };
   });
-  worksheet.getColumn(1).width = 16;
+  // Excel column width uses character units; this converts to approximately 105 px.
+  worksheet.getColumn(1).width = (105 - 5) / 7;
   worksheet.getColumn(2).width = 72;
   worksheet.pageSetup.printArea = `A1:B${2 + layout.rows.length}`;
   worksheet.views = [{ state: 'frozen', ySplit: 2, showGridLines: false }];
