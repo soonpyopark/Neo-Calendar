@@ -110,8 +110,8 @@ export const PERIOD_TOOLBAR_ACTIONS = {
 export const CHROME_TOOLBAR_ACTIONS = {
   search: 'search',
   settings: 'settings',
-  exportExcel: 'export-excel',
-  exportPdf: 'export-pdf',
+  /** Unified export options (Excel/PDF + layout/range). */
+  export: 'export',
   enterDesktop: 'enter-desktop',
   enterWindow: 'enter-window',
   authToggle: 'auth-toggle',
@@ -133,8 +133,7 @@ export const EMBEDDED_MODE_CHROME_ACTIONS = new Set<string>([
 
 /** Header export actions while WorkerW-embedded (undock briefly for dialogs). */
 export const EMBEDDED_EXPORT_CHROME_ACTIONS = new Set<string>([
-  CHROME_TOOLBAR_ACTIONS.exportExcel,
-  CHROME_TOOLBAR_ACTIONS.exportPdf
+  CHROME_TOOLBAR_ACTIONS.export
 ])
 
 /** Login / logout while WorkerW-embedded. */
@@ -326,8 +325,16 @@ export type NeoCalendarApi = {
   syncHolidays: (input?: SyncHolidaysInput) => Promise<SyncHolidaysResult>
   exportCalendar: (input: {
     format: 'excel' | 'pdf'
-    year: number
-    month: number
+    layout?: 'monthGrid' | 'dayList'
+    startDate?: string
+    endDate?: string
+    /** @deprecated Prefer startDate/endDate. Still accepted for back-compat. */
+    year?: number
+    /** @deprecated Prefer startDate/endDate. Still accepted for back-compat. */
+    month?: number
+    includeCompleted?: boolean
+    includeHolidays?: boolean
+    excludeHiddenCalendars?: boolean
     asAdmin?: boolean
   }) => Promise<{ ok: boolean; canceled?: boolean; path?: string; error?: string }>
   getDataRoot: () => Promise<string>

@@ -4,6 +4,8 @@ import { filterEventsForViewer } from './calendarVisibility.js';
 import { formatExportEventLineText, compareEventsForDayDisplay } from './eventBarFormat.js';
 import { buildWeekEventLayout } from './monthWeekLayout.js';
 import { EXPORT_COLORS } from './exportColors.js';
+import { filterEventsForExport } from './exportFilters.js';
+import { getRangeWeeksForExport, getWeekdayHeaders } from './exportRange.js';
 
 export { EXPORT_COLORS };
 
@@ -136,19 +138,154 @@ export function getSolarTextColor(date, inMonth, isToday) {
 }
 
 /**
+ * @param {string} startDate
+ * @param {string} endDate
+ */
+function formatRangeGridTitle(startDate, endDate) {
+  const [sy, sm, sd] = startDate.split('-').map(Number);
+  const [ey, em, ed] = endDate.split('-').map(Number);
+  if (sy === ey && sm === em) {
+    const last = new Date(sy, sm, 0).getDate();
+    if (sd === 1 && ed === last) {
+      return `${sy}년 ${sm}월`;
+    }
+    return `${sy}년 ${sm}월 ${sd}일 ~ ${ed}일`;
+  }
+  if (sy === ey) {
+    return `${sy}년 ${sm}월 ${sd}일 ~ ${em}월 ${ed}일`;
+  }
+  return `${sy}.${String(sm).padStart(2, '0')}.${String(sd).padStart(2, '0')} ~ ${ey}.${String(em).padStart(2, '0')}.${String(ed).padStart(2, '0')}`;
+}
+
+/**
+ * Continuous week-grid layout for an arbitrary inclusive date range.
+ * Days outside the selected range stay padded (inactive) but keep the week structure.
+ *
+ * @param {object} store
+ * @param {{ startDate: string, endDate: string }} range
+ * @param {{
+ *   includeCompleted?: boolean
+ *   includeHolidays?: boolean
+ *   excludeHiddenCalendars?: boolean
+ *   asAdmin?: boolean
+ * }} [options]
+ */
+export function prepareRangeGridExportLayout(store, range, options = {}) {
+  const startDate = range.startDate;
+  const endDate = range.endDate;
+  if (!startDate || !endDate || endDate < startDate) {
+    throw new Error('내보내기 기간이 올바르지 않습니다.');
+  }
+
+  const viewOptions = {
+    ...DEFAULT_VIEW_OPTIONS,
+    ...(store?.settings?.viewOptions ?? {}),
+  };
+  const weekStartsOn = viewOptions.weekStartsOnSunday === false ? 1 : 0;
+  const showWeekNumbers = viewOptions.showWeekNumbers !== false;
+
+  const calendars = store?.calendars ?? [];
+  const calendarMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
+  const tags = store?.tags ?? [];
+  const visibleEvents = filterEventsForExport(store?.events ?? [], calendars, options);
+
+  const today = new Date();
+  const todayKey = toDateKey(today);
+  const weeks = getRangeWeeksForExport(startDate, endDate, weekStartsOn);
+  const weekdayHeaders = getWeekdayHeaders(weekStartsOn);
+
+  const weekRows = weeks.map((week) => {
+    const weekStart = week[0].date;
+    const weekForLayout = week.map(({ date, inRange }) => ({
+      date,
+      inMonth: inRange,
+    }));
+    const weekLayout = buildWeekEventLayout(weekForLayout, visibleEvents, tags);
+
+    const days = week.map(({ date, inRange }) => {
+      const dayKey = toDateKey(date);
+      const lunar = getLunarInfo(date.getFullYear(), date.getMonth() + 1, date.getDate());
+      const lunarLabel = formatLunarDayLabel(lunar);
+      const daySegments = weekLayout[dayKey] ?? [];
+
+      const dayEvents = [...daySegments]
+        .filter(({ event }) => options.includeCompleted !== false || !event.completed)
+        .sort((a, b) => compareEventsForDayDisplay(a.event, b.event, dayKey))
+        .map(({ event, segment, lane }) => {
+          const color = calendarMap.get(event.calendarId)?.color ?? '#f6bf26';
+          return {
+            id: `${event.id}-${dayKey}`,
+            line: formatExportEventLineText(event, dayKey, tags),
+            color,
+            segment,
+            lane,
+          };
+        });
+
+      return {
+        date,
+        dayKey,
+        inMonth: inRange,
+        solar: date.getDate(),
+        lunarLabel,
+        isToday: dayKey === todayKey,
+        dayOfWeek: date.getDay(),
+        solarColor: getSolarTextColor(date, inRange, dayKey === todayKey),
+        events: dayEvents,
+      };
+    });
+
+    return {
+      weekNumber: getWeekNumber(weekStart),
+      days,
+    };
+  });
+
+  const [sy, sm] = startDate.split('-').map(Number);
+  const [ey, em] = endDate.split('-').map(Number);
+  const sameMonth = sy === ey && sm === em;
+  const lastDay = new Date(sy, sm, 0).getDate();
+  const isFullSingleMonth =
+    sameMonth && startDate.endsWith('-01') && endDate.endsWith(`-${String(lastDay).padStart(2, '0')}`);
+
+  return {
+    layout: 'monthGrid',
+    startDate,
+    endDate,
+    year: sy,
+    month: sm,
+    title: formatRangeGridTitle(startDate, endDate),
+    lunarMonthLabel: isFullSingleMonth ? getLunarMonthLabel(sy, sm) : '',
+    showWeekNumbers,
+    weekStartsOn,
+    weekdayHeaders,
+    weekRows,
+  };
+}
+
+/**
  * @param {object} store
  * @param {{ scope: 'month' | 'year', year: number, month?: number }} period
- * @param {{ asAdmin?: boolean }} [options]
+ * @param {{ asAdmin?: boolean, includeCompleted?: boolean, includeHolidays?: boolean, excludeHiddenCalendars?: boolean }} [options]
  */
 export function prepareMonthExportLayout(store, period, options = {}) {
   if (period.scope !== 'month') {
     return null;
   }
 
-  const asAdmin = options.asAdmin === true;
-
   const year = period.year;
   const month = period.month ?? 1;
+  const lastDay = new Date(year, month, 0).getDate();
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  // Legacy path: asAdmin false still uses published visibility via filterEventsForViewer
+  // when the newer excludeHiddenCalendars flag is not set.
+  if (options.excludeHiddenCalendars || options.includeHolidays === false || options.includeCompleted === false) {
+    return prepareRangeGridExportLayout(store, { startDate, endDate }, options);
+  }
+
+  const asAdmin = options.asAdmin === true;
   const monthIndex = month - 1;
   const viewOptions = {
     ...DEFAULT_VIEW_OPTIONS,
@@ -159,6 +296,7 @@ export function prepareMonthExportLayout(store, period, options = {}) {
 
   const calendars = store?.calendars ?? [];
   const calendarMap = new Map(calendars.map((calendar) => [calendar.id, calendar]));
+  const tags = store?.tags ?? [];
   const visibleEvents = filterEventsForViewer(store?.events ?? [], calendars, asAdmin);
 
   const today = new Date();
@@ -168,7 +306,7 @@ export function prepareMonthExportLayout(store, period, options = {}) {
 
   const weekRows = weeks.map((week) => {
     const weekStart = week[0].date;
-    const weekLayout = buildWeekEventLayout(week, visibleEvents);
+    const weekLayout = buildWeekEventLayout(week, visibleEvents, tags);
 
     const days = week.map(({ date, inMonth }) => {
       const dayKey = toDateKey(date);
@@ -182,7 +320,7 @@ export function prepareMonthExportLayout(store, period, options = {}) {
         const color = calendarMap.get(event.calendarId)?.color ?? '#f6bf26';
         return {
           id: `${event.id}-${dayKey}`,
-          line: formatExportEventLineText(event, dayKey),
+          line: formatExportEventLineText(event, dayKey, tags),
           color,
           segment,
           lane,
@@ -209,6 +347,9 @@ export function prepareMonthExportLayout(store, period, options = {}) {
   });
 
   return {
+    layout: 'monthGrid',
+    startDate,
+    endDate,
     year,
     month,
     title: `${year}년 ${month}월`,

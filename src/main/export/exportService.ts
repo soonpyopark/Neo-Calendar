@@ -3,41 +3,53 @@ import { BrowserWindow, dialog } from 'electron'
 import { withNativeDialog } from '../nativeDialogGuard'
 import type { CalendarStoreSnapshot } from '../../shared/calendarTypes'
 import {
+  formatExportRangeLabel,
+  normalizeExportRequest
+} from '../../shared/exportCalendarHelpers.js'
+import type {
+  ExportCalendarFormat,
+  ExportCalendarLayout,
+  ExportCalendarRequest,
+  ExportCalendarResult
+} from '../../shared/exportCalendar'
+import {
   buildExcelBuffer,
   buildPdfBuffer,
   getExcelExportFileName,
   getPdfExportFileName
 } from './calendarExport.mjs'
 
-export type ExportCalendarFormat = 'excel' | 'pdf'
+export type { ExportCalendarFormat, ExportCalendarLayout, ExportCalendarRequest, ExportCalendarResult }
 
-export type ExportCalendarInput = {
+export type ExportCalendarInput = Partial<ExportCalendarRequest> & {
   store: CalendarStoreSnapshot
-  year: number
-  month: number
   format: ExportCalendarFormat
-  asAdmin?: boolean
-}
-
-export type ExportCalendarResult = {
-  ok: boolean
-  canceled?: boolean
-  path?: string
-  error?: string
+  /** Legacy month export. */
+  year?: number
+  month?: number
 }
 
 export async function buildCalendarExportBuffer(input: ExportCalendarInput): Promise<{
   buffer: Buffer
   filename: string
   contentType: string
+  rangeLabel: string
+  formatLabel: string
+  layoutLabel: string
 }> {
+  const request = normalizeExportRequest(input) as ExportCalendarRequest
   const period = {
-    scope: 'month' as const,
-    year: input.year,
-    month: input.month
+    layout: request.layout,
+    startDate: request.startDate,
+    endDate: request.endDate
+  } as const
+  const options = {
+    asAdmin: request.asAdmin !== false,
+    includeCompleted: request.includeCompleted !== false,
+    includeHolidays: request.includeHolidays !== false,
+    excludeHiddenCalendars: Boolean(request.excludeHiddenCalendars)
   }
-  const options = { asAdmin: input.asAdmin !== false }
-  const isExcel = input.format === 'excel'
+  const isExcel = request.format === 'excel'
   const buffer = Buffer.from(
     isExcel
       ? await buildExcelBuffer(input.store, period, options)
@@ -48,7 +60,10 @@ export async function buildCalendarExportBuffer(input: ExportCalendarInput): Pro
     filename: isExcel ? getExcelExportFileName(period) : getPdfExportFileName(period),
     contentType: isExcel
       ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-      : 'application/pdf'
+      : 'application/pdf',
+    rangeLabel: formatExportRangeLabel(request.startDate, request.endDate),
+    formatLabel: isExcel ? 'Excel' : 'PDF',
+    layoutLabel: request.layout === 'dayList' ? '일간 목록' : '월간 달력'
   }
 }
 
@@ -56,13 +71,12 @@ export async function exportCalendarMonth(
   input: ExportCalendarInput,
   parent: BrowserWindow | null
 ): Promise<ExportCalendarResult> {
-  const isExcel = input.format === 'excel'
-
   try {
     const built = await buildCalendarExportBuffer(input)
+    const isExcel = built.formatLabel === 'Excel'
 
     const dialogOpts = {
-      title: isExcel ? 'Excel로 내보내기' : 'PDF로 내보내기',
+      title: `${built.formatLabel}로 내보내기`,
       defaultPath: built.filename,
       filters: isExcel
         ? [{ name: 'Excel', extensions: ['xlsx'] }]
@@ -83,3 +97,6 @@ export async function exportCalendarMonth(
     return { ok: false, error: message }
   }
 }
+
+/** Alias used by newer call sites. */
+export const exportCalendar = exportCalendarMonth

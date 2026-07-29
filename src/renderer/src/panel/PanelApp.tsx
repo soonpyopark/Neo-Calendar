@@ -5,7 +5,7 @@ import { EventEditorPanelHost } from './panelHosts/EventEditorPanelHost'
 import { SettingsPanelHost } from './panelHosts/SettingsPanelHost'
 import { SearchPanelHost } from './panelHosts/SearchPanelHost'
 import { EventDetailPanelHost } from './panelHosts/EventDetailPanelHost'
-import { ExportConfirmPanelHost } from './panelHosts/ExportConfirmPanelHost'
+import { ExportOptionsPanelHost } from './panelHosts/ExportOptionsPanelHost'
 import { RecurrenceScopePanelHost } from './panelHosts/RecurrenceScopePanelHost'
 import { LoginPanelHost } from './panelHosts/LoginPanelHost'
 
@@ -43,8 +43,8 @@ export function PanelApp(): ReactElement | null {
       return <SearchPanelHost init={init} />
     case 'eventDetail':
       return <EventDetailPanelHost init={init} />
-    case 'exportConfirm':
-      return <ExportConfirmPanelHost init={init} />
+    case 'exportOptions':
+      return <ExportOptionsPanelHost init={init} />
     case 'recurrenceScope':
       return <RecurrenceScopePanelHost init={init} />
     case 'login':

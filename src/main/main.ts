@@ -852,12 +852,33 @@ function registerIpc(): void {
     'calendar:export',
     async (
       event,
-      input: { format: 'excel' | 'pdf'; year: number; month: number; asAdmin?: boolean }
+      input: {
+        format: 'excel' | 'pdf'
+        layout?: 'monthGrid' | 'dayList'
+        startDate?: string
+        endDate?: string
+        year?: number
+        month?: number
+        includeCompleted?: boolean
+        includeHolidays?: boolean
+        excludeHiddenCalendars?: boolean
+        asAdmin?: boolean
+      }
     ) => {
-      const raw = calendarStore.getSnapshot()
+      const loginId = auth.getUser()?.loginId
+      const excludeHidden = Boolean(input?.excludeHiddenCalendars)
+      const raw = loginId
+        ? calendarStore.getSnapshotForLogin(loginId, 'native')
+        : calendarStore.getSnapshot()
+      const projected: CalendarStoreSnapshot = excludeHidden
+        ? raw
+        : {
+            ...raw,
+            calendars: raw.calendars.map((calendar) => ({ ...calendar, visible: true }))
+          }
       const store: CalendarStoreSnapshot = {
-        ...raw,
-        settings: projectViewOptionsForClient(raw.settings, 'native')
+        ...projected,
+        settings: projectViewOptionsForClient(projected.settings, 'native')
       }
       const senderWin = BrowserWindow.fromWebContents(event.sender)
       const parent =
@@ -869,9 +890,15 @@ function registerIpc(): void {
       return exportCalendarMonth(
         {
           store,
-          year: Number(input?.year),
-          month: Number(input?.month),
           format: input?.format === 'pdf' ? 'pdf' : 'excel',
+          layout: input?.layout === 'dayList' ? 'dayList' : 'monthGrid',
+          startDate: input?.startDate,
+          endDate: input?.endDate,
+          year: input?.year != null ? Number(input.year) : undefined,
+          month: input?.month != null ? Number(input.month) : undefined,
+          includeCompleted: input?.includeCompleted !== false,
+          includeHolidays: input?.includeHolidays !== false,
+          excludeHiddenCalendars: excludeHidden,
           asAdmin: input?.asAdmin !== false
         },
         parent && !parent.isDestroyed() ? parent : null
@@ -880,20 +907,71 @@ function registerIpc(): void {
   )
 }
 
-app.whenReady().then(() => {
+/** Reveal the already-running instance without changing its saved launch mode. */
+function focusExistingInstance(): void {
   try {
-    bootApp()
-  } catch (error) {
-    const message = error instanceof Error ? error.stack ?? error.message : String(error)
-    console.error('[main] startup failed:', message)
-    try {
-      dialog.showErrorBox('Neo Calendar 시작 실패', message)
-    } catch {
-      /* ignore */
+    if (!desktopMode) return
+    if (desktopMode.getLaunchMode() === 'desktop') {
+      // Keep desktop mode persisted; temporarily detach from WorkerW for interaction.
+      desktopMode.suspendForInteraction()
+      const desktopWin = mainWindow
+      if (desktopWin && !desktopWin.isDestroyed()) {
+        desktopWin.show()
+        desktopWin.focus()
+        desktopWin.moveTop()
+      }
+      tray?.rebuildMenu?.()
+      return
     }
-    app.quit()
+    const win = mainWindow
+    if (!win || win.isDestroyed()) {
+      if (app.isReady()) createWindow()
+      return
+    }
+    if (win.isMinimized()) win.restore()
+    win.setAlwaysOnTop(true, 'floating')
+    win.show()
+    win.focus()
+    win.moveTop()
+    setTimeout(() => {
+      if (!win.isDestroyed() && desktopMode?.getLaunchMode() === 'window') {
+        win.setAlwaysOnTop(false)
+      }
+    }, 400)
+    tray?.rebuildMenu?.()
+  } catch (error) {
+    console.warn('[main] second-instance focus failed', error)
   }
-})
+}
+
+// One process only — second launch reveals the existing instance.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (app.isReady()) {
+      focusExistingInstance()
+      return
+    }
+    void app.whenReady().then(() => focusExistingInstance())
+  })
+
+  app.whenReady().then(() => {
+    try {
+      bootApp()
+    } catch (error) {
+      const message = error instanceof Error ? error.stack ?? error.message : String(error)
+      console.error('[main] startup failed:', message)
+      try {
+        dialog.showErrorBox('Neo Calendar 시작 실패', message)
+      } catch {
+        /* ignore */
+      }
+      app.quit()
+    }
+  })
+}
 
 function bootApp(): void {
   loadDotEnv()

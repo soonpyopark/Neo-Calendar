@@ -1,25 +1,33 @@
 declare module './calendarExport.mjs' {
+  type ExportPeriod = {
+    scope?: 'month' | 'year'
+    year?: number
+    month?: number
+    layout?: 'monthGrid' | 'dayList'
+    startDate?: string
+    endDate?: string
+  }
+
+  type ExportOptions = {
+    asAdmin?: boolean
+    includeCompleted?: boolean
+    includeHolidays?: boolean
+    excludeHiddenCalendars?: boolean
+  }
+
   export function buildExcelBuffer(
     store: unknown,
-    period: { scope: 'month' | 'year'; year: number; month?: number },
-    options?: { asAdmin?: boolean }
+    period: ExportPeriod,
+    options?: ExportOptions
   ): Promise<Uint8Array | ArrayBuffer>
 
   export function buildPdfBuffer(
     store: unknown,
-    period: { scope: 'month' | 'year'; year: number; month?: number },
-    options?: { asAdmin?: boolean }
+    period: ExportPeriod,
+    options?: ExportOptions
   ): Promise<Uint8Array | ArrayBuffer>
 
-  export function getExcelExportFileName(period: {
-    scope: 'month' | 'year'
-    year: number
-    month?: number
-  }): string
+  export function getExcelExportFileName(period: ExportPeriod): string
 
-  export function getPdfExportFileName(period: {
-    scope: 'month' | 'year'
-    year: number
-    month?: number
-  }): string
+  export function getPdfExportFileName(period: ExportPeriod): string
 }

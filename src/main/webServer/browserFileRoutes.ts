@@ -122,17 +122,36 @@ export async function tryHandleBrowserFileRequest(options: {
       const text = raw.toString('utf8').trim()
       const body = text ? (JSON.parse(text) as Record<string, unknown>) : {}
       const format = body.format === 'pdf' ? 'pdf' : 'excel'
-      const year = Number(body.year)
-      const month = Number(body.month)
-      if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
-        sendJson(res, 400, { ok: false, error: 'year/month가 올바르지 않습니다.' })
-        return true
+      const layout = body.layout === 'dayList' ? 'dayList' : 'monthGrid'
+      const startDate = typeof body.startDate === 'string' ? body.startDate : undefined
+      const endDate = typeof body.endDate === 'string' ? body.endDate : undefined
+      const year = body.year != null ? Number(body.year) : undefined
+      const month = body.month != null ? Number(body.month) : undefined
+      if (!startDate && !endDate) {
+        if (!Number.isFinite(year) || !Number.isFinite(month) || (month ?? 0) < 1 || (month ?? 0) > 12) {
+          sendJson(res, 400, { ok: false, error: '내보내기 기간이 올바르지 않습니다.' })
+          return true
+        }
       }
+      const excludeHiddenCalendars = Boolean(body.excludeHiddenCalendars)
+      const snap = calendarStore.getSnapshotForLogin(user.loginId, 'browser')
+      const store = excludeHiddenCalendars
+        ? snap
+        : {
+            ...snap,
+            calendars: snap.calendars.map((calendar) => ({ ...calendar, visible: true }))
+          }
       const built = await buildCalendarExportBuffer({
-        store: calendarStore.getSnapshotForLogin(user.loginId, 'browser'),
+        store,
+        format,
+        layout,
+        startDate,
+        endDate,
         year,
         month,
-        format,
+        includeCompleted: body.includeCompleted !== false,
+        includeHolidays: body.includeHolidays !== false,
+        excludeHiddenCalendars,
         asAdmin: body.asAdmin !== false
       })
       sendFile(res, built)

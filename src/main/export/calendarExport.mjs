@@ -3,7 +3,11 @@ import { join } from 'node:path'
 import ExcelJS from 'exceljs'
 import PDFDocument from 'pdfkit'
 import { EXPORT_COLORS } from '../../shared/mdcExport/exportColors.js'
-import { prepareMonthExportLayout } from '../../shared/mdcExport/monthExportLayout.js'
+import { prepareDayListExportLayout } from '../../shared/mdcExport/dayListExportLayout.js'
+import {
+  prepareMonthExportLayout,
+  prepareRangeGridExportLayout,
+} from '../../shared/mdcExport/monthExportLayout.js'
 
 const FONT_NAME = 'Malgun Gothic'
 const THIN_BORDER = {
@@ -17,10 +21,25 @@ function hexToArgb(hex) {
   return `FF${hex.replace('#', '').toUpperCase()}`
 }
 
-function getExportFileName({ scope, year, month }, extension) {
-  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '')
-  if (scope === 'year') return `calendar_${year}_${stamp}.${extension}`
-  return `calendar_${year}${String(month).padStart(2, '0')}_${stamp}.${extension}`
+function timeStampForFileName() {
+  return new Date().toTimeString().slice(0, 8).replace(/:/g, '')
+}
+
+/**
+ * @param {{ startDate?: string, endDate?: string, layout?: string, scope?: string, year?: number, month?: number }} meta
+ * @param {string} extension
+ */
+function getExportFileName(meta, extension) {
+  const stamp = timeStampForFileName()
+  const layout = meta.layout === 'dayList' ? 'dayList' : 'monthGrid'
+  if (meta.startDate && meta.endDate) {
+    const start = String(meta.startDate).replace(/-/g, '')
+    const end = String(meta.endDate).replace(/-/g, '')
+    if (start === end) return `calendar_${layout}_${start}_${stamp}.${extension}`
+    return `calendar_${layout}_${start}-${end}_${stamp}.${extension}`
+  }
+  if (meta.scope === 'year') return `calendar_${meta.year}_${stamp}.${extension}`
+  return `calendar_${meta.year}${String(meta.month).padStart(2, '0')}_${stamp}.${extension}`
 }
 
 /** @type {Buffer | null} */
@@ -114,6 +133,35 @@ const PDF_STRIPE_WIDTH = 3;
 const PDF_TEXT_GAP = 5;
 const PDF_CELL_PADDING = 4;
 const PDF_MIN_EVENT_BAR_HEIGHT = 10;
+const DAY_LIST_COLORS = {
+  headerBg: '#eef4df',
+  dateBg: '#f5f8eb',
+  weekendBg: '#fff0e5',
+  border: '#d9ddd2',
+  saturday: '#174ea6',
+  sunday: '#b3261e',
+};
+
+function getDayListDayOfWeek(dayKey) {
+  const [year, month, day] = String(dayKey).split('-').map(Number);
+  return new Date(year, month - 1, day).getDay();
+}
+
+function getDayListDateColor(dayOfWeek) {
+  if (dayOfWeek === 0) return DAY_LIST_COLORS.sunday;
+  if (dayOfWeek === 6) return DAY_LIST_COLORS.saturday;
+  return EXPORT_COLORS.heading;
+}
+
+function getDayListBorder() {
+  const color = { argb: hexToArgb(DAY_LIST_COLORS.border) };
+  return {
+    top: { style: 'thin', color },
+    left: { style: 'thin', color },
+    bottom: { style: 'thin', color },
+    right: { style: 'thin', color },
+  };
+}
 
 function getExportWeekRowHeight(week, minRowHeight) {
   const maxEvents = Math.max(0, ...week.days.map((day) => day.events.length));
@@ -208,15 +256,15 @@ function getGridColumnCount(layout) {
   return layout.showWeekNumbers ? 8 : 7;
 }
 
-function styleWorksheetPage(worksheet, columnCount) {
+function styleWorksheetPage(worksheet, columnCount, lastRow = 20) {
   worksheet.pageSetup = {
     orientation: 'landscape',
     paperSize: 9,
     fitToPage: true,
     fitToWidth: 1,
-    fitToHeight: 1,
+    fitToHeight: 0,
   };
-  worksheet.pageSetup.printArea = `A1:${String.fromCharCode(64 + columnCount)}20`;
+  worksheet.pageSetup.printArea = `A1:${String.fromCharCode(64 + columnCount)}${Math.max(2, lastRow)}`;
 }
 
 /**
@@ -224,13 +272,15 @@ function styleWorksheetPage(worksheet, columnCount) {
  */
 async function buildExcelCalendarBuffer(layout) {
   const workbook = new ExcelJS.Workbook();
-  const worksheet = workbook.addWorksheet(`${layout.month}월`, {
+  const sheetName = layout.month ? `${layout.month}월` : '달력';
+  const worksheet = workbook.addWorksheet(sheetName.slice(0, 31), {
     views: [{ showGridLines: false }],
   });
   const columnCount = getGridColumnCount(layout);
   const lastColumnLetter = String.fromCharCode(64 + columnCount);
+  const lastRow = 2 + (layout.weekRows?.length ?? 0);
 
-  styleWorksheetPage(worksheet, columnCount);
+  styleWorksheetPage(worksheet, columnCount, lastRow);
 
   const titleStartCol = layout.showWeekNumbers ? 2 : 1;
   const titleEndCol = columnCount - 1;
@@ -567,11 +617,329 @@ async function buildPdfCalendarBuffer(layout) {
 }
 
 /**
+ * @param {ReturnType<typeof prepareDayListExportLayout>} layout
+ */
+async function buildExcelDayListBuffer(layout) {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('일정 목록', {
+    views: [{ showGridLines: false }],
+  });
+  const dayListBorder = getDayListBorder();
+
+  worksheet.pageSetup = {
+    orientation: 'portrait',
+    paperSize: 9,
+    fitToPage: true,
+    fitToWidth: 1,
+    fitToHeight: 0,
+  };
+
+  worksheet.mergeCells('A1:B1');
+  const titleCell = worksheet.getCell('A1');
+  titleCell.value = layout.title;
+  titleCell.font = { name: FONT_NAME, bold: true, size: 16, color: { argb: hexToArgb(EXPORT_COLORS.heading) } };
+  titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
+  worksheet.getRow(1).height = 30;
+
+  const headerRow = worksheet.getRow(2);
+  headerRow.height = 22;
+  ;['날짜', '내용'].forEach((label, index) => {
+    const cell = headerRow.getCell(index + 1);
+    cell.value = label;
+    cell.font = { name: FONT_NAME, bold: true, size: 10, color: { argb: hexToArgb(EXPORT_COLORS.heading) } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = dayListBorder;
+    cell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: hexToArgb(DAY_LIST_COLORS.headerBg) },
+    };
+  });
+  worksheet.getColumn(1).width = 16;
+  worksheet.getColumn(2).width = 72;
+  worksheet.pageSetup.printArea = `A1:B${2 + layout.rows.length}`;
+  worksheet.views = [{ state: 'frozen', ySplit: 2, showGridLines: false }];
+
+  layout.rows.forEach((row, index) => {
+    const excelRow = worksheet.getRow(3 + index);
+    const contentLines = String(row.contentText || '')
+      .split('\n')
+      .filter((line, lineIndex, lines) => line.length > 0 || (lineIndex > 0 && lineIndex < lines.length - 1));
+    const lineCount = Math.max(1, contentLines.length || row.events.length);
+    excelRow.height = Math.max(22, 14 * lineCount + 8);
+
+    const dateCell = excelRow.getCell(1);
+    const dayOfWeek = getDayListDayOfWeek(row.dayKey);
+    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+    dateCell.value = row.dateLabel;
+    dateCell.font = {
+      name: FONT_NAME,
+      size: 10,
+      bold: isWeekend,
+      color: { argb: hexToArgb(getDayListDateColor(dayOfWeek)) },
+    };
+    dateCell.alignment = { vertical: 'top', horizontal: 'center' };
+    dateCell.border = dayListBorder;
+    dateCell.fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: hexToArgb(DAY_LIST_COLORS.dateBg) },
+    };
+
+    const contentCell = excelRow.getCell(2);
+    if (row.events.length === 0) {
+      contentCell.value = '';
+    } else {
+      /** @type {import('exceljs').RichText[]} */
+      const richText = [];
+      row.events.forEach((event, eventIndex) => {
+        if (eventIndex > 0) {
+          richText.push({ text: '\n', font: { name: FONT_NAME, size: 9 } });
+        }
+        const eventLines = String(event.line || '').split('\n');
+        eventLines.forEach((line, lineIndex) => {
+          if (lineIndex > 0) {
+            richText.push({ text: '\n', font: { name: FONT_NAME, size: 9 } });
+          }
+          if (lineIndex === 0) {
+            richText.push({
+              text: '▎ ',
+              font: { name: FONT_NAME, size: 9, color: { argb: hexToArgb(event.color) } },
+            });
+          } else {
+            richText.push({
+              text: '  ',
+              font: { name: FONT_NAME, size: 9 },
+            });
+          }
+          richText.push({
+            text: line,
+            font: {
+              name: FONT_NAME,
+              size: 9,
+              color: {
+                argb: hexToArgb(lineIndex === 0 ? EXPORT_COLORS.body : EXPORT_COLORS.muted),
+              },
+            },
+          });
+        });
+      });
+      contentCell.value = { richText };
+    }
+    contentCell.alignment = { vertical: 'top', horizontal: 'left', wrapText: true };
+    contentCell.border = dayListBorder;
+    if (isWeekend) {
+      contentCell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: hexToArgb(DAY_LIST_COLORS.weekendBg) },
+      };
+    }
+  });
+
+  return uint8FromBufferLike(await workbook.xlsx.writeBuffer());
+}
+
+/**
+ * @param {ReturnType<typeof prepareDayListExportLayout>} layout
+ */
+async function buildPdfDayListBuffer(layout) {
+  const fontBuffer = await loadKoreanFontBuffer();
+  const fontBytes = uint8FromBufferLike(fontBuffer);
+
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({
+      size: 'A4',
+      layout: 'portrait',
+      margin: 36,
+      font: fontBytes,
+    });
+    /** @type {Uint8Array[]} */
+    const chunks = [];
+
+    doc.on('data', (chunk) => chunks.push(uint8FromBufferLike(chunk)));
+    doc.on('end', () => {
+      const total = chunks.reduce((sum, part) => sum + part.byteLength, 0);
+      const out = new Uint8Array(total);
+      let offset = 0;
+      for (const part of chunks) {
+        out.set(part, offset);
+        offset += part.byteLength;
+      }
+      resolve(out);
+    });
+    doc.on('error', reject);
+
+    doc.registerFont('Body', fontBytes);
+    doc.font('Body');
+
+    const margin = 36;
+    const pageWidth = doc.page.width;
+    const pageHeight = doc.page.height;
+    const contentWidth = pageWidth - margin * 2;
+    const dateColWidth = 90;
+    const contentColWidth = contentWidth - dateColWidth;
+    const titleHeight = 34;
+    const headerHeight = 22;
+    const rowPad = 6;
+
+    let y = 0;
+    let pageIndex = 0;
+
+    const drawHeader = () => {
+      if (pageIndex > 0) {
+        doc.addPage({ size: 'A4', layout: 'portrait', margin });
+        doc.font('Body');
+      }
+      pageIndex += 1;
+
+      doc.fillColor(EXPORT_COLORS.heading)
+        .fontSize(16)
+        .text(layout.title, margin, margin, { width: contentWidth, align: 'left' });
+
+      const headerY = margin + titleHeight;
+      doc.save();
+      doc.fillColor(DAY_LIST_COLORS.headerBg).rect(margin, headerY, contentWidth, headerHeight).fill();
+      doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border).rect(margin, headerY, dateColWidth, headerHeight).stroke();
+      doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border)
+        .rect(margin + dateColWidth, headerY, contentColWidth, headerHeight)
+        .stroke();
+      doc.fillColor(EXPORT_COLORS.heading)
+        .fontSize(10)
+        .text('날짜', margin, headerY + 6, { width: dateColWidth, align: 'center', lineBreak: false });
+      doc.fillColor(EXPORT_COLORS.heading)
+        .fontSize(10)
+        .text('내용', margin + dateColWidth, headerY + 6, {
+          width: contentColWidth,
+          align: 'center',
+          lineBreak: false,
+        });
+      doc.restore();
+      y = headerY + headerHeight;
+    };
+
+    drawHeader();
+
+    for (const row of layout.rows) {
+      const text = row.contentText || ' ';
+      doc.fontSize(9);
+      const textHeight = Math.max(14, doc.heightOfString(text, { width: contentColWidth - 12 }));
+      const rowHeight = textHeight + rowPad * 2;
+
+      if (y + rowHeight > pageHeight - margin) {
+        drawHeader();
+      }
+
+      doc.save();
+      const dayOfWeek = getDayListDayOfWeek(row.dayKey);
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      doc.fillColor(DAY_LIST_COLORS.dateBg).rect(margin, y, dateColWidth, rowHeight).fill();
+      if (isWeekend) {
+        doc.fillColor(DAY_LIST_COLORS.weekendBg)
+          .rect(margin + dateColWidth, y, contentColWidth, rowHeight)
+          .fill();
+      }
+      doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border).rect(margin, y, dateColWidth, rowHeight).stroke();
+      doc.lineWidth(0.45).strokeColor(DAY_LIST_COLORS.border)
+        .rect(margin + dateColWidth, y, contentColWidth, rowHeight)
+        .stroke();
+      doc.fillColor(getDayListDateColor(dayOfWeek))
+        .fontSize(9)
+        .text(row.dateLabel, margin + 4, y + rowPad, {
+          width: dateColWidth - 8,
+          align: 'center',
+          lineBreak: false,
+        });
+
+      let eventY = y + rowPad;
+      if (row.events.length === 0) {
+        // keep empty cell
+      } else {
+        for (const event of row.events) {
+          const stripeX = margin + dateColWidth + 6;
+          const textX = stripeX + PDF_STRIPE_WIDTH + PDF_TEXT_GAP;
+          const eventTextWidth = contentColWidth - 18;
+          const eventHeight = Math.max(
+            PDF_MIN_EVENT_BAR_HEIGHT,
+            measurePdfEventTextHeight(doc, event.line, eventTextWidth),
+          );
+          doc.fillColor(event.color).rect(stripeX, eventY + 1, PDF_STRIPE_WIDTH, eventHeight).fill();
+          doc.fillColor(EXPORT_COLORS.body)
+            .fontSize(PDF_EVENT_FONT_SIZE)
+            .text(event.line, textX, eventY, { width: eventTextWidth, lineBreak: true });
+          eventY += eventHeight + PDF_EVENT_GAP;
+        }
+      }
+      doc.restore();
+      y += rowHeight;
+    }
+
+    doc.end();
+  });
+}
+
+/**
  * @param {object} store
- * @param {{ scope: 'month' | 'year', year: number, month?: number }} period
- * @param {{ asAdmin?: boolean }} [options]
+ * @param {{
+ *   layout?: 'monthGrid' | 'dayList'
+ *   startDate: string
+ *   endDate: string
+ * }} request
+ * @param {{
+ *   asAdmin?: boolean
+ *   includeCompleted?: boolean
+ *   includeHolidays?: boolean
+ *   excludeHiddenCalendars?: boolean
+ * }} [options]
+ */
+function prepareExportLayout(store, request, options = {}) {
+  if (request.layout === 'dayList') {
+    return prepareDayListExportLayout(
+      store,
+      { startDate: request.startDate, endDate: request.endDate },
+      options,
+    );
+  }
+  return prepareRangeGridExportLayout(
+    store,
+    { startDate: request.startDate, endDate: request.endDate },
+    options,
+  );
+}
+
+/**
+ * @param {object} store
+ * @param {{
+ *   scope?: 'month' | 'year'
+ *   year?: number
+ *   month?: number
+ *   layout?: 'monthGrid' | 'dayList'
+ *   startDate?: string
+ *   endDate?: string
+ * }} period
+ * @param {{
+ *   asAdmin?: boolean
+ *   includeCompleted?: boolean
+ *   includeHolidays?: boolean
+ *   excludeHiddenCalendars?: boolean
+ * }} [options]
  */
 export async function buildExcelBuffer(store, period, options = {}) {
+  if (period?.startDate && period?.endDate) {
+    const layout = prepareExportLayout(
+      store,
+      {
+        layout: period.layout === 'dayList' ? 'dayList' : 'monthGrid',
+        startDate: period.startDate,
+        endDate: period.endDate,
+      },
+      options,
+    );
+    return layout.layout === 'dayList'
+      ? buildExcelDayListBuffer(layout)
+      : buildExcelCalendarBuffer(layout);
+  }
+
   const layout = prepareMonthExportLayout(store, period, options);
   if (!layout) {
     throw new Error('연간 내보내기는 아직 지원하지 않습니다.');
@@ -581,10 +949,37 @@ export async function buildExcelBuffer(store, period, options = {}) {
 
 /**
  * @param {object} store
- * @param {{ scope: 'month' | 'year', year: number, month?: number }} period
- * @param {{ asAdmin?: boolean }} [options]
+ * @param {{
+ *   scope?: 'month' | 'year'
+ *   year?: number
+ *   month?: number
+ *   layout?: 'monthGrid' | 'dayList'
+ *   startDate?: string
+ *   endDate?: string
+ * }} period
+ * @param {{
+ *   asAdmin?: boolean
+ *   includeCompleted?: boolean
+ *   includeHolidays?: boolean
+ *   excludeHiddenCalendars?: boolean
+ * }} [options]
  */
 export async function buildPdfBuffer(store, period, options = {}) {
+  if (period?.startDate && period?.endDate) {
+    const layout = prepareExportLayout(
+      store,
+      {
+        layout: period.layout === 'dayList' ? 'dayList' : 'monthGrid',
+        startDate: period.startDate,
+        endDate: period.endDate,
+      },
+      options,
+    );
+    return layout.layout === 'dayList'
+      ? buildPdfDayListBuffer(layout)
+      : buildPdfCalendarBuffer(layout);
+  }
+
   const layout = prepareMonthExportLayout(store, period, options);
   if (!layout) {
     throw new Error('연간 내보내기는 아직 지원하지 않습니다.');

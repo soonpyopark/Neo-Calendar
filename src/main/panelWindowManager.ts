@@ -473,7 +473,7 @@ export class PanelWindowManager {
     const resizable = init.kind === 'eventEditor' || init.kind === 'settings'
     // Scope / confirm dialogs must stay above sibling panels (detail/quick-edit).
     const forceTopLevel =
-      init.kind === 'recurrenceScope' || init.kind === 'exportConfirm' || init.kind === 'login'
+      init.kind === 'recurrenceScope' || init.kind === 'exportOptions' || init.kind === 'login'
     const topLevel =
       topLevelOption ?? (forceTopLevel || (this.options.isWorkerEmbedded?.() ?? false))
 

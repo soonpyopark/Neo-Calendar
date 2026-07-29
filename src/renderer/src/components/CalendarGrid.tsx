@@ -59,6 +59,9 @@ import {
 import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
+import { ExportOptionsPanel } from './ExportOptionsPanel'
+import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js'
+import type { ExportCalendarRequest } from '../../../shared/exportCalendar'
 import { useEventLayoutCssVars, useMaxVisibleEvents } from '../hooks/useMaxVisibleEvents'
 import {
   getOccurrenceDate,
@@ -428,7 +431,7 @@ export function CalendarGrid({
   onModeChange,
   onSettingsSaved
 }: CalendarGridProps): ReactElement {
-  const { alert, confirm } = useAppDialog()
+  const { alert } = useAppDialog()
   const now = new Date()
   const canEdit =
     Boolean(user) || (isBrowserNeoCalendarHost() && hasBrowserAuthToken())
@@ -473,6 +476,7 @@ export function CalendarGrid({
   const [loginError, setLoginError] = useState<string | null>(null)
   const [modeBusy, setModeBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportOptionsOpen, setExportOptionsOpen] = useState(false)
   const [footerHintNav, setFooterHintNav] = useState<FooterHintNav>(() => createFooterHintNav())
   const [footerHintPaused, setFooterHintPaused] = useState(false)
   const footerHintIndex = footerHintNav.index
@@ -1934,48 +1938,47 @@ export function CalendarGrid({
     })
   }
 
-  const handleExport = async (format: 'excel' | 'pdf'): Promise<void> => {
-    if (!requireEdit() || exporting) return
-    const exportYear = viewDate.getFullYear()
-    const exportMonth = viewDate.getMonth() + 1
-    const runInlineExport = async (): Promise<void> => {
-      const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
-      const ok = await confirm(
-        `${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장하시겠습니까?`
-      )
-      if (!ok) return
-      setExporting(true)
-      try {
-        const result = await window.neoCalendar.exportCalendar({
-          format,
-          year: exportYear,
-          month: exportMonth,
-          asAdmin: true
-        })
-        if (result.canceled) return
-        if (!result.ok) {
-          await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
-          return
-        }
-        await alert(`${exportYear}년 ${exportMonth}월 일정을 ${formatLabel} 파일로 저장했습니다.`)
-      } catch (error) {
-        await alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
-      } finally {
-        setExporting(false)
-      }
-    }
+  const exportReferenceDate = useMemo(() => {
+    const y = viewDate.getFullYear()
+    const m = viewDate.getMonth()
+    const d = Math.min(viewDate.getDate(), new Date(y, m + 1, 0).getDate())
+    return toDateKey(y, m, d)
+  }, [viewDate])
 
+  const runExportRequest = async (request: ExportCalendarRequest): Promise<void> => {
+    if (exporting) return
+    const formatLabel = request.format === 'excel' ? 'Excel' : 'PDF'
+    const layoutLabel = request.layout === 'dayList' ? '일간 목록' : '월간 달력'
+    const rangeLabel = formatExportRangeLabel(request.startDate, request.endDate)
+    setExporting(true)
+    try {
+      const result = await window.neoCalendar.exportCalendar(request)
+      if (result.canceled) return
+      if (!result.ok) {
+        await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
+        return
+      }
+      await alert(`${rangeLabel} ${layoutLabel}을(를) ${formatLabel} 파일로 저장했습니다.`)
+      setExportOptionsOpen(false)
+    } catch (error) {
+      await alert(error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleOpenExport = (): void => {
+    if (!requireEdit() || exporting) return
     const { floatingPanels: useFloating } = modeEmbeddedRef.current
     if (useFloating && !isBrowserNeoCalendarHost()) {
       openEmbeddedPanel({
-        kind: 'exportConfirm',
-        format,
-        year: exportYear,
-        month: exportMonth
+        kind: 'exportOptions',
+        referenceDate: exportReferenceDate,
+        weekStartsOnSunday: store.settings.viewOptions.weekStartsOnSunday !== false
       })
       return
     }
-    await runInlineExport()
+    setExportOptionsOpen(true)
   }
 
   const lunarMonthLabel = useMemo(
@@ -2135,8 +2138,7 @@ export function CalendarGrid({
             setSearchOpen(false)
             setSettingsOpen(true)
           }}
-          onExportExcel={() => void handleExport('excel')}
-          onExportPdf={() => void handleExport('pdf')}
+          onExport={handleOpenExport}
           onEnterDesktop={() => void enterDesktop()}
           onEnterWindow={() => void enterWindow()}
           onAuthToggle={handleAuthToggle}
@@ -2550,6 +2552,19 @@ export function CalendarGrid({
           tags={store.tags}
           onClose={() => setSearchOpen(false)}
           onSelectResult={handleSearchSelect}
+        />
+      ) : null}
+      {inlineOverlays ? (
+        <ExportOptionsPanel
+          open={exportOptionsOpen}
+          busy={exporting}
+          variant="inline"
+          referenceDate={exportReferenceDate}
+          weekStartsOnSunday={store.settings.viewOptions.weekStartsOnSunday !== false}
+          onClose={() => {
+            if (!exporting) setExportOptionsOpen(false)
+          }}
+          onExport={(request) => void runExportRequest(request)}
         />
       ) : null}
       {inlineOverlays ? (

@@ -245,3 +245,50 @@ export function formatExportEventLineText(event, dayKey, tags) {
 
   return parts.join(' ');
 }
+
+/**
+ * @param {object} event
+ * @returns {{ url: string, title: string }[]}
+ */
+function getExportEventLinks(event) {
+  if (Array.isArray(event?.links) && event.links.length > 0) {
+    return event.links
+      .map((item) => ({
+        url: String(item?.url ?? '').trim(),
+        title: String(item?.title ?? '').trim(),
+      }))
+      .filter((item) => item.url);
+  }
+  const legacy = String(event?.link ?? '').trim();
+  return legacy ? [{ url: legacy, title: '' }] : [];
+}
+
+/**
+ * Day-list export text: title line plus description / links / attachments when present.
+ * @param {object} event
+ * @param {string} dayKey
+ * @param {object[]} [tags]
+ */
+export function formatDayListExportEventText(event, dayKey, tags) {
+  const lines = [formatExportEventLineText(event, dayKey, tags)];
+
+  const description = String(event?.description ?? '').trim();
+  if (description) {
+    const descLines = description.split(/\r?\n/);
+    descLines.forEach((part, index) => {
+      lines.push(index === 0 ? `설명: ${part}` : `  ${part}`);
+    });
+  }
+
+  for (const item of getExportEventLinks(event)) {
+    lines.push(item.title ? `링크: ${item.title} — ${item.url}` : `링크: ${item.url}`);
+  }
+
+  const attachments = Array.isArray(event?.attachments) ? event.attachments : [];
+  for (const item of attachments) {
+    const name = String(item?.name ?? '').trim() || '(파일)';
+    lines.push(`첨부: ${name}`);
+  }
+
+  return lines.join('\n');
+}

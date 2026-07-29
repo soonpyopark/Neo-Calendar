@@ -272,3 +272,15 @@ export function PdfIcon(): ReactElement {
     </DocumentOutlineIcon>
   )
 }
+
+/** Unified export (download) icon. */
+export function ExportIcon(): ReactElement {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        fill="currentColor"
+        d="M12 3c.55 0 1 .45 1 1v8.59l2.3-2.3a1 1 0 1 1 1.4 1.42l-4 4a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.42L11 12.59V4c0-.55.45-1 1-1zm-7 14c0-.55.45-1 1-1h12a1 1 0 1 1 0 2H6a1 1 0 0 1-1-1z"
+      />
+    </svg>
+  )
+}

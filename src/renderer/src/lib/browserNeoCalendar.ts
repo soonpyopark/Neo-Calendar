@@ -582,8 +582,14 @@ export function installBrowserNeoCalendar(): void {
         '/api/export',
         JSON.stringify({
           format: input.format,
+          layout: input.layout === 'dayList' ? 'dayList' : 'monthGrid',
+          startDate: input.startDate,
+          endDate: input.endDate,
           year: input.year,
           month: input.month,
+          includeCompleted: input.includeCompleted !== false,
+          includeHolidays: input.includeHolidays !== false,
+          excludeHiddenCalendars: Boolean(input.excludeHiddenCalendars),
           asAdmin: input.asAdmin !== false
         }),
         'application/json'

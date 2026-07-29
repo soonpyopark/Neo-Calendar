@@ -11,14 +11,14 @@ export function SearchPanelHost({ init }: { init: Init }): ReactElement | null {
   const { store, loading, visibleEvents } = useCalendarStore()
   usePanelTheme(store.settings, loading)
 
-  if (loading) return null
-
+  // Mount immediately so the query input can focus on panel ready-to-show
+  // (do not wait for store loading).
   return (
     <div className="neo-panel-shell h-screen w-screen overflow-hidden">
       <SearchPanel
         surface="floating"
         open
-        events={init.eventsHidden ? [] : visibleEvents}
+        events={loading || init.eventsHidden ? [] : visibleEvents}
         calendars={store.calendars}
         tags={store.tags}
         onClose={closePanel}

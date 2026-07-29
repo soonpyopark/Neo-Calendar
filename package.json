@@ -16,6 +16,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "verify:export": "node scripts/verify-export.mjs",
     "sync-version": "node scripts/sync-version.mjs",
     "update:all": "node scripts/update-all.mjs",
     "build:update_all": "node scripts/update-all.mjs --msi",

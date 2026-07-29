@@ -11,7 +11,7 @@ export type PanelKind =
   | 'settings'
   | 'search'
   | 'eventDetail'
-  | 'exportConfirm'
+  | 'exportOptions'
   | 'recurrenceScope'
   | 'login'
 
@@ -54,10 +54,10 @@ export type PanelWindowInit =
       fromSearch?: boolean
     }
   | {
-      kind: 'exportConfirm'
-      format: 'excel' | 'pdf'
-      year: number
-      month: number
+      kind: 'exportOptions'
+      /** Reference date for presets (usually current view month). YYYY-MM-DD */
+      referenceDate?: string
+      weekStartsOnSunday?: boolean
     }
   | {
       kind: 'recurrenceScope'
@@ -354,13 +354,13 @@ export function computePanelWindowBounds(options: {
     })
   }
 
-  if (init.kind === 'exportConfirm') {
+  if (init.kind === 'exportOptions') {
     return centeredBounds({
       mainOrigin,
       mainSize,
       workArea,
-      width: 392,
-      height: 176
+      width: 440,
+      height: 560
     })
   }
 

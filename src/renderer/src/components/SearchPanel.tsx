@@ -409,8 +409,28 @@ export function SearchPanel({
     setRangeEnd(defaults.end)
     setPage(1)
     setResourceDetail(null)
-    const timer = window.setTimeout(() => inputRef.current?.focus(), 0)
-    return () => window.clearTimeout(timer)
+
+    let cancelled = false
+    const focusQueryInput = (): void => {
+      if (cancelled) return
+      const el = inputRef.current
+      if (!el) return
+      el.focus({ preventScroll: true })
+      // Floating panel / desktop: DOM focus alone is not enough for OS keyboard/IME.
+      window.neoCalendar?.focusForTextInput?.()
+    }
+
+    // Retry across mount → paint → panel window activation.
+    const raf1 = window.requestAnimationFrame(() => {
+      focusQueryInput()
+      window.requestAnimationFrame(focusQueryInput)
+    })
+    const timers = [0, 50, 150, 300].map((ms) => window.setTimeout(focusQueryInput, ms))
+    return () => {
+      cancelled = true
+      window.cancelAnimationFrame(raf1)
+      for (const id of timers) window.clearTimeout(id)
+    }
   }, [open])
 
   useEffect(() => {
@@ -530,6 +550,7 @@ export function SearchPanel({
               aria-label="검색어 입력"
               autoComplete="off"
               spellCheck={false}
+              autoFocus
             />
             {trimmed ? (
               <button

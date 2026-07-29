@@ -2,8 +2,7 @@ import { useRef, type MouseEvent, type ReactElement, type Ref } from 'react'
 import { InteractionUI } from './InteractionUI'
 import {
   DesktopModeIcon,
-  ExcelIcon,
-  PdfIcon,
+  ExportIcon,
   SearchIcon,
   SettingsIcon,
   WindowModeIcon
@@ -38,8 +37,7 @@ export type AppChromeProps = {
   chromeRef?: Ref<HTMLDivElement | null>
   onOpenSearch: (event: MouseEvent<HTMLElement>) => void
   onOpenSettings: () => void
-  onExportExcel: () => void
-  onExportPdf: () => void
+  onExport: () => void
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
@@ -60,8 +58,7 @@ export function AppChrome({
   chromeRef,
   onOpenSearch,
   onOpenSettings,
-  onExportExcel,
-  onExportPdf,
+  onExport,
   onEnterDesktop,
   onEnterWindow,
   onAuthToggle,
@@ -185,42 +182,19 @@ export function AppChrome({
               'cursor-not-allowed opacity-40'
           )}
           captureOnHover={captureOnHover}
-          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportExcel}
-          aria-label="Excel로 내보내기"
-          title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'Excel로 내보내기'}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.export}
+          aria-label="내보내기"
+          title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : '내보내기'}
           disabled={loggedIn ? exporting || settingsOpen || searchOpen : false}
           onClick={() => {
             if (!loggedIn) {
               onLoginRequired?.()
               return
             }
-            onExportExcel()
+            onExport()
           }}
         >
-          <ExcelIcon />
-        </InteractionUI>
-
-        <InteractionUI
-          as="button"
-          className={cn(
-            iconBtnClass,
-            (!loggedIn || exporting || settingsOpen || searchOpen) &&
-              'cursor-not-allowed opacity-40'
-          )}
-          captureOnHover={captureOnHover}
-          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.exportPdf}
-          aria-label="PDF로 내보내기"
-          title={!loggedIn ? '로그인 후 내보낼 수 있습니다' : 'PDF로 내보내기'}
-          disabled={loggedIn ? exporting || settingsOpen || searchOpen : false}
-          onClick={() => {
-            if (!loggedIn) {
-              onLoginRequired?.()
-              return
-            }
-            onExportPdf()
-          }}
-        >
-          <PdfIcon />
+          <ExportIcon />
         </InteractionUI>
 
         <div className="inline-flex items-center gap-1.5">

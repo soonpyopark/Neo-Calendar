@@ -1,0 +1,40 @@
+/** Shared Excel/PDF export request contract (native IPC + browser HTTP). */
+
+export type ExportCalendarFormat = 'excel' | 'pdf'
+
+export type ExportCalendarLayout = 'monthGrid' | 'dayList'
+
+export type ExportRangePreset = 'thisMonth' | 'thisWeek' | 'thisYear' | 'custom'
+
+export type ExportCalendarRequest = {
+  format: ExportCalendarFormat
+  layout: ExportCalendarLayout
+  /** Inclusive YYYY-MM-DD */
+  startDate: string
+  /** Inclusive YYYY-MM-DD */
+  endDate: string
+  /** Default true (current behavior). */
+  includeCompleted?: boolean
+  /** Default true (current behavior). */
+  includeHolidays?: boolean
+  /** Default false for API back-compat; UI defaults to true. */
+  excludeHiddenCalendars?: boolean
+  /**
+   * Legacy published/admin gate used by filterEventsForViewer.
+   * Prefer excludeHiddenCalendars for eye-toggle calendars.
+   */
+  asAdmin?: boolean
+}
+
+export type ExportCalendarResult = {
+  ok: boolean
+  canceled?: boolean
+  path?: string
+  error?: string
+}
+
+export {
+  formatExportRangeLabel,
+  isValidExportDateKey,
+  normalizeExportRequest
+} from './exportCalendarHelpers.js'
