@@ -40,7 +40,10 @@ import {
   QUICK_EDIT_CHROME_HEIGHT,
   QUICK_EDIT_BODY_EXTRA_MONTH,
   QUICK_EDIT_MIN_BODY_HEIGHT,
-  QUICK_EDIT_YEAR_MIN_BODY
+  QUICK_EDIT_MONTH_YEAR_HEIGHT,
+  QUICK_EDIT_MONTH_YEAR_WIDTH,
+  QUICK_EDIT_YEAR_MIN_BODY,
+  type QuickEditViewMode
 } from '../../../shared/quickEditLayout'
 
 export { QUICK_EDIT_YEAR_MIN_BODY } from '../../../shared/quickEditLayout'
@@ -59,6 +62,7 @@ export type AnchorRect = {
 export type DayQuickEditPopoverProps = {
   /** Inline overlay (default) or dedicated floating BrowserWindow. */
   surface?: 'inline' | 'floating'
+  viewMode?: QuickEditViewMode
   dateKey: string
   date: Date
   events: CalendarEvent[]
@@ -83,6 +87,7 @@ export type DayQuickEditPopoverProps = {
   onEventMarkerShapeChange?: (event: CalendarEvent, shapeId: string) => void
   onEventLinkChange?: (event: CalendarEvent, links: EventLink[]) => void
   onReorderEvents?: (ordered: DayReorderItem[], dayKey: string) => void | Promise<void>
+  onShiftEvent?: (event: CalendarEvent, deltaDays: number) => void | Promise<void>
   onOpenMore: (event?: CalendarEvent | null) => void
   onOpenEvent?: (
     event: CalendarEvent,
@@ -97,14 +102,50 @@ export type DayQuickEditPopoverProps = {
 
 function buildQuickEditStyle(
   anchorRect: AnchorRect | null,
-  options?: { bodyExtra?: number; minBodyHeight?: number }
+  options?: {
+    viewMode?: QuickEditViewMode
+    bodyExtra?: number
+    minBodyHeight?: number
+  }
 ): CSSProperties | undefined {
+  const viewMode = options?.viewMode ?? 'week'
   const bodyExtra = options?.bodyExtra ?? 0
   const floorBody = options?.minBodyHeight ?? 0
   // Pointer-only anchors (0×0) must not drive cell-relative sizing — use the
   // centered fallback panel instead of collapsing to the minimum height.
   const usableAnchor =
     anchorRect && anchorRect.width > 0 && anchorRect.height > 0 ? anchorRect : null
+
+  if (viewMode !== 'week') {
+    const width = QUICK_EDIT_MONTH_YEAR_WIDTH
+    const height = QUICK_EDIT_MONTH_YEAR_HEIGHT
+    const left = usableAnchor
+      ? usableAnchor.left + usableAnchor.width / 2 - width / 2
+      : (window.innerWidth - width) / 2
+    const top = usableAnchor
+      ? usableAnchor.top + usableAnchor.height / 2 - height / 2
+      : (window.innerHeight - height) / 2
+    const clamped = clampRectToViewport({
+      top,
+      left,
+      width,
+      height,
+      padding: VIEWPORT_PAD
+    })
+    const fittedBody = Math.max(
+      QUICK_EDIT_MIN_BODY_HEIGHT,
+      clamped.maxHeight - QUICK_EDIT_CHROME_HEIGHT
+    )
+    return {
+      top: clamped.top,
+      left: clamped.left,
+      width: clamped.width,
+      height: clamped.maxHeight,
+      maxHeight: clamped.maxHeight,
+      '--day-quick-edit-body-height': `${fittedBody}px`
+    } as CSSProperties
+  }
+
   if (!usableAnchor) {
     const width = 320
     const height = Math.max(280, floorBody + QUICK_EDIT_CHROME_HEIGHT)
@@ -171,6 +212,7 @@ function defaultCalendarId(calendars: CalendarRecord[]): string {
 
 export function DayQuickEditPopover({
   surface = 'inline',
+  viewMode = 'month',
   dateKey,
   date,
   events,
@@ -191,6 +233,7 @@ export function DayQuickEditPopover({
   onEventMarkerShapeChange,
   onEventLinkChange,
   onReorderEvents,
+  onShiftEvent,
   onOpenMore,
   onEditEvent,
   onOpenEvent,
@@ -214,11 +257,16 @@ export function DayQuickEditPopover({
   const [dropSeriesId, setDropSeriesId] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const colorTriggerRef = useRef<HTMLButtonElement>(null)
+  const paletteFlyoutRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const eventClickTimerRef = useRef<number | null>(null)
   const suppressEventClickRef = useRef(false)
   const bodyExtra = expandBody ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
-  const styleOptions = { bodyExtra, minBodyHeight: minBodyHeight || undefined }
+  const styleOptions = {
+    viewMode,
+    bodyExtra,
+    minBodyHeight: minBodyHeight || undefined
+  }
 
   const clearEventClickTimer = (): void => {
     if (eventClickTimerRef.current != null) {
@@ -563,10 +611,12 @@ export function DayQuickEditPopover({
       const trigger = colorTriggerRef.current
       if (!trigger) return
       const ar = trigger.getBoundingClientRect()
-      const width = 120
-      const height = 240
+      const footer = trigger.closest('.day-quick-edit-footer')?.getBoundingClientRect()
+      const flyout = paletteFlyoutRef.current
+      const width = flyout?.offsetWidth || 210
+      const height = flyout?.offsetHeight || 95
       let left = ar.left
-      let top = ar.top - height - COLOR_PANEL_PAD
+      let top = (footer?.top ?? ar.top) - height - COLOR_PANEL_PAD
       if (top < VIEWPORT_PAD) top = ar.bottom + COLOR_PANEL_PAD
       const clamped = clampFixedPosition({
         left,
@@ -653,7 +703,7 @@ export function DayQuickEditPopover({
       <InteractionUI
         ref={panelRef}
         captureOnHover={!isFloating}
-        className={`day-quick-edit fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
+        className={`day-quick-edit day-quick-edit--event fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
         style={style}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
@@ -970,6 +1020,30 @@ export function DayQuickEditPopover({
                 </svg>
               </button>
             ) : null}
+            {[-1, 1].map((deltaDays) => {
+              const label = deltaDays < 0 ? '-1D' : '+1D'
+              const disabled =
+                !canEdit ||
+                !selectedEvent ||
+                selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID ||
+                !onShiftEvent
+              return (
+                <button
+                  key={deltaDays}
+                  type="button"
+                  className="day-quick-edit-edit text-[9px] font-bold tabular-nums"
+                  title={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
+                  aria-label={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!selectedEvent || disabled) return
+                    void onShiftEvent(selectedEvent, deltaDays)
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
           </div>
         </footer>
       </InteractionUI>
@@ -977,6 +1051,7 @@ export function DayQuickEditPopover({
       {paletteOpen && canEdit
         ? createPortal(
             <InteractionUI
+              ref={paletteFlyoutRef}
               className="day-quick-edit-palette-flyout"
               style={paletteStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
               onClick={(e) => e.stopPropagation()}

@@ -87,6 +87,7 @@ import {
   applyRecurringDelete,
   applyRecurringEdit as applyRecurringEditCore
 } from '../lib/recurrenceMutations'
+import { applyEventDateShift } from '../lib/shiftEventDates'
 import {
   getPrimaryEventLinkUrl,
   normalizeEventLinksArray
@@ -501,8 +502,9 @@ export function CalendarGrid({
     returnQuickEdit?: { dateKey: string; date: Date; anchorRect: AnchorRect | null } | null
   } | null>(null)
   const [scopeDialog, setScopeDialog] = useState<{
-    mode: 'edit' | 'delete' | 'complete'
+    mode: 'edit' | 'delete' | 'complete' | 'shift'
   } | null>(null)
+  const [shiftingEvent, setShiftingEvent] = useState(false)
   const [pendingEdit, setPendingEdit] = useState<{
     master: CalendarEvent
     occurrenceDate: string
@@ -517,6 +519,11 @@ export function CalendarGrid({
     master: CalendarEvent
     occurrenceDate: string
     completed: boolean
+  } | null>(null)
+  const [pendingShift, setPendingShift] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+    deltaDays: number
   } | null>(null)
   /** Search-opened detail may stay up even while grid hide toggles are on (MDC). */
   const detailFromSearchRef = useRef(false)
@@ -1920,9 +1927,28 @@ export function CalendarGrid({
           store.events
         )
         closePanelsAfterEventDelete()
+        return
+      }
+      if (dialogMode === 'shift' && pendingShift?.master) {
+        const { master, occurrenceDate, deltaDays } = pendingShift
+        setPendingShift(null)
+        setShiftingEvent(true)
+        await applyEventDateShift(
+          { addEvent, editEvent, removeEvent },
+          {
+            master,
+            occurrenceDate,
+            deltaDays,
+            scope,
+            allEvents: store.events
+          }
+        )
+        clearEventDetail()
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
+    } finally {
+      setShiftingEvent(false)
     }
   }
 
@@ -2607,6 +2633,7 @@ export function CalendarGrid({
 
       {inlineOverlays && quickEdit ? (
         <DayQuickEditPopover
+          viewMode={viewMode}
           dateKey={quickEdit.dateKey}
           date={quickEdit.date}
           // MDC: pass store masters; DayQuickEditPopover expands recurrence per day.
@@ -2650,6 +2677,31 @@ export function CalendarGrid({
           onEventTagChange={handleQuickEditTagChange}
           onEventMarkerShapeChange={handleQuickEditMarkerShapeChange}
           onEventLinkChange={handleQuickEditLinkChange}
+          onShiftEvent={async (event, deltaDays) => {
+            if (!requireEdit() || shiftingEvent) return
+            const master = findMasterEvent(event)
+            if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const occurrenceDate =
+              getOccurrenceDate(event, quickEdit.dateKey) || master.startDate
+            if (isRecurringEvent(master)) {
+              setPendingShift({ master, occurrenceDate, deltaDays })
+              setScopeDialog({ mode: 'shift' })
+              return
+            }
+            setShiftingEvent(true)
+            try {
+              await applyEventDateShift(
+                { addEvent, editEvent, removeEvent },
+                { master, occurrenceDate, deltaDays }
+              )
+            } catch (error) {
+              await alert(
+                error instanceof Error ? error.message : '일정을 이동하지 못했습니다.'
+              )
+            } finally {
+              setShiftingEvent(false)
+            }
+          }}
           onOpenMore={(event) => {
             if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event ?? null, {
@@ -2746,6 +2798,35 @@ export function CalendarGrid({
               getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
             openRecurringCompleteScope(master, occurrenceDate, nextCompleted)
           }}
+          shifting={shiftingEvent}
+          onShiftDate={(event, deltaDays) => {
+            if (!requireEdit() || shiftingEvent) return
+            const master = findMasterEvent(event)
+            if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const occurrenceDate =
+              getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
+            if (isRecurringEvent(master)) {
+              setPendingShift({ master, occurrenceDate, deltaDays })
+              setScopeDialog({ mode: 'shift' })
+              return
+            }
+            void (async () => {
+              setShiftingEvent(true)
+              try {
+                await applyEventDateShift(
+                  { addEvent, editEvent, removeEvent },
+                  { master, occurrenceDate, deltaDays }
+                )
+                clearEventDetail()
+              } catch (error) {
+                await alert(
+                  error instanceof Error ? error.message : '일정을 이동하지 못했습니다.'
+                )
+              } finally {
+                setShiftingEvent(false)
+              }
+            })()
+          }}
         />
       ) : null}
 
@@ -2831,8 +2912,10 @@ export function CalendarGrid({
           }
           if (scopeDialog?.mode === 'complete') {
             setPendingComplete(null)
-          } else {
+          } else if (scopeDialog?.mode === 'delete') {
             setPendingDelete(null)
+          } else if (scopeDialog?.mode === 'shift') {
+            setPendingShift(null)
           }
         }}
         onSelect={(scope) => {

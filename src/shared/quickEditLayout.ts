@@ -6,6 +6,9 @@ export const QUICK_EDIT_CREATE_ROW_PX = 36
 export const QUICK_EDIT_BODY_LAYOUT_PX = 24
 export const QUICK_EDIT_MIN_BODY_HEIGHT = 72
 export const QUICK_EDIT_VIEWPORT_PAD = 5
+/** Fixed month/year quick-edit size, shared by inline and floating surfaces. */
+export const QUICK_EDIT_MONTH_YEAR_WIDTH = 300
+export const QUICK_EDIT_MONTH_YEAR_HEIGHT = 357
 
 export type QuickEditViewMode = 'year' | 'week' | 'month'
 
@@ -126,9 +129,14 @@ export function computeQuickEditPanelSize(options: {
   anchor: QuickEditAnchorRect | null
 }): { width: number; height: number } {
   const { viewMode, anchor } = options
-  const floorBody =
-    viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : QUICK_EDIT_MIN_BODY_HEIGHT
-  const bodyExtra = viewMode === 'month' ? QUICK_EDIT_BODY_EXTRA_MONTH : 0
+  if (viewMode !== 'week') {
+    return {
+      width: QUICK_EDIT_MONTH_YEAR_WIDTH,
+      height: QUICK_EDIT_MONTH_YEAR_HEIGHT
+    }
+  }
+  const floorBody = QUICK_EDIT_MIN_BODY_HEIGHT
+  const bodyExtra = 0
   const usableAnchor =
     anchor && anchor.width > 0 && anchor.height > 0 ? anchor : null
 

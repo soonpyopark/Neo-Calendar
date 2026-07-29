@@ -4,7 +4,7 @@ import { blockPanelOutsideClose } from '../lib/recurrenceComplete'
 import { InteractionUI } from './InteractionUI'
 
 export type RecurrenceScope = 'single' | 'following' | 'all'
-export type RecurrenceScopeMode = 'edit' | 'delete' | 'complete'
+export type RecurrenceScopeMode = 'edit' | 'delete' | 'complete' | 'shift'
 
 export type RecurrenceScopeDialogProps = {
   open: boolean
@@ -58,6 +58,24 @@ const DELETE_OPTIONS = [
     value: 'all' as const,
     label: '모든 일정',
     description: '반복 시리즈 전체를 삭제합니다.'
+  }
+]
+
+const SHIFT_OPTIONS = [
+  {
+    value: 'single' as const,
+    label: '이 일정만',
+    description: '선택한 날짜의 일정만 이동합니다.'
+  },
+  {
+    value: 'following' as const,
+    label: '이 일정 및 다음 일정',
+    description: '선택한 날짜부터 이후 반복을 이동합니다.'
+  },
+  {
+    value: 'all' as const,
+    label: '모든 일정',
+    description: '반복 시리즈 전체를 같은 간격으로 이동합니다.'
   }
 ]
 
@@ -116,10 +134,18 @@ export function RecurrenceScopeDialog({
       ? '반복 일정 삭제'
       : mode === 'complete'
         ? '반복 일정 완료 처리'
-        : '반복 일정 수정'
+        : mode === 'shift'
+          ? '반복 일정 날짜 이동'
+          : '반복 일정 수정'
   const confirmLabel = mode === 'delete' ? '삭제' : '확인'
   const options =
-    mode === 'complete' ? COMPLETE_OPTIONS : mode === 'delete' ? DELETE_OPTIONS : EDIT_OPTIONS
+    mode === 'complete'
+      ? COMPLETE_OPTIONS
+      : mode === 'delete'
+        ? DELETE_OPTIONS
+        : mode === 'shift'
+          ? SHIFT_OPTIONS
+          : EDIT_OPTIONS
   const isPanel = surface === 'panel'
 
   const card = (

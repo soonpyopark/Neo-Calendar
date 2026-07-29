@@ -14,11 +14,15 @@ import {
 } from '../lib/popoverPosition'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
-import { EVENT_DETAIL_PANEL_WIDTH } from '../../../shared/panelWindows'
+import {
+  EVENT_DETAIL_PANEL_HEIGHT,
+  EVENT_DETAIL_PANEL_WIDTH
+} from '../../../shared/panelWindows'
 import type { AnchorRect } from './DayQuickEditPopover'
 
 const toolbarBtnClass =
-  'inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border-0 bg-transparent text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading'
+  'inline-flex h-[34px] w-[34px] cursor-pointer items-center justify-center rounded-full border border-gcal-blue/25 bg-gcal-blue-soft/80 text-gcal-blue transition-colors hover:border-gcal-blue hover:bg-gcal-blue hover:text-white'
+const shiftBtnClass = `${toolbarBtnClass} shrink-0 text-[10px] font-semibold tabular-nums leading-none disabled:cursor-wait disabled:opacity-50`
 
 export type EventPopoverAnchor = AnchorRect | { x: number; y: number } | null
 
@@ -41,6 +45,8 @@ export type EventPopoverProps = {
   onEdit: (event: CalendarEvent, pointer?: EventDetailPointer) => void
   onDelete: (event: CalendarEvent) => void
   onToggleCompleted?: (event: CalendarEvent, completed: boolean) => void
+  onShiftDate?: (event: CalendarEvent, deltaDays: number) => void
+  shifting?: boolean
 }
 
 export function EventPopover({
@@ -54,11 +60,17 @@ export function EventPopover({
   onClose,
   onEdit,
   onDelete,
-  onToggleCompleted
+  onToggleCompleted,
+  onShiftDate,
+  shifting = false
 }: EventPopoverProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const { confirm } = useAppDialog()
-  const popoverOptions = { width: EVENT_DETAIL_PANEL_WIDTH, estimatedHeight: 360, padding: 12 }
+  const popoverOptions = {
+    width: EVENT_DETAIL_PANEL_WIDTH,
+    estimatedHeight: EVENT_DETAIL_PANEL_HEIGHT,
+    padding: 12
+  }
   const resolvedAnchor = resolvePopoverAnchor(anchorRect)
   const { ref, style: anchoredStyle } = useAnchoredPopoverStyle(anchorRect, popoverOptions)
 
@@ -143,7 +155,12 @@ export function EventPopover({
         style={
           isFloating
             ? (panelStyle as CSSProperties)
-            : ({ ...(panelStyle as CSSProperties), width: EVENT_DETAIL_PANEL_WIDTH } as CSSProperties)
+            : ({
+                ...(panelStyle as CSSProperties),
+                width: EVENT_DETAIL_PANEL_WIDTH,
+                height: EVENT_DETAIL_PANEL_HEIGHT,
+                maxHeight: EVENT_DETAIL_PANEL_HEIGHT
+              } as CSSProperties)
         }
         onClick={(e) => e.stopPropagation()}
         onMouseEnter={isFloating ? undefined : () => setIgnoreMouseEvents(false)}
@@ -176,6 +193,30 @@ export function EventPopover({
           <div className="flex shrink-0 items-center gap-0.5">
             {canEdit ? (
               <>
+                {onShiftDate ? (
+                  <>
+                    <button
+                      type="button"
+                      className={shiftBtnClass}
+                      onClick={() => onShiftDate(event, -1)}
+                      aria-label="1일 전으로 이동"
+                      title="1일 전으로 이동"
+                      disabled={shifting}
+                    >
+                      -1D
+                    </button>
+                    <button
+                      type="button"
+                      className={shiftBtnClass}
+                      onClick={() => onShiftDate(event, 1)}
+                      aria-label="1일 후로 이동"
+                      title="1일 후로 이동"
+                      disabled={shifting}
+                    >
+                      +1D
+                    </button>
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className={toolbarBtnClass}
@@ -216,7 +257,7 @@ export function EventPopover({
         </div>
 
         <div
-          className={`settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pt-1${isFloating ? ' pb-4' : ' pb-5'}`}
+          className={`event-detail-scroll settings-scroll min-h-0 flex-1 overflow-y-auto px-5 pt-1${isFloating ? ' pb-4' : ' pb-5'}`}
         >
           <EventDetailContent
             event={event}

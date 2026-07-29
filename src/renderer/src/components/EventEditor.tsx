@@ -922,9 +922,10 @@ export function EventEditor({
             <textarea
               className={fieldClass}
               value={description}
+              spellCheck={false}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="설명 추가"
-              rows={5}
+              rows={7}
             />
           </label>
         </div>

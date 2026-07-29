@@ -20,6 +20,7 @@ import {
   openRecurrenceCompletePanel
 } from '../lib/recurrenceComplete'
 import { applyRecurringEdit as applyRecurringEditCore } from '../lib/recurrenceMutations'
+import { applyEventDateShift } from '../lib/shiftEventDates'
 import {
   getPrimaryEventLinkUrl,
   normalizeEventLinksArray
@@ -61,11 +62,18 @@ export function QuickEditWindowApp(): ReactElement | null {
   const [init, setInit] = useState<QuickEditWindowInit | null>(null)
   const [authReady, setAuthReady] = useState(false)
   const [canEdit, setCanEdit] = useState(false)
-  const [scopeDialog, setScopeDialog] = useState<{ mode: 'complete' } | null>(null)
+  const [scopeDialog, setScopeDialog] = useState<{
+    mode: 'complete' | 'shift'
+  } | null>(null)
   const [pendingComplete, setPendingComplete] = useState<{
     master: CalendarEvent
     occurrenceDate: string
     completed: boolean
+  } | null>(null)
+  const [pendingShift, setPendingShift] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+    deltaDays: number
   } | null>(null)
 
   useEffect(() => {
@@ -205,6 +213,37 @@ export function QuickEditWindowApp(): ReactElement | null {
     [alert, canEdit, editEvent, findMasterEvent, init?.dateKey]
   )
 
+  const handleQuickEditShift = useCallback(
+    async (event: CalendarEvent, deltaDays: number): Promise<void> => {
+      if (!canEdit || !init?.dateKey) return
+      const master = findMasterEvent(event)
+      if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+      const occurrenceDate = getOccurrenceDate(event, init.dateKey) || master.startDate
+      if (isRecurringEvent(master)) {
+        setPendingShift({ master, occurrenceDate, deltaDays })
+        setScopeDialog({ mode: 'shift' })
+        return
+      }
+      try {
+        await applyEventDateShift(
+          { addEvent, editEvent, removeEvent },
+          { master, occurrenceDate, deltaDays }
+        )
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : '일정을 이동하지 못했습니다.')
+      }
+    },
+    [
+      addEvent,
+      alert,
+      canEdit,
+      editEvent,
+      findMasterEvent,
+      init?.dateKey,
+      removeEvent
+    ]
+  )
+
   const handleQuickEditDeleteCompleted = useCallback(
     async (completedEvents: CalendarEvent[]): Promise<void> => {
       if (!canEdit || !init?.dateKey) return
@@ -248,13 +287,29 @@ export function QuickEditWindowApp(): ReactElement | null {
   )
 
   const handleScopeSelect = async (scope: 'single' | 'following' | 'all'): Promise<void> => {
+    const mode = scopeDialog?.mode
     setScopeDialog(null)
     try {
-      if (pendingComplete?.master) {
+      if (mode === 'complete' && pendingComplete?.master) {
         const { master, occurrenceDate, completed } = pendingComplete
+        setPendingComplete(null)
         const payload = buildRecurringCompletePayload(master, occurrenceDate, Boolean(completed))
         await applyRecurringEdit(master, payload, occurrenceDate, scope)
-        setPendingComplete(null)
+        return
+      }
+      if (mode === 'shift' && pendingShift?.master) {
+        const { master, occurrenceDate, deltaDays } = pendingShift
+        setPendingShift(null)
+        await applyEventDateShift(
+          { addEvent, editEvent, removeEvent },
+          {
+            master,
+            occurrenceDate,
+            deltaDays,
+            scope,
+            allEvents: store.events
+          }
+        )
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
@@ -307,6 +362,7 @@ export function QuickEditWindowApp(): ReactElement | null {
     <div className="neo-quick-edit-shell h-screen w-screen overflow-hidden">
       <DayQuickEditPopover
         surface="floating"
+        viewMode={viewMode}
         dateKey={init.dateKey}
         date={date}
         events={eventsHidden ? [] : visibleEvents}
@@ -366,6 +422,7 @@ export function QuickEditWindowApp(): ReactElement | null {
             '바로가기를 변경하지 못했습니다.'
           )
         }}
+        onShiftEvent={handleQuickEditShift}
         onOpenMore={(event) => routeFromQuickEdit('editor', event)}
         onOpenEvent={(event, pointer) => routeFromQuickEdit('detail', event, pointer)}
         onEditEvent={(event) => routeFromQuickEdit('editor', event)}
@@ -392,10 +449,11 @@ export function QuickEditWindowApp(): ReactElement | null {
       <RecurrenceScopeDialog
         open={Boolean(scopeDialog)}
         surface="overlay"
-        mode="complete"
+        mode={scopeDialog?.mode ?? 'complete'}
         onClose={() => {
           setScopeDialog(null)
-          setPendingComplete(null)
+          if (scopeDialog?.mode === 'complete') setPendingComplete(null)
+          else setPendingShift(null)
         }}
         onSelect={(scope) => {
           void handleScopeSelect(scope)

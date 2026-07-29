@@ -15,6 +15,7 @@ import {
   openRecurrenceCompletePanel,
   openRecurrenceDeletePanel
 } from '../../lib/recurrenceComplete'
+import { applyEventDateShift } from '../../lib/shiftEventDates'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../../shared/calendarDefaults'
 import type { CalendarEvent } from '../../../../shared/calendarTypes'
 import type { PanelWindowInit } from '../../../../shared/panelWindows'
@@ -36,7 +37,10 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
   const { store, loading, editEvent, removeEvent, addEvent } = useCalendarStore()
   usePanelTheme(store.settings, loading)
 
-  const [scopeDialog, setScopeDialog] = useState<{ mode: 'complete' | 'delete' } | null>(null)
+  const [scopeDialog, setScopeDialog] = useState<{
+    mode: 'complete' | 'delete' | 'shift'
+  } | null>(null)
+  const [shifting, setShifting] = useState(false)
   const [pendingComplete, setPendingComplete] = useState<{
     master: CalendarEvent
     occurrenceDate: string
@@ -45,6 +49,11 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
   const [pendingDelete, setPendingDelete] = useState<{
     master: CalendarEvent
     occurrenceDate: string
+  } | null>(null)
+  const [pendingShift, setPendingShift] = useState<{
+    master: CalendarEvent
+    occurrenceDate: string
+    deltaDays: number
   } | null>(null)
 
   const getEvents = useCallback(() => store.events, [store.events])
@@ -94,9 +103,28 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
         setPendingDelete(null)
         await applyRecurringDelete(master, occurrenceDate, scope)
         closePanelsAfterEventDelete()
+        return
+      }
+      if (dialogMode === 'shift' && pendingShift?.master) {
+        const { master, occurrenceDate, deltaDays } = pendingShift
+        setPendingShift(null)
+        setShifting(true)
+        await applyEventDateShift(
+          { addEvent, editEvent, removeEvent },
+          {
+            master,
+            occurrenceDate,
+            deltaDays,
+            scope,
+            allEvents: store.events
+          }
+        )
+        closePanel()
       }
     } catch (error) {
       await alert(error instanceof Error ? error.message : '반복 일정 처리에 실패했습니다.')
+    } finally {
+      setShifting(false)
     }
   }
 
@@ -170,16 +198,43 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
             setScopeDialog({ mode: 'complete' })
           })
         }}
+        shifting={shifting}
+        onShiftDate={(target, deltaDays) => {
+          if (!canEdit || shifting) return
+          const master = findMasterEvent(store.events, target)
+          if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+          const occurrenceDate = getOccurrenceDate(target, dayKey) || master.startDate
+          if (isRecurringEvent(master)) {
+            setPendingShift({ master, occurrenceDate, deltaDays })
+            setScopeDialog({ mode: 'shift' })
+            return
+          }
+          void (async () => {
+            setShifting(true)
+            try {
+              await applyEventDateShift(
+                { addEvent, editEvent, removeEvent },
+                { master, occurrenceDate, deltaDays }
+              )
+              closePanel()
+            } catch (error) {
+              await alert(error instanceof Error ? error.message : '일정을 이동하지 못했습니다.')
+            } finally {
+              setShifting(false)
+            }
+          })()
+        }}
       />
 
       <RecurrenceScopeDialog
         open={Boolean(scopeDialog)}
         surface="overlay"
-        mode={scopeDialog?.mode === 'delete' ? 'delete' : 'complete'}
+        mode={scopeDialog?.mode ?? 'complete'}
         onClose={() => {
           setScopeDialog(null)
           if (scopeDialog?.mode === 'complete') setPendingComplete(null)
-          else setPendingDelete(null)
+          else if (scopeDialog?.mode === 'delete') setPendingDelete(null)
+          else setPendingShift(null)
         }}
         onSelect={(scope) => {
           void handleScopeSelect(scope)

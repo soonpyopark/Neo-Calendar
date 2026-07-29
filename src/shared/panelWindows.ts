@@ -82,8 +82,9 @@ export type OpenPanelWindowRequest = PanelWindowInit & {
 
 const VIEWPORT_PAD = 5
 
-/** Event detail popover / floating panel width (px). */
-export const EVENT_DETAIL_PANEL_WIDTH = 530
+/** Event detail popover / floating panel size (px) — fixed across all modes. */
+export const EVENT_DETAIL_PANEL_WIDTH = 500
+export const EVENT_DETAIL_PANEL_HEIGHT = 336
 
 /** Settings + search panel width — 90% of main calendar / shell width. */
 export const MAIN_PANEL_WIDTH_RATIO = 0.9
@@ -292,7 +293,7 @@ export function computePanelWindowBounds(options: {
         mainSize,
         workArea,
         panelWidth: EVENT_DETAIL_PANEL_WIDTH,
-        panelHeight: 360
+        panelHeight: EVENT_DETAIL_PANEL_HEIGHT
       })
     }
 
@@ -309,7 +310,7 @@ export function computePanelWindowBounds(options: {
           mainSize,
           workArea,
           panelWidth: EVENT_DETAIL_PANEL_WIDTH,
-          panelHeight: 360
+          panelHeight: EVENT_DETAIL_PANEL_HEIGHT
         })
       }
       const anchorScreen = {
@@ -321,7 +322,7 @@ export function computePanelWindowBounds(options: {
       return anchoredBounds({
         anchorScreen,
         panelWidth: EVENT_DETAIL_PANEL_WIDTH,
-        panelHeight: 360,
+        panelHeight: EVENT_DETAIL_PANEL_HEIGHT,
         workArea
       })
     }
@@ -330,7 +331,7 @@ export function computePanelWindowBounds(options: {
       mainSize,
       workArea,
       width: EVENT_DETAIL_PANEL_WIDTH,
-      height: 360
+      height: EVENT_DETAIL_PANEL_HEIGHT
     })
   }
 
@@ -340,7 +341,11 @@ export function computePanelWindowBounds(options: {
       mainSize,
       workArea,
       width: Math.min(752, mainSize.width - 32, workArea.width - VIEWPORT_PAD * 2),
-      height: Math.min(Math.round(mainSize.height * 0.92), workArea.height - VIEWPORT_PAD * 2)
+      height: Math.min(
+        Math.round(mainSize.height * 0.92) + 44,
+        mainSize.height - VIEWPORT_PAD * 2,
+        workArea.height - VIEWPORT_PAD * 2
+      )
     })
   }
 

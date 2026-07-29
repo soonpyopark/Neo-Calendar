@@ -34,10 +34,10 @@
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 610,
-        "y": 10,
-        "width": 1300,
-        "height": 1020
+        "x": 600,
+        "y": 0,
+        "width": 1320,
+        "height": 1030
       },
       "chromeBottomInset": 0,
       "chromeLeftInset": 0,
@@ -52,19 +52,18 @@
         "top": 0.05
       },
       "displayPlacement": {
-        "displayId": 2693925250,
-        "offsetX": 610,
-        "offsetY": 10,
-        "width": 1300,
-        "height": 1020
+        "displayId": 2632662828,
+        "offsetX": 600,
+        "offsetY": 0,
+        "width": 1320,
+        "height": 1030
       }
     },
     "dayColors": {},
     "dayColorsByLoginId": {},
     "hiddenCalendarIdsByLoginId": {
       "admin": [
-        "cal-aconite",
-        "e56d2ee9-5579-46ae-980b-eeafc9b650e3"
+        "cal-aconite"
       ]
     },
     "allowedIpCidrs": [
@@ -77,8 +76,8 @@
         "description": "내 공유기 IP 주소"
       }
     ],
-    "headerOpacity": 0.95,
-    "shellOpacity": 0.95,
+    "headerOpacity": 0.97,
+    "shellOpacity": 0.97,
     "viewOptionsBySurface": {
       "native": {
         "showWeekNumbers": true,
@@ -132,5 +131,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-29T10:39:13.774Z"
+  "updatedAt": "2026-07-29T13:00:54.601Z"
 }
