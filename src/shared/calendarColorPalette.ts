@@ -29,11 +29,11 @@ export function getDefaultCalendarColor(index = 0): string {
   return CALENDAR_COLOR_PALETTE[Math.abs(index) % CALENDAR_COLOR_PALETTE.length] ?? '#1976d2'
 }
 
-/** 캘린더 일정 바 배경: 팔레트 색상을 흰색 위 혼합 (다크 모드) — MDC */
-export const CALENDAR_EVENT_BG_OPACITY = 0.05
+/** 다크 모드 일정 바 배경 색 농도 — 투명도를 높인 옅은 파스텔 */
+export const CALENDAR_EVENT_BG_OPACITY = 0.2
 
-/** 라이트 모드 일정 바 배경 혼합 비율 — MDC */
-export const CALENDAR_EVENT_BG_OPACITY_LIGHT = 0.15
+/** 라이트 모드 일정 바 배경 색 농도 — 투명도를 높인 옅은 파스텔 */
+export const CALENDAR_EVENT_BG_OPACITY_LIGHT = 0.12
 
-/** 라이트 모드 글자·마크를 원색 대비 얼마나 진하게 (1.3 = 130%) — MDC */
-export const CALENDAR_EVENT_INK_DEPTH_LIGHT = 1.3
+/** 일정 바 글자·마크를 원색 대비 얼마나 진하게 (1.5 = 150%) */
+export const CALENDAR_EVENT_INK_DEPTH_LIGHT = 1.5

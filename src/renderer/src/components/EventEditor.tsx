@@ -35,6 +35,7 @@ import {
   removeEventAttachment
 } from '../lib/eventAttachments'
 import { openExternalUrl } from '../lib/openExternal'
+import { isSaveShortcut } from '../lib/keyboard'
 import { InteractionUI } from './InteractionUI'
 import { useAppDialog } from './AppDialogProvider'
 import DateInput from './DateInput'
@@ -435,11 +436,18 @@ export function EventEditor({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e) => {
-      if (e.key === 'Escape') handleCloseRequest();
+      if (e.key === 'Escape') {
+        handleCloseRequest();
+        return;
+      }
+      if (isSaveShortcut(e)) {
+        e.preventDefault();
+        onSave(buildSavePayload());
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, handleCloseRequest]);
+  }, [open, handleCloseRequest, onSave, buildSavePayload]);
 
   // Floating panel: outside-click in main asks us to save-if-dirty then close.
   useEffect(() => {

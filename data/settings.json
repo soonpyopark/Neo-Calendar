@@ -1,7 +1,7 @@
 {
   "version": 2,
   "settings": {
-    "ownerName": "aconite",
+    "ownerName": "admin",
     "timezone": "Asia/Seoul",
     "timezoneLabel": "(GMT+09:00) 한국 표준시 - 서울",
     "notifications": {
@@ -34,10 +34,10 @@
       "enabled": false,
       "alwaysOnTop": false,
       "bounds": {
-        "x": 600,
-        "y": 0,
-        "width": 1320,
-        "height": 1030
+        "x": 400,
+        "y": 10,
+        "width": 1520,
+        "height": 1020
       },
       "chromeBottomInset": 0,
       "chromeLeftInset": 0,
@@ -53,19 +53,15 @@
       },
       "displayPlacement": {
         "displayId": 2632662828,
-        "offsetX": 600,
-        "offsetY": 0,
-        "width": 1320,
-        "height": 1030
+        "offsetX": 400,
+        "offsetY": 10,
+        "width": 1520,
+        "height": 1020
       }
     },
     "dayColors": {},
     "dayColorsByLoginId": {},
-    "hiddenCalendarIdsByLoginId": {
-      "admin": [
-        "cal-aconite"
-      ]
-    },
+    "hiddenCalendarIdsByLoginId": {},
     "allowedIpCidrs": [
       {
         "cidr": "221.168.0.216",
@@ -92,7 +88,7 @@
         "showWeekNumbers": true,
         "weekStartsOnSunday": true,
         "roundedCorners": true,
-        "colorScheme": "light",
+        "colorScheme": "dark",
         "accentColor": "#795548",
         "eventsHidden": false,
         "completedHidden": false
@@ -107,19 +103,19 @@
       "sortOrder": 0
     },
     {
-      "color": "#ffe252",
+      "color": "#ba68c8",
       "id": "8a759fc6-dc4f-461f-9d9c-8addb8826933",
       "name": "작업",
       "sortOrder": 1
     },
     {
-      "color": "#8e24aa",
+      "color": "#673ab7",
       "id": "tag-duty",
       "name": "회의",
       "sortOrder": 2
     },
     {
-      "color": "#f4511e",
+      "color": "#e91e63",
       "id": "tag-trip",
       "name": "출장",
       "sortOrder": 3
@@ -131,5 +127,5 @@
       "sortOrder": 4
     }
   ],
-  "updatedAt": "2026-07-29T13:07:56.717Z"
+  "updatedAt": "2026-07-29T15:12:25.729Z"
 }

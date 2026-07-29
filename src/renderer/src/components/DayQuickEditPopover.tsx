@@ -882,6 +882,7 @@ export function DayQuickEditPopover({
                       <EventTagIcons event={item} tags={tags} />
                       <span
                         className="day-quick-edit-item-title"
+                        title={item.title}
                         role={isHoliday ? undefined : 'button'}
                         tabIndex={isHoliday ? undefined : 0}
                         onKeyDown={(e) => {

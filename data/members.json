@@ -7,14 +7,6 @@
       "role": "super_admin",
       "active": true,
       "passwordHash": "ac9689e2272427085e35b9d3e3e8bed88cb3434828b43b86fc0596cad4c6e270"
-    },
-    {
-      "id": "49214723-6d27-47ac-b153-fb1f01269531",
-      "loginId": "aconite",
-      "displayName": "aconite",
-      "role": "member",
-      "active": true,
-      "passwordHash": "8e03c92657a4edd48fc3162fe4d1e471461dcd245b936187d8ff89ce7fc4de65"
     }
   ]
 }

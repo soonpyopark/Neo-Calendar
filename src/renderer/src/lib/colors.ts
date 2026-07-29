@@ -82,14 +82,11 @@ export function getCalendarTheme(hex = '#039be5'): CalendarTheme {
 
   if (paletteByBase[key]) {
     const preset = paletteByBase[key]
-    if (dark) {
-      return { ...preset, accent: preset.base }
-    }
     return {
       base: preset.base,
       bg: mixHex(hex, '#ffffff', opacity),
       text: deepenInk(preset.text),
-      accent: deepenInk(preset.base)
+      accent: dark ? preset.base : deepenInk(preset.base)
     }
   }
 
@@ -97,7 +94,7 @@ export function getCalendarTheme(hex = '#039be5'): CalendarTheme {
   return {
     base: hex,
     bg: mixHex(hex, '#ffffff', opacity),
-    text: dark ? text : deepenInk(text),
+    text: deepenInk(text),
     accent: dark ? hex : deepenInk(hex)
   }
 }

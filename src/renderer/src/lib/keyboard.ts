@@ -19,3 +19,8 @@ export function isRedoShortcut(event: KeyboardEvent): boolean {
   if (event.key === 'z' || event.key === 'Z') return event.shiftKey
   return false
 }
+
+export function isSaveShortcut(event: KeyboardEvent): boolean {
+  if (!(event.ctrlKey || event.metaKey) || event.altKey) return false
+  return event.key === 's' || event.key === 'S'
+}
