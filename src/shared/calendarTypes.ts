@@ -155,6 +155,11 @@ export type SurfaceViewOptions = {
   roundedCorners: boolean
   /** Optional personal calendar name in the header (between logo and search). */
   headerTitle: HeaderTitleOptions
+  /**
+   * 세로보기: date rows newest-first (말일 → 1일). When false, 1일 → 말일.
+   * Default true for new installs / missing key.
+   */
+  dayListSortDesc: boolean
   colorScheme: 'light' | 'dark' | 'system'
   accentColor: string
   eventsHidden: boolean
@@ -201,6 +206,9 @@ export type StoreSettings = {
   }
   dayColors: Record<string, string>
   dayColorsByLoginId?: Record<string, Record<string, string>>
+  /** 형광펜 — highlighter color behind the date number, keyed by dateKey. */
+  dayHighlights?: Record<string, string>
+  dayHighlightsByLoginId?: Record<string, Record<string, string>>
   hiddenCalendarIdsByLoginId?: Record<string, string[]>
   allowedIpCidrs: Array<{ cidr: string; description?: string }>
   /** Neo chrome extensions */

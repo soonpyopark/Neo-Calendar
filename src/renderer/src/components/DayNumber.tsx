@@ -1,10 +1,20 @@
-import { useCallback, useLayoutEffect, useRef, useState, type MouseEvent, type ReactElement } from 'react'
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement
+} from 'react'
 
 export type DayNumberProps = {
   solar: number
   lunarLabel: string | null
   lunarDay: number | null
   solarTerm: string | null
+  /** 형광펜 color painted behind the 양력 number. */
+  highlight?: string | null
   onClick?: (event: MouseEvent<HTMLDivElement>) => void
   onDoubleClick?: (event: MouseEvent<HTMLDivElement>) => void
 }
@@ -15,6 +25,7 @@ export function DayNumber({
   lunarLabel,
   lunarDay,
   solarTerm,
+  highlight = null,
   onClick,
   onDoubleClick
 }: DayNumberProps): ReactElement {
@@ -59,7 +70,13 @@ export function DayNumber({
   }, [measure, solar, lunarLabel, termSuffix])
 
   return (
-    <div className="day-number" ref={rootRef} onClick={onClick} onDoubleClick={onDoubleClick}>
+    <div
+      className={highlight ? 'day-number has-highlight' : 'day-number'}
+      ref={rootRef}
+      style={highlight ? ({ '--day-highlight': highlight } as CSSProperties) : undefined}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+    >
       <span className="solar">{solar}</span>
       {lunarLabel != null && lunarDay != null ? (
         <>

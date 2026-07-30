@@ -1,12 +1,12 @@
 import type { ReactElement } from 'react'
-import { DAY_COLOR_PALETTE } from '../../../shared/dayColorPalette'
+import { DAY_HIGHLIGHT_PALETTE } from '../../../shared/dayHighlightPalette'
 import { CustomColorPicker } from './CustomColorPicker'
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
-function ClearColorIcon({ className }: { className?: string }): ReactElement {
+function ClearHighlightIcon({ className }: { className?: string }): ReactElement {
   return (
     <svg className={className} viewBox="0 0 24 24" width="100%" height="100%" aria-hidden>
       <circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.45" />
@@ -15,7 +15,7 @@ function ClearColorIcon({ className }: { className?: string }): ReactElement {
   )
 }
 
-export type DayColorPaletteProps = {
+export type DayHighlightPaletteProps = {
   value?: string | null
   onChange: (color: string | null) => void
   onRequestClose?: () => void
@@ -23,18 +23,17 @@ export type DayColorPaletteProps = {
   className?: string
 }
 
-/** MDC DayColorPalette — presets + custom color swatch. */
-export function DayColorPalette({
+/** 형광펜 palette for the date number — fixed highlighter colors, no custom picker. */
+export function DayHighlightPalette({
   value,
   onChange,
   onRequestClose,
   compact = false,
   className
-}: DayColorPaletteProps): ReactElement {
+}: DayHighlightPaletteProps): ReactElement {
   const selected = (value ?? '').toLowerCase()
-  const isClearSelected = !value
   const isCustomSelected = Boolean(
-    value && !DAY_COLOR_PALETTE.some((c) => c.toLowerCase() === selected)
+    value && !DAY_HIGHLIGHT_PALETTE.some((c) => c.toLowerCase() === selected)
   )
 
   const applyAndClose = (color: string | null): void => {
@@ -45,14 +44,14 @@ export function DayColorPalette({
   return (
     <div
       className={cn(
-        'day-color-palette',
+        'day-color-palette day-highlight-palette',
         compact && 'day-color-palette--compact',
         className
       )}
       role="listbox"
-      aria-label="날짜 배경 색상"
+      aria-label="날짜 강조 색상"
     >
-      {DAY_COLOR_PALETTE.map((color) => {
+      {DAY_HIGHLIGHT_PALETTE.map((color) => {
         const isActive = selected === color.toLowerCase()
         return (
           <button
@@ -63,7 +62,7 @@ export function DayColorPalette({
             className={cn('day-color-swatch', isActive && 'active')}
             style={{ backgroundColor: color }}
             title={color}
-            aria-label={`색상 ${color}`}
+            aria-label={`날짜 강조 ${color}`}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -75,23 +74,23 @@ export function DayColorPalette({
       <button
         type="button"
         role="option"
-        aria-selected={isClearSelected}
-        className={cn('day-color-swatch day-color-swatch--clear', isClearSelected && 'active')}
-        title="기본(색 없음)"
-        aria-label="기본 색상 (색 없음)"
+        aria-selected={!value}
+        className={cn('day-color-swatch day-color-swatch--clear', !value && 'active')}
+        title="날짜 강조 지우기"
+        aria-label="날짜 강조 지우기"
         onClick={(e) => {
           e.preventDefault()
           e.stopPropagation()
           applyAndClose(null)
         }}
       >
-        <ClearColorIcon className="day-color-clear-icon" />
+        <ClearHighlightIcon className="day-color-clear-icon" />
       </button>
       <CustomColorPicker
         compact={compact}
         value={value}
         isActive={isCustomSelected}
-        defaultDraft="#d0daf3"
+        defaultDraft="#ded074"
         onApply={(color) => onChange(color)}
         onRequestClose={onRequestClose}
         swatchClassName="day-color-swatch day-color-swatch--picker"
@@ -100,4 +99,4 @@ export function DayColorPalette({
   )
 }
 
-export default DayColorPalette
+export default DayHighlightPalette

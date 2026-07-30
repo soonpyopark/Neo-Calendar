@@ -34,6 +34,8 @@ export type DayListPreviewPanelProps = {
   completedHidden?: boolean
   /** Double-click a date → add a new event on that day (this preview stays open). */
   onOpenDay?: (dayKey: string) => void
+  /** Persist 세로보기 sort preference (보기 옵션 · dayListSortDesc). */
+  onSortDirChange?: (dir: 'asc' | 'desc') => void
   /**
    * Inline surface only: another overlay (the event editor) sits above this panel,
    * so Esc / Ctrl+F must belong to that overlay instead of closing the preview.
@@ -282,6 +284,7 @@ export function DayListPreviewPanel({
   eventsHidden = false,
   completedHidden = false,
   onOpenDay,
+  onSortDirChange,
   shortcutsSuspended = false,
   onClose
 }: DayListPreviewPanelProps): ReactElement | null {
@@ -290,7 +293,12 @@ export function DayListPreviewPanel({
   const openAttachmentInViewer = useOpenAttachment()
   // Month shown inside the panel; the props only seed it so the header arrows can browse.
   const [viewMonth, setViewMonth] = useState(() => year * 12 + month)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  // Prefer 보기 옵션 (default 내림차순); toolbar toggles persist through onSortDirChange.
+  const sortDir: 'asc' | 'desc' =
+    store.settings.viewOptions.dayListSortDesc === false ? 'asc' : 'desc'
+  const setSortDir = (dir: 'asc' | 'desc'): void => {
+    onSortDirChange?.(dir)
+  }
   const [fontScale, setFontScale] = useState(1)
   const [todayRequest, setTodayRequest] = useState(0)
   const [findOpen, setFindOpen] = useState(false)

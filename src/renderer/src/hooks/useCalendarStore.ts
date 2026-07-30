@@ -607,6 +607,19 @@ export function useCalendarStore(): UseCalendarStoreResult {
           return next
         })
       }
+      if (patch.dayHighlights) {
+        setStore((prev) => {
+          const next = {
+            ...prev,
+            settings: {
+              ...prev.settings,
+              dayHighlights: { ...patch.dayHighlights }
+            }
+          }
+          storeRef.current = next
+          return next
+        })
+      }
       if (patch.viewOptions) {
         setStore((prev) => {
           const next = {

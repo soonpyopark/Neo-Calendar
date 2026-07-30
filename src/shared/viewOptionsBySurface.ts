@@ -14,6 +14,7 @@ export const SURFACE_SCOPED_VIEW_OPTION_KEYS = [
   'weekStartsOnSunday',
   'roundedCorners',
   'headerTitle',
+  'dayListSortDesc',
   'colorScheme',
   'accentColor'
 ] as const satisfies ReadonlyArray<keyof SurfaceViewOptions>
@@ -35,6 +36,7 @@ function pickSurfaceOptions(source: Partial<ViewOptions> | null | undefined): Su
     weekStartsOnSunday: s.weekStartsOnSunday !== false,
     roundedCorners: Boolean(s.roundedCorners),
     headerTitle: normalizeHeaderTitle(s.headerTitle),
+    dayListSortDesc: s.dayListSortDesc !== false,
     colorScheme:
       s.colorScheme === 'dark' || s.colorScheme === 'system' ? s.colorScheme : 'light',
     accentColor: typeof s.accentColor === 'string' && s.accentColor.trim()

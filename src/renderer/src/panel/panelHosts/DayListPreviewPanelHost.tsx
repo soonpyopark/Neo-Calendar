@@ -8,7 +8,7 @@ type Init = Extract<PanelWindowInit, { kind: 'dayListPreview' }>
 
 export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement | null {
   const { closePanel, routePanel } = usePanelRouter()
-  const { store, loading } = useCalendarStore()
+  const { store, loading, patchStoreSettings } = useCalendarStore()
   usePanelTheme(store.settings, loading)
 
   const eventsHidden = Boolean(store.settings.viewOptions.eventsHidden)
@@ -41,6 +41,14 @@ export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement 
         eventsHidden={eventsHidden}
         completedHidden={Boolean(store.settings.viewOptions.completedHidden)}
         onOpenDay={addEventOnDay}
+        onSortDirChange={(dir) => {
+          void patchStoreSettings({
+            viewOptions: {
+              ...store.settings.viewOptions,
+              dayListSortDesc: dir === 'desc'
+            }
+          })
+        }}
         onClose={closePanel}
       />
     </div>

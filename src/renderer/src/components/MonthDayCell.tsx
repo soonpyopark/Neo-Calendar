@@ -37,6 +37,8 @@ export type MonthDayCellProps = {
   selected: boolean
   isKrHoliday: boolean
   dayColor?: string | null
+  /** 형광펜 stroke behind the date number. */
+  dayHighlight?: string | null
   eventCapacity: { maxAll: number; maxWithMore: number }
   eventsHidden?: boolean
   completedHidden?: boolean
@@ -63,6 +65,7 @@ export function MonthDayCell({
   selected,
   isKrHoliday,
   dayColor = null,
+  dayHighlight = null,
   eventCapacity,
   eventsHidden = false,
   completedHidden = false,
@@ -89,6 +92,7 @@ export function MonthDayCell({
   const visibleSegments = eventsHidden ? [] : uiSegments.slice(0, visibleCount)
   // Hide day tint with events — but never tween through a fully clear cell (desktop flash).
   const displayDayColor = eventsHidden ? null : (dayColor ?? null)
+  const displayDayHighlight = eventsHidden ? null : (dayHighlight ?? null)
 
   const weekdayClass = cell.weekday === 0 ? 'sunday' : cell.weekday === 6 ? 'saturday' : ''
   const cellStyle = displayDayColor
@@ -146,7 +150,13 @@ export function MonthDayCell({
       }
       onDoubleClick={desktopEmbedded ? undefined : handleCellDoubleClick}
     >
-      <DayNumber solar={solar} lunarLabel={lunar} lunarDay={lunarDay} solarTerm={solarTerm} />
+      <DayNumber
+        solar={solar}
+        lunarLabel={lunar}
+        lunarDay={lunarDay}
+        solarTerm={solarTerm}
+        highlight={displayDayHighlight}
+      />
 
       <div className={cn('day-events', eventsHidden && 'is-hidden')}>
         {visibleSegments.map(({ event, segment, label, continuation, lane }) => {

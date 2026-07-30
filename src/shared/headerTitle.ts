@@ -28,7 +28,9 @@ function normalizeColor(value: unknown): string {
   const t = value.trim()
   if (/^#[0-9a-fA-F]{6}$/.test(t)) return t.toLowerCase()
   if (/^#[0-9a-fA-F]{3}$/.test(t)) {
-    const [, a, b, c] = t
+    const a = t[1]
+    const b = t[2]
+    const c = t[3]
     return `#${a}${a}${b}${b}${c}${c}`.toLowerCase()
   }
   return HEADER_TITLE_COLOR_DEFAULT

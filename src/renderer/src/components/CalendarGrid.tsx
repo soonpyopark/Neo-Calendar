@@ -502,6 +502,12 @@ export function CalendarGrid({
     anchorRect: EventPopoverAnchor
     dayKey?: string
   } | null>(null)
+  /** Browser / unlocked desktop: which inline overlay paints on top. */
+  const [inlineFrontPanel, setInlineFrontPanel] = useState<'quickEdit' | 'eventDetail'>(
+    'quickEdit'
+  )
+  const inlineQuickEditZ = inlineFrontPanel === 'quickEdit' ? 80 : 35
+  const inlineEventDetailZ = inlineFrontPanel === 'eventDetail' ? 80 : 70
   const [editor, setEditor] = useState<{
     event: CalendarEvent | null
     defaultDate?: string
@@ -717,6 +723,7 @@ export function CalendarGrid({
   const showWeekNumbers = store.settings.viewOptions.showWeekNumbers !== false
   const roundedCorners = Boolean(store.settings.viewOptions.roundedCorners)
   const dayColors = store.settings.dayColors ?? {}
+  const dayHighlights = store.settings.dayHighlights ?? {}
   const weekStartsOn: 0 | 1 =
     settings?.weekStartsOn ?? (store.settings.viewOptions.weekStartsOnSunday === false ? 1 : 0)
 
@@ -1222,7 +1229,10 @@ export function CalendarGrid({
     const back = editor?.returnQuickEdit ?? null
     setEditor(null)
     setPendingEdit(null)
-    if (back) setQuickEdit(back)
+    if (back) {
+      setInlineFrontPanel('quickEdit')
+      setQuickEdit(back)
+    }
   }, [editor?.returnQuickEdit])
 
   const applyRecurringEdit = useCallback(
@@ -1365,6 +1375,7 @@ export function CalendarGrid({
       )
       return
     }
+    setInlineFrontPanel('quickEdit')
     setQuickEdit({
       dateKey: cell.dateKey,
       date: cell.date,
@@ -1770,6 +1781,7 @@ export function CalendarGrid({
     const dayKey = opts?.dayKey ?? event.occurrenceDate ?? event.startDate
     const { floatingPanels } = modeEmbeddedRef.current
     if (floatingPanels) {
+      // Toggle-close for same event is handled in panelWindowManager.openEmbedded.
       openEmbeddedPanel(
         {
           kind: 'eventDetail',
@@ -1783,6 +1795,16 @@ export function CalendarGrid({
       )
       return
     }
+    // Browser + unlocked desktop (inline): same title click again closes detail.
+    if (eventPopover) {
+      const openId = getSeriesId(eventPopover.event) || eventPopover.event.id
+      const nextId = getSeriesId(event) || event.id
+      if (openId === nextId && (eventPopover.dayKey ?? '') === dayKey) {
+        clearEventDetail()
+        return
+      }
+    }
+    setInlineFrontPanel('eventDetail')
     setEventPopover({
       event,
       anchorRect,
@@ -2076,6 +2098,7 @@ export function CalendarGrid({
         selected={selectedKey === cell.dateKey}
         isKrHoliday={holidayKeys.has(cell.dateKey)}
         dayColor={dayColors[cell.dateKey] ?? null}
+        dayHighlight={dayHighlights[cell.dateKey] ?? null}
         eventCapacity={eventCapacity}
         eventsHidden={eventsHidden}
         completedHidden={completedHidden}
@@ -2436,7 +2459,9 @@ export function CalendarGrid({
             <InteractionUI
               as="button"
               className={cn(
-                dayListPreviewOpen ? viewModeIconBtnActiveClass : viewModeIconBtnClass,
+                desktopModeIconBtnClass,
+                softBlueIconBtnClass,
+                dayListPreviewOpen && softBlueIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
               captureOnHover={captureToolbarOnHover}
@@ -2661,6 +2686,14 @@ export function CalendarGrid({
           onOpenDay={(dayKey) => {
             openEventEditor(null, { defaultDate: dayKey })
           }}
+          onSortDirChange={(dir) => {
+            void patchStoreSettings({
+              viewOptions: {
+                ...store.settings.viewOptions,
+                dayListSortDesc: dir === 'desc'
+              }
+            })
+          }}
           onClose={() => setDayListPreviewOpen(false)}
         />
       ) : null}
@@ -2743,10 +2776,14 @@ export function CalendarGrid({
           calendars={store.calendars}
           tags={store.tags}
           dayColor={dayColors[quickEdit.dateKey] ?? null}
+          dayHighlight={dayHighlights[quickEdit.dateKey] ?? null}
           anchorRect={quickEdit.anchorRect}
           canEdit={canEdit}
           expandBody={viewMode === 'month'}
           minBodyHeight={viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : undefined}
+          zIndex={inlineQuickEditZ}
+          onRaise={() => setInlineFrontPanel('quickEdit')}
+          onDismissEventDetail={clearEventDetail}
           onReorderEvents={handleReorderEvents}
           onClose={() => {
             if (scopeDialog) return
@@ -2774,6 +2811,12 @@ export function CalendarGrid({
             if (!color) delete next[quickEdit.dateKey]
             else next[quickEdit.dateKey] = color
             void patchStoreSettings({ dayColors: next })
+          }}
+          onDayHighlightChange={(color) => {
+            const next = { ...dayHighlights }
+            if (!color) delete next[quickEdit.dateKey]
+            else next[quickEdit.dateKey] = color
+            void patchStoreSettings({ dayHighlights: next })
           }}
           onEventCalendarChange={handleQuickEditCalendarChange}
           onEventTagChange={handleQuickEditTagChange}
@@ -2855,6 +2898,8 @@ export function CalendarGrid({
           canEdit={
             canEdit && eventPopover.event.calendarId !== HOLIDAYS_KR_CALENDAR_ID
           }
+          zIndex={inlineEventDetailZ}
+          onRaise={() => setInlineFrontPanel('eventDetail')}
           onClose={clearEventDetail}
           onEdit={(event) => {
             if (event.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
@@ -2947,7 +2992,10 @@ export function CalendarGrid({
             const back = editor.returnQuickEdit
             setEditor(null)
             setPendingEdit(null)
-            if (back) setQuickEdit(back)
+            if (back) {
+              setInlineFrontPanel('quickEdit')
+              setQuickEdit(back)
+            }
           }}
           onSave={async (payload) => {
             try {

@@ -310,17 +310,24 @@ export function ExportOptionsPanel({
     )
   }
 
+  // Browser / inline: same transparent overlay as search & settings (no dim/blur).
   return (
-    <div className="interaction-ui pointer-events-auto fixed inset-0 z-[80] flex items-center justify-center bg-black/35 p-4">
-      <button
-        type="button"
-        className="absolute inset-0 cursor-default bg-transparent"
-        aria-label="내보내기 닫기"
-        disabled={busy}
-        onClick={onClose}
-      />
-      <div className="relative z-[1] w-full max-w-[440px] shadow-[0_8px_28px_rgba(0,0,0,0.18)]">
-        {body}
+    <div
+      className="interaction-ui fixed inset-0 z-[55]"
+      role="presentation"
+      onClick={busy ? undefined : onClose}
+    >
+      <div
+        className="pointer-events-none fixed inset-0 z-[56] flex items-center justify-center"
+        role="presentation"
+      >
+        <div
+          className="pointer-events-auto relative z-[1] w-full max-w-[440px] shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {body}
+        </div>
       </div>
     </div>
   )

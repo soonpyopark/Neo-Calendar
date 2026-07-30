@@ -43,7 +43,7 @@ export function HeaderTitleEditorPanel({
     const onKey = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
       // Let the emoji picker close first when its panel is open.
-      if (document.querySelector('.header-title-editor-panel .emoji-picker-panel')) {
+      if (document.querySelector('.emoji-picker-panel--header-title')) {
         return
       }
       event.preventDefault()
@@ -106,7 +106,7 @@ export function HeaderTitleEditorPanel({
           <div className="header-title-editor-name-row">
             <EmojiPickerButton
               title="이모지 추가"
-              inlinePanel
+              panelClassName="emoji-picker-panel--header-title"
               onSelect={insertEmoji}
             />
             <input
@@ -167,17 +167,28 @@ export function HeaderTitleEditorPanel({
     return body
   }
 
+  // Browser / unlocked desktop: same transparent overlay stack as search & settings.
   return createPortal(
-    <>
+    <div
+      className="header-title-editor-backdrop interaction-ui fixed inset-0 z-[55]"
+      role="presentation"
+      onClick={onClose}
+      onMouseEnter={() => setIgnoreMouseEvents(false)}
+      onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
+    >
       <div
-        className="header-title-editor-backdrop interaction-ui"
+        className="pointer-events-none fixed inset-0 z-[56] flex items-center justify-center"
         role="presentation"
-        onClick={onClose}
-        onMouseEnter={() => setIgnoreMouseEvents(false)}
-        onMouseLeave={() => setIgnoreMouseEvents(true, { forwardToOverlay: true })}
-      />
-      <div className="header-title-editor-inline-wrap">{body}</div>
-    </>,
+      >
+        <div
+          className="header-title-editor-inline-wrap pointer-events-auto relative z-[1] shadow-[0_8px_28px_rgba(0,0,0,0.18)]"
+          onClick={(event) => event.stopPropagation()}
+          onMouseDown={(event) => event.stopPropagation()}
+        >
+          {body}
+        </div>
+      </div>
+    </div>,
     document.body
   )
 }

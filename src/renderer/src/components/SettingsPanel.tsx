@@ -206,6 +206,7 @@ function ViewOptionsPanel({
   const [headerTitle, setHeaderTitle] = useState<HeaderTitleOptions>(() =>
     normalizeHeaderTitle(vo.headerTitle)
   )
+  const [dayListSortDesc, setDayListSortDesc] = useState(vo.dayListSortDesc !== false)
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => getColorScheme(vo))
   const [accentColor, setAccentColor] = useState(() =>
     normalizeAccentColor(vo.accentColor)
@@ -225,6 +226,7 @@ function ViewOptionsPanel({
     setWeekStartsOnSunday(vo.weekStartsOnSunday !== false)
     setRoundedCorners(Boolean(vo.roundedCorners))
     setHeaderTitle(normalizeHeaderTitle(vo.headerTitle))
+    setDayListSortDesc(vo.dayListSortDesc !== false)
     setColorScheme(getColorScheme(vo))
     setAccentColor(normalizeAccentColor(vo.accentColor))
     setRunAtStartup(Boolean(vo.runAtStartup))
@@ -248,6 +250,7 @@ function ViewOptionsPanel({
       weekStartsOnSunday,
       roundedCorners,
       headerTitle,
+      dayListSortDesc,
       colorScheme,
       accentColor,
       runAtStartup,
@@ -322,6 +325,23 @@ function ViewOptionsPanel({
             <span className="text-gcal-muted">
               {' '}
               (로고와 검색 사이 · 클릭으로 이름·이모지·색·크기 편집)
+            </span>
+          </span>
+        </label>
+        <label className="flex items-center gap-2.5 text-sm text-gcal-body">
+          <input
+            type="checkbox"
+            checked={dayListSortDesc}
+            onChange={(e) => {
+              setDayListSortDesc(e.target.checked)
+              void persistView({ dayListSortDesc: e.target.checked })
+            }}
+          />
+          <span>
+            세로보기 날짜 내림차순 정렬
+            <span className="text-gcal-muted">
+              {' '}
+              (체크 해제 시 1일부터 말일 순으로 표시됨)
             </span>
           </span>
         </label>

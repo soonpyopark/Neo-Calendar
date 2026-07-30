@@ -47,6 +47,10 @@ export type EventPopoverProps = {
   onToggleCompleted?: (event: CalendarEvent, completed: boolean) => void
   onShiftDate?: (event: CalendarEvent, deltaDays: number) => void
   shifting?: boolean
+  /** Inline stack base z-index (wrapper); shell uses +1. Default 70. */
+  zIndex?: number
+  /** Raise this panel above sibling overlays (e.g. quick edit). */
+  onRaise?: () => void
 }
 
 export function EventPopover({
@@ -62,10 +66,13 @@ export function EventPopover({
   onDelete,
   onToggleCompleted,
   onShiftDate,
-  shifting = false
+  shifting = false,
+  zIndex = 70,
+  onRaise
 }: EventPopoverProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const { confirm } = useAppDialog()
+  const shellZIndex = zIndex + 1
   const popoverOptions = {
     width: EVENT_DETAIL_PANEL_WIDTH,
     estimatedHeight: EVENT_DETAIL_PANEL_HEIGHT,
@@ -144,14 +151,15 @@ export function EventPopover({
         isFloating
           ? 'h-full w-full'
           : anchorRect
-            ? 'pointer-events-none fixed inset-0 z-[70]'
-            : 'pointer-events-none fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto p-4'
+            ? 'pointer-events-none fixed inset-0'
+            : 'pointer-events-none fixed inset-0 flex items-center justify-center overflow-y-auto p-4'
       }
+      style={isFloating ? undefined : { zIndex }}
       role="presentation"
     >
       <div
         ref={ref as RefObject<HTMLDivElement | null>}
-        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto z-[71] flex max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
+        className={`interaction-ui event-detail-shell ${isFloating || resolvedAnchor ? 'fixed' : 'relative'} pointer-events-auto flex max-w-full flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'} ${isFloating ? 'h-full w-full max-w-none' : ''}`}
         style={
           isFloating
             ? (panelStyle as CSSProperties)
@@ -159,10 +167,15 @@ export function EventPopover({
                 ...(panelStyle as CSSProperties),
                 width: EVENT_DETAIL_PANEL_WIDTH,
                 height: EVENT_DETAIL_PANEL_HEIGHT,
-                maxHeight: EVENT_DETAIL_PANEL_HEIGHT
+                maxHeight: EVENT_DETAIL_PANEL_HEIGHT,
+                zIndex: shellZIndex
               } as CSSProperties)
         }
         onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          onRaise?.()
+        }}
         onMouseEnter={isFloating ? undefined : () => setIgnoreMouseEvents(false)}
         onMouseLeave={
           isFloating ? undefined : () => setIgnoreMouseEvents(true, { forwardToOverlay: true })

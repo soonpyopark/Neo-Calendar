@@ -494,6 +494,21 @@ export class PanelWindowManager {
     if (mainWindow.isDestroyed()) return
 
     const slot = init.kind
+    // Same event detail already open → toggle closed (e.g. QE title click again).
+    // Covers window + WorkerW floating panels (all Electron modes that use this manager).
+    if (init.kind === 'eventDetail') {
+      const existing = this.entriesBySlot.get('eventDetail')
+      if (
+        existing
+        && !existing.win.isDestroyed()
+        && existing.init.kind === 'eventDetail'
+        && String(existing.init.eventId) === String(init.eventId)
+        && String(existing.init.dayKey ?? '') === String(init.dayKey ?? '')
+      ) {
+        this.closeSlot('eventDetail')
+        return
+      }
+    }
     // Block the outside-click listener on this same mousedown (day-dblclick opens then
     // handleOutsideClick would immediately close before the panel is shown).
     this.outsideBlockedUntil = Date.now() + OUTSIDE_CLOSE_GRACE_MS

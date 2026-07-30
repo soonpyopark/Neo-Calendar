@@ -20,7 +20,7 @@ export type PanelKind =
   | 'headerTitleEditor'
 
 /** Compact header-title editor (name / size / color) — initial size; host resizes to content. */
-export const HEADER_TITLE_EDITOR_PANEL_WIDTH = 352
+export const HEADER_TITLE_EDITOR_PANEL_WIDTH = 450
 export const HEADER_TITLE_EDITOR_PANEL_HEIGHT = 380
 
 /** Link / attachment chooser floating panel size. */

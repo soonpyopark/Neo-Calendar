@@ -13,6 +13,7 @@ import { useAppDialog } from './AppDialogProvider'
 import { InteractionUI } from './InteractionUI'
 import { listDeletableCompletedEvents } from '../lib/deleteCompletedForDay'
 import { DayColorPalette } from './DayColorPalette'
+import { DayHighlightPalette } from './DayHighlightPalette'
 import { EmojiPickerButton } from './EmojiPickerButton'
 import { EventAccentGlyph } from './EventAccentGlyph'
 import { EventAttachButton } from './EventAttachButton'
@@ -52,6 +53,29 @@ const COLOR_PANEL_PAD = 8
 /** Inset from shell content edges (principle #4). */
 const VIEWPORT_PAD = 5
 
+/** Footer swatch flyouts open above the footer and stay inside the shell. */
+function buildFooterFlyoutStyle(
+  trigger: HTMLElement | null,
+  flyout: HTMLElement | null,
+  fallback: { width: number; height: number }
+): CSSProperties | undefined {
+  if (!trigger) return undefined
+  const ar = trigger.getBoundingClientRect()
+  const footer = trigger.closest('.day-quick-edit-footer')?.getBoundingClientRect()
+  const width = flyout?.offsetWidth || fallback.width
+  const height = flyout?.offsetHeight || fallback.height
+  const left = ar.left
+  let top = (footer?.top ?? ar.top) - height - COLOR_PANEL_PAD
+  if (top < VIEWPORT_PAD) top = ar.bottom + COLOR_PANEL_PAD
+  const clamped = clampFixedPosition({ left, top, width, height, padding: VIEWPORT_PAD })
+  return {
+    position: 'fixed',
+    left: Math.round(clamped.left),
+    top: Math.round(clamped.top),
+    zIndex: 80
+  }
+}
+
 export type AnchorRect = {
   top: number
   left: number
@@ -69,6 +93,8 @@ export type DayQuickEditPopoverProps = {
   calendars: CalendarRecord[]
   tags: TagRecord[]
   dayColor?: string | null
+  /** 형광펜 color painted behind the date number. */
+  dayHighlight?: string | null
   anchorRect: AnchorRect | null
   canEdit?: boolean
   /** Pre-select a row (e.g. opened from an event bar). */
@@ -82,6 +108,7 @@ export type DayQuickEditPopoverProps = {
   onToggleCompleted: (event: CalendarEvent, completed: boolean) => void
   onRemove?: (id: string) => void
   onDayColorChange: (color: string | null) => void
+  onDayHighlightChange?: (color: string | null) => void
   onEventCalendarChange?: (event: CalendarEvent, calendarId: string) => void
   onEventTagChange?: (event: CalendarEvent, tagIds: string[]) => void
   onEventMarkerShapeChange?: (event: CalendarEvent, shapeId: string) => void
@@ -97,6 +124,15 @@ export type DayQuickEditPopoverProps = {
   onAttachFiles?: (event: CalendarEvent) => void | Promise<void>
   /** Bulk-delete completed rows for this day (recurring = this date only). */
   onDeleteCompleted?: (completedEvents: CalendarEvent[]) => void | Promise<void>
+  /** Inline stack order (browser / unlocked desktop). Default 35. */
+  zIndex?: number
+  /** Raise this panel above sibling overlays (e.g. event detail). */
+  onRaise?: () => void
+  /**
+   * Close a sibling event-detail popover when the user goes back to working in
+   * this panel (padding, checkbox, marker, footer) — event titles keep opening it.
+   */
+  onDismissEventDetail?: () => void
 }
 
 
@@ -219,6 +255,7 @@ export function DayQuickEditPopover({
   calendars,
   tags,
   dayColor = null,
+  dayHighlight = null,
   anchorRect,
   canEdit = true,
   focusEvent = null,
@@ -228,6 +265,7 @@ export function DayQuickEditPopover({
   onCreate,
   onToggleCompleted,
   onDayColorChange,
+  onDayHighlightChange,
   onEventCalendarChange,
   onEventTagChange,
   onEventMarkerShapeChange,
@@ -238,7 +276,10 @@ export function DayQuickEditPopover({
   onEditEvent,
   onOpenEvent,
   onAttachFiles,
-  onDeleteCompleted
+  onDeleteCompleted,
+  zIndex = 35,
+  onRaise,
+  onDismissEventDetail
 }: DayQuickEditPopoverProps): ReactElement {
   const { confirm } = useAppDialog()
   const isFloating = surface === 'floating'
@@ -250,6 +291,9 @@ export function DayQuickEditPopover({
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteStyle, setPaletteStyle] = useState<CSSProperties | undefined>()
   const [optimisticDayColor, setOptimisticDayColor] = useState<string | null>(dayColor)
+  const [highlightOpen, setHighlightOpen] = useState(false)
+  const [highlightStyle, setHighlightStyle] = useState<CSSProperties | undefined>()
+  const [optimisticDayHighlight, setOptimisticDayHighlight] = useState<string | null>(dayHighlight)
   const [saving, setSaving] = useState(false)
   const [deletingCompleted, setDeletingCompleted] = useState(false)
   const [orderOverride, setOrderOverride] = useState<string[] | null>(null)
@@ -258,6 +302,8 @@ export function DayQuickEditPopover({
   const inputRef = useRef<HTMLInputElement>(null)
   const colorTriggerRef = useRef<HTMLButtonElement>(null)
   const paletteFlyoutRef = useRef<HTMLDivElement>(null)
+  const highlightTriggerRef = useRef<HTMLButtonElement>(null)
+  const highlightFlyoutRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const eventClickTimerRef = useRef<number | null>(null)
   const suppressEventClickRef = useRef(false)
@@ -267,6 +313,15 @@ export function DayQuickEditPopover({
     bodyExtra,
     minBodyHeight: minBodyHeight || undefined
   }
+
+  // Reopening the panel on another day must not keep the previous day's swatches.
+  const optimisticDayKeyRef = useRef(dateKey)
+  useEffect(() => {
+    if (optimisticDayKeyRef.current === dateKey) return
+    optimisticDayKeyRef.current = dateKey
+    setOptimisticDayColor(dayColor)
+    setOptimisticDayHighlight(dayHighlight)
+  }, [dateKey, dayColor, dayHighlight])
 
   const clearEventClickTimer = (): void => {
     if (eventClickTimerRef.current != null) {
@@ -455,6 +510,7 @@ export function DayQuickEditPopover({
   }
 
   const displayDayColor = optimisticDayColor
+  const displayDayHighlight = optimisticDayHighlight
 
   const activeCalendarId =
     selectedEvent && selectedEvent.calendarId !== HOLIDAYS_KR_CALENDAR_ID
@@ -574,11 +630,15 @@ export function DayQuickEditPopover({
         setPaletteOpen(false)
         return
       }
+      if (highlightOpen) {
+        setHighlightOpen(false)
+        return
+      }
       onClose()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [onClose, paletteOpen])
+  }, [onClose, paletteOpen, highlightOpen])
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent): void => {
@@ -587,6 +647,7 @@ export function DayQuickEditPopover({
       // Keep open while interacting with the panel or its portaled flyouts.
       if (target.closest('.day-quick-edit')) return
       if (target.closest('.day-quick-edit-palette-flyout')) return
+      if (target.closest('.day-quick-edit-highlight-flyout')) return
       if (target.closest('.quick-edit-calendar-flyout')) return
       if (target.closest('.quick-edit-tag-root')) return
       if (target.closest('.marker-shape-flyout-panel')) return
@@ -608,40 +669,67 @@ export function DayQuickEditPopover({
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [onClose])
 
+  // Day-color / highlight palettes close when the click is outside the flyout
+  // (including clicks inside the quick-edit panel itself).
+  useEffect(() => {
+    if (!paletteOpen && !highlightOpen) return undefined
+    const onPointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (paletteOpen) {
+        const inPalette =
+          Boolean(target.closest('.day-quick-edit-palette-flyout'))
+          || Boolean(target.closest('.custom-color-panel'))
+          || Boolean(colorTriggerRef.current?.contains(target))
+        if (!inPalette) setPaletteOpen(false)
+      }
+      if (highlightOpen) {
+        const inHighlight =
+          Boolean(target.closest('.day-quick-edit-highlight-flyout'))
+          || Boolean(target.closest('.custom-color-panel'))
+          || Boolean(highlightTriggerRef.current?.contains(target))
+        if (!inHighlight) setHighlightOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [paletteOpen, highlightOpen])
+
   useEffect(() => {
     if (!paletteOpen) {
       setPaletteStyle(undefined)
       return
     }
     const place = (): void => {
-      const trigger = colorTriggerRef.current
-      if (!trigger) return
-      const ar = trigger.getBoundingClientRect()
-      const footer = trigger.closest('.day-quick-edit-footer')?.getBoundingClientRect()
-      const flyout = paletteFlyoutRef.current
-      const width = flyout?.offsetWidth || 210
-      const height = flyout?.offsetHeight || 95
-      let left = ar.left
-      let top = (footer?.top ?? ar.top) - height - COLOR_PANEL_PAD
-      if (top < VIEWPORT_PAD) top = ar.bottom + COLOR_PANEL_PAD
-      const clamped = clampFixedPosition({
-        left,
-        top,
-        width,
-        height,
-        padding: VIEWPORT_PAD
-      })
-      setPaletteStyle({
-        position: 'fixed',
-        left: Math.round(clamped.left),
-        top: Math.round(clamped.top),
-        zIndex: 80
-      })
+      setPaletteStyle(
+        buildFooterFlyoutStyle(colorTriggerRef.current, paletteFlyoutRef.current, {
+          width: 210,
+          height: 100
+        })
+      )
     }
     place()
     window.addEventListener('resize', place)
     return () => window.removeEventListener('resize', place)
   }, [paletteOpen])
+
+  useEffect(() => {
+    if (!highlightOpen) {
+      setHighlightStyle(undefined)
+      return
+    }
+    const place = (): void => {
+      setHighlightStyle(
+        buildFooterFlyoutStyle(highlightTriggerRef.current, highlightFlyoutRef.current, {
+          width: 210,
+          height: 100
+        })
+      )
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [highlightOpen])
 
   const submitTitle = async (event: FormEvent): Promise<void> => {
     event.preventDefault()
@@ -709,12 +797,19 @@ export function DayQuickEditPopover({
       <InteractionUI
         ref={panelRef}
         captureOnHover={!isFloating}
-        className={`day-quick-edit day-quick-edit--event fixed z-[35] flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
-        style={style}
+        className={`day-quick-edit day-quick-edit--event fixed flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
+        style={{ ...style, zIndex }}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
         onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
+        onMouseDown={(e) => {
+          e.stopPropagation()
+          onRaise?.()
+          const target = e.target as HTMLElement | null
+          if (!target?.closest('.day-quick-edit-item-title')) {
+            onDismissEventDetail?.()
+          }
+        }}
       >
         <header className="day-quick-edit-header">
           <h2 className="day-quick-edit-title">{formatDayHeaderTitle(date)}</h2>
@@ -868,13 +963,34 @@ export function DayQuickEditPopover({
                           onToggleCompleted(item, e.target.checked)
                         }}
                       />
-                      <EventAccentGlyph
-                        shapeId={item.markerShape}
-                        color={accent}
-                        variant="dot"
-                        className="shrink-0"
-                      />
-                      <EventTagIcons event={item} tags={tags} />
+                      {/* Marks focus the row (footer target); dblclick opens the editor. */}
+                      <span
+                        className="day-quick-edit-row-marks"
+                        role="presentation"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          clearEventClickTimer()
+                          setSelectedEvent(item)
+                        }}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          clearEventClickTimer()
+                          suppressEventClickRef.current = true
+                          setSelectedEvent(item)
+                          if (isHoliday) return
+                          onEditEvent?.(item)
+                        }}
+                      >
+                        <EventAccentGlyph
+                          shapeId={item.markerShape}
+                          color={accent}
+                          variant="dot"
+                          className="shrink-0"
+                          title={cal?.name}
+                        />
+                        <EventTagIcons event={item} tags={tags} />
+                      </span>
                       <span
                         className="day-quick-edit-item-title"
                         title={item.title}
@@ -925,6 +1041,60 @@ export function DayQuickEditPopover({
 
         <footer className="day-quick-edit-footer">
           <div className="day-quick-edit-footer-left">
+            {onDayHighlightChange ? (
+              <button
+                ref={highlightTriggerRef}
+                type="button"
+                className={`day-quick-edit-highlight-trigger${
+                  displayDayHighlight ? ' has-highlight' : ''
+                }`}
+                title="날짜 강조"
+                aria-label="날짜 강조"
+                aria-expanded={highlightOpen}
+                disabled={!canEdit}
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setPaletteOpen(false)
+                  setHighlightOpen((open) => !open)
+                }}
+              >
+                <svg
+                  className="day-quick-edit-highlight-icon"
+                  viewBox="0 0 24 24"
+                  width="16"
+                  height="16"
+                  aria-hidden
+                >
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx="12"
+                    cy="12"
+                    r="9"
+                    fill={displayDayHighlight ?? 'currentColor'}
+                    opacity={displayDayHighlight ? 0.9 : 0.18}
+                  />
+                  <text
+                    x="12"
+                    y="12.5"
+                    textAnchor="middle"
+                    dominantBaseline="middle"
+                    fontSize="12.5"
+                    fontWeight="600"
+                    fill={displayDayHighlight ? '#202124' : 'currentColor'}
+                  >
+                    7
+                  </text>
+                </svg>
+              </button>
+            ) : null}
             <button
               ref={colorTriggerRef}
               type="button"
@@ -937,6 +1107,7 @@ export function DayQuickEditPopover({
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
+                setHighlightOpen(false)
                 setPaletteOpen((open) => !open)
               }}
             >
@@ -1079,6 +1250,29 @@ export function DayQuickEditPopover({
                   onDayColorChange(color)
                 }}
                 onRequestClose={() => setPaletteOpen(false)}
+              />
+            </InteractionUI>,
+            document.body
+          )
+        : null}
+
+      {highlightOpen && canEdit && onDayHighlightChange
+        ? createPortal(
+            <InteractionUI
+              ref={highlightFlyoutRef}
+              className="day-quick-edit-highlight-flyout"
+              style={highlightStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <DayHighlightPalette
+                compact
+                value={displayDayHighlight}
+                onChange={(color) => {
+                  setOptimisticDayHighlight(color)
+                  onDayHighlightChange(color)
+                }}
+                onRequestClose={() => setHighlightOpen(false)}
               />
             </InteractionUI>,
             document.body

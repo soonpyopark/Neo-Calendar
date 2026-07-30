@@ -101,6 +101,12 @@ function deepMergeSettings(base: StoreSettings, patch: Partial<StoreSettings>): 
     dayColorsByLoginId: patch.dayColorsByLoginId
       ? { ...patch.dayColorsByLoginId }
       : { ...(base.dayColorsByLoginId ?? {}) },
+    dayHighlights: patch.dayHighlights
+      ? { ...patch.dayHighlights }
+      : { ...(base.dayHighlights ?? {}) },
+    dayHighlightsByLoginId: patch.dayHighlightsByLoginId
+      ? { ...patch.dayHighlightsByLoginId }
+      : { ...(base.dayHighlightsByLoginId ?? {}) },
     hiddenCalendarIdsByLoginId: patch.hiddenCalendarIdsByLoginId
       ? { ...patch.hiddenCalendarIdsByLoginId }
       : { ...(base.hiddenCalendarIdsByLoginId ?? {}) },
@@ -174,6 +180,8 @@ export class CalendarStore {
       settings.allowedIpCidrs = []
       settings.dayColors = {}
       delete settings.dayColorsByLoginId
+      settings.dayHighlights = {}
+      delete settings.dayHighlightsByLoginId
       delete settings.hiddenCalendarIdsByLoginId
       return {
         ...snap,
@@ -227,6 +235,17 @@ export class CalendarStore {
       snap.settings.dayColors = {}
     }
     delete snap.settings.dayColorsByLoginId
+
+    // Same per-login projection for the 형광펜 highlights.
+    const highlightsByLogin = snap.settings.dayHighlightsByLoginId ?? {}
+    const highlightKey =
+      Object.keys(highlightsByLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? null
+    if (highlightKey) {
+      snap.settings.dayHighlights = { ...highlightsByLogin[highlightKey] }
+    } else if (!asSuperAdmin) {
+      snap.settings.dayHighlights = {}
+    }
+    delete snap.settings.dayHighlightsByLoginId
 
     const hidden = this.getHiddenCalendarIdsForLogin(owner)
     snap.calendars = snap.calendars.map((cal) => ({
@@ -395,6 +414,15 @@ export class CalendarStore {
       nextPatch.dayColors = { ...(patch.dayColors ?? {}) }
     }
 
+    if (Object.prototype.hasOwnProperty.call(patch, 'dayHighlights') && owner) {
+      const byLogin = { ...(cur.settings.dayHighlightsByLoginId ?? {}) }
+      const key =
+        Object.keys(byLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? owner
+      byLogin[key] = { ...(patch.dayHighlights ?? {}) }
+      nextPatch.dayHighlightsByLoginId = byLogin
+      nextPatch.dayHighlights = { ...(patch.dayHighlights ?? {}) }
+    }
+
     let next = deepMergeSettings(cur.settings, nextPatch)
     next = ensureViewOptionsBySurfaceMigrated(next)
     if (viewOptionsPatch) {
@@ -540,6 +568,17 @@ export class CalendarStore {
       const ownerKey =
         Object.keys(dayColorsByLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? owner
       settings.dayColorsByLoginId = { [ownerKey]: mergedDayColors }
+    }
+
+    const highlightsByLogin = settings.dayHighlightsByLoginId ?? {}
+    const mergedHighlights = Object.values(highlightsByLogin).reduce<Record<string, string>>(
+      (acc, map) => ({ ...acc, ...(map ?? {}) }),
+      {}
+    )
+    if (Object.keys(mergedHighlights).length > 0) {
+      const ownerKey =
+        Object.keys(highlightsByLogin).find((k) => k.toLowerCase() === owner.toLowerCase()) ?? owner
+      settings.dayHighlightsByLoginId = { [ownerKey]: mergedHighlights }
     }
 
     return settings
@@ -1241,6 +1280,7 @@ export class CalendarStore {
 
     const cur = this.getSnapshot()
     const dayColorsByLoginId = { ...(cur.settings.dayColorsByLoginId ?? {}) }
+    const dayHighlightsByLoginId = { ...(cur.settings.dayHighlightsByLoginId ?? {}) }
     const hiddenCalendarIdsByLoginId = {
       ...(cur.settings.hiddenCalendarIdsByLoginId ?? {})
     }
@@ -1251,6 +1291,12 @@ export class CalendarStore {
         settingsChanged = true
       }
     }
+    for (const key of Object.keys(dayHighlightsByLoginId)) {
+      if (key.toLowerCase() === ownerLower) {
+        delete dayHighlightsByLoginId[key]
+        settingsChanged = true
+      }
+    }
     for (const key of Object.keys(hiddenCalendarIdsByLoginId)) {
       if (key.toLowerCase() === ownerLower) {
         delete hiddenCalendarIdsByLoginId[key]
@@ -1258,7 +1304,11 @@ export class CalendarStore {
       }
     }
     if (settingsChanged) {
-      this.patchStoreSettings({ dayColorsByLoginId, hiddenCalendarIdsByLoginId })
+      this.patchStoreSettings({
+        dayColorsByLoginId,
+        dayHighlightsByLoginId,
+        hiddenCalendarIdsByLoginId
+      })
     }
 
     return toDelete.length

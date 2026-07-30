@@ -119,6 +119,7 @@ export function QuickEditWindowApp(): ReactElement | null {
   }, [init?.dateKey])
 
   const dayColors = store.settings.dayColors ?? {}
+  const dayHighlights = store.settings.dayHighlights ?? {}
   const eventsHidden = init?.eventsHidden ?? false
   const viewMode = init?.viewMode ?? 'month'
   const anchorRect = init?.anchor
@@ -369,12 +370,17 @@ export function QuickEditWindowApp(): ReactElement | null {
         calendars={store.calendars}
         tags={store.tags}
         dayColor={dayColors[init.dateKey] ?? null}
+        dayHighlight={dayHighlights[init.dateKey] ?? null}
         anchorRect={anchorRect}
         canEdit={canEdit}
         expandBody={viewMode === 'month'}
         minBodyHeight={viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : undefined}
         onReorderEvents={handleReorderEvents}
         onClose={handleClose}
+        onDismissEventDetail={() => {
+          // Match browser inline: clicking QE chrome (not the event title) closes detail.
+          window.neoCalendar.closePanelSlot?.('eventDetail')
+        }}
         onCreate={(title, calendarId, tagIds, links) =>
           void addEvent({
             title,
@@ -397,6 +403,12 @@ export function QuickEditWindowApp(): ReactElement | null {
           if (!color) delete next[init.dateKey]
           else next[init.dateKey] = color
           void patchStoreSettings({ dayColors: next })
+        }}
+        onDayHighlightChange={(color) => {
+          const next = { ...dayHighlights }
+          if (!color) delete next[init.dateKey]
+          else next[init.dateKey] = color
+          void patchStoreSettings({ dayHighlights: next })
         }}
         onEventCalendarChange={(event, calendarId) => {
           void handleQuickEditEventPatch(event, { calendarId }, '캘린더를 변경하지 못했습니다.')

@@ -230,7 +230,7 @@ export function RecurrenceScopeDialog({
 
   return (
     <div
-      className="interaction-ui fixed inset-0 z-[75] flex items-center justify-center bg-transparent p-4"
+      className="interaction-ui fixed inset-0 z-[90] flex items-center justify-center bg-transparent p-4"
       onClick={dismiss}
       role="presentation"
     >

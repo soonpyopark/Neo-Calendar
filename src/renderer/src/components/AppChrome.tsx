@@ -18,6 +18,7 @@ import type { HeaderTitleOptions } from '../../../shared/calendarTypes'
 import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import type { AuthUser, LaunchMode } from '../../../shared/ipc'
 import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
+import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -45,7 +46,7 @@ export type AppChromeProps = {
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
-  /** Open header-title editor (double-click on the title). */
+  /** Open header-title editor (click / double-click on the title). */
   onHeaderTitleEdit?: () => void
   /** Logged-out click on edit-gated chrome controls. */
   onLoginRequired?: () => void
@@ -78,8 +79,11 @@ export function AppChrome({
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
   const captureOnHover = !embedded
-  /** Desktop (incl. WorkerW): single click like search/settings. Window: double-click. */
-  const chromeTextSingleClick = isDesktop
+  /**
+   * Desktop + browser: single click like search/settings.
+   * Electron window mode: double-click (avoids accidental reload while dragging).
+   */
+  const chromeTextSingleClick = isDesktop || isBrowserNeoCalendarHost()
   const headerTitle = normalizeHeaderTitle(headerTitleProp)
   const showHeaderTitle = Boolean(headerTitle.enabled && headerTitle.text.trim())
 
@@ -174,10 +178,11 @@ export function AppChrome({
 
       {/* True horizontal center of the full header (not the leftover flex gap). */}
       {showHeaderTitle ? (
-        <div className="app-chrome-header-title-slot pointer-events-none absolute inset-0 z-[1] flex items-center justify-center px-2">
+        <div className="app-chrome-header-title-slot pointer-events-none absolute inset-0 z-20 flex items-center justify-center px-2">
           <InteractionUI
-            as="span"
-            className="app-chrome-header-title app-chrome-no-drag pointer-events-auto max-w-[min(100%,42%)] cursor-pointer truncate px-1 py-0.5 font-semibold tracking-tight"
+            as="button"
+            type="button"
+            className="app-chrome-header-title app-chrome-no-drag pointer-events-auto max-w-[min(100%,42%)] cursor-pointer truncate border-0 bg-transparent px-1.5 py-1 font-semibold tracking-tight"
             style={{
               color: headerTitle.color,
               fontSize: `${headerTitle.fontSizePx}px`,
@@ -185,6 +190,7 @@ export function AppChrome({
             }}
             captureOnHover={captureOnHover}
             data-toolbar-action={CHROME_TOOLBAR_ACTIONS.editHeaderTitle}
+            aria-label="내 캘린더 이름 편집"
             title={
               loggedIn
                 ? chromeTextSingleClick
@@ -196,6 +202,7 @@ export function AppChrome({
               chromeTextSingleClick
                 ? (event) => {
                     event.preventDefault()
+                    event.stopPropagation()
                     runHeaderTitleEdit()
                   }
                 : undefined

@@ -1,5 +1,6 @@
 // @ts-nocheck — ported from MDC EventEditor.jsx; keep UI parity over strict typing.
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 
@@ -33,6 +34,7 @@ import { addEventAttachments, removeEventAttachment } from '../lib/eventAttachme
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import { isSaveShortcut } from '../lib/keyboard'
+import { clampFixedPosition } from '../lib/popoverPosition'
 import { InteractionUI } from './InteractionUI'
 import { useAppDialog } from './AppDialogProvider'
 import DateInput from './DateInput'
@@ -161,6 +163,9 @@ export function EventEditor({
   const [attachments, setAttachments] = useState([]);
   const [attachBusy, setAttachBusy] = useState(false);
   const [completed, setCompleted] = useState(false);
+  /** Collapsed by default so long link/attachment lists don't stretch the dialog. */
+  const [linksExpanded, setLinksExpanded] = useState(false);
+  const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const titleInputRef = useRef(null);
   const linkInputRef = useRef(null);
   /** Re-seed the form only when the editor opens for a different event (or create). */
@@ -232,6 +237,8 @@ export function EventEditor({
       setMarkerShape(seeded.markerShape);
       setTagIds(seeded.tagIds);
       setAttachments(Array.isArray(event.attachments) ? event.attachments : []);
+      setLinksExpanded(false);
+      setAttachmentsExpanded(false);
       setCompleted(seeded.completed);
       initialFingerprintRef.current = formFingerprint(seeded);
       return;
@@ -271,6 +278,8 @@ export function EventEditor({
     setCalendarId(seeded.calendarId);
     setMarkerShape(seeded.markerShape);
     setAttachments([]);
+    setLinksExpanded(false);
+    setAttachmentsExpanded(false);
     setCompleted(seeded.completed);
     setStartDate(seeded.startDate);
     setEndDate(seeded.endDate);
@@ -309,7 +318,12 @@ export function EventEditor({
     Boolean(event?.id) &&
     typeof (window.neoCalendar as { addEventAttachments?: unknown } | undefined)
       ?.addEventAttachments === 'function'
-  const attachmentNames = attachments.map((item) => item.name).filter(Boolean).join(', ');
+  const attachmentNames =
+    attachments.length === 0
+      ? ''
+      : attachments.length === 1
+        ? attachments[0].name || '(파일)'
+        : `${attachments[0].name || '(파일)'} 외 ${attachments.length - 1}개`;
 
   const isDirty = useMemo(() => {
     if (!open || initialFingerprintRef.current == null) return false;
@@ -475,6 +489,7 @@ export function EventEditor({
     try {
       const updated = await addEventAttachments(event.id);
       applyAttachmentResult(updated);
+      setAttachmentsExpanded(true);
     } catch (err) {
       await alert(err instanceof Error ? err.message : '파일을 첨부하지 못했습니다.');
     } finally {
@@ -539,6 +554,7 @@ export function EventEditor({
     }
     setLinks((prev) => appendEventLink(prev, url))
     setLinkDraft('')
+    setLinksExpanded(true)
   };
 
   return (
@@ -546,7 +562,7 @@ export function EventEditor({
       className={
         isFloating
           ? 'flex h-full min-h-full w-full items-center justify-center overflow-y-auto p-2'
-          : 'interaction-ui fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto p-4'
+          : 'interaction-ui fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"
       onClick={isFloating ? undefined : handleCloseRequest}
@@ -830,32 +846,41 @@ export function EventEditor({
                   추가
                 </button>
               </div>
-              {links.length > 0 && (
-                <ul className="m-0 list-none space-y-1 p-0">
-                  {links.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center gap-2 rounded border border-gcal-border-light bg-gcal-page px-2 py-1.5"
-                    >
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left text-gcal-heading hover:underline"
-                        title="바로가기 열기"
-                        onClick={() => void openExternalUrl(item.url)}
-                      >
-                        {item.title || item.url}
-                      </button>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-[#c5221f] hover:bg-[#fce8e6]"
-                        onClick={() => setLinks((prev) => prev.filter((row) => row.id !== item.id))}
-                      >
-                        삭제
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {links.length > 0 ? (
+                <EditorResourceDropdown
+                  label={`바로가기 ${links.length}개`}
+                  itemCount={links.length}
+                  open={linksExpanded}
+                  onOpenChange={(next) => {
+                    setLinksExpanded(next)
+                    if (next) setAttachmentsExpanded(false)
+                  }}
+                >
+                  <ul className="event-editor-resource-list">
+                    {links.map((item) => (
+                      <li key={item.id} className="event-editor-resource-item">
+                        <button
+                          type="button"
+                          className="event-editor-resource-main"
+                          title="바로가기 열기"
+                          onClick={() => void openExternalUrl(item.url)}
+                        >
+                          {item.title || item.url}
+                        </button>
+                        <button
+                          type="button"
+                          className="event-editor-resource-remove"
+                          onClick={() =>
+                            setLinks((prev) => prev.filter((row) => row.id !== item.id))
+                          }
+                        >
+                          삭제
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </EditorResourceDropdown>
+              ) : null}
             </div>
           </div>
 
@@ -865,7 +890,7 @@ export function EventEditor({
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  className={cnField(fieldClass, 'min-w-0 flex-1')}
+                  className={cnField(fieldClass, 'min-w-0 flex-1 truncate')}
                   value={attachmentNames}
                   readOnly
                   placeholder={
@@ -874,6 +899,11 @@ export function EventEditor({
                       : '일정을 저장한 뒤 파일을 첨부할 수 있습니다'
                   }
                   onClick={() => {
+                    if (attachments.length > 0) {
+                      setAttachmentsExpanded(true)
+                      setLinksExpanded(false)
+                      return
+                    }
                     if (canAttach && !attachBusy) void handleAddAttachments();
                   }}
                 />
@@ -886,36 +916,45 @@ export function EventEditor({
                   파일 선택
                 </button>
               </div>
-              {attachments.length > 0 && (
-                <ul className="m-0 list-none space-y-1 p-0">
-                  {attachments.map((item) => (
-                    <li
-                      key={item.id}
-                      className="flex items-center gap-2 rounded border border-gcal-border-light bg-gcal-page px-2 py-1.5"
-                    >
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left text-gcal-heading hover:underline"
-                        title="첨부 파일 열기"
-                        onClick={() => void handleOpenAttachment(item.id)}
-                      >
-                        {item.name || '(파일)'}
-                        {item.size != null ? (
-                          <span className="ml-1.5 text-xs text-gcal-muted">{formatFileSize(item.size)}</span>
-                        ) : null}
-                      </button>
-                      <button
-                        type="button"
-                        className="shrink-0 rounded px-2 py-0.5 text-xs font-medium text-[#c5221f] hover:bg-[#fce8e6] disabled:opacity-40"
-                        disabled={attachBusy}
-                        onClick={() => void handleRemoveAttachment(item.id)}
-                      >
-                        삭제
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
+              {attachments.length > 0 ? (
+                <EditorResourceDropdown
+                  label={`첨부파일 ${attachments.length}개`}
+                  itemCount={attachments.length}
+                  open={attachmentsExpanded}
+                  onOpenChange={(next) => {
+                    setAttachmentsExpanded(next)
+                    if (next) setLinksExpanded(false)
+                  }}
+                >
+                  <ul className="event-editor-resource-list">
+                    {attachments.map((item) => (
+                      <li key={item.id} className="event-editor-resource-item">
+                        <button
+                          type="button"
+                          className="event-editor-resource-main"
+                          title="첨부 파일 열기"
+                          onClick={() => void handleOpenAttachment(item.id)}
+                        >
+                          {item.name || '(파일)'}
+                          {item.size != null ? (
+                            <span className="event-editor-resource-meta">
+                              {formatFileSize(item.size)}
+                            </span>
+                          ) : null}
+                        </button>
+                        <button
+                          type="button"
+                          className="event-editor-resource-remove"
+                          disabled={attachBusy}
+                          onClick={() => void handleRemoveAttachment(item.id)}
+                        >
+                          삭제
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </EditorResourceDropdown>
+              ) : null}
             </div>
           </div>
 
@@ -939,6 +978,111 @@ export function EventEditor({
 
 function cnField(...parts) {
   return parts.filter(Boolean).join(' ');
+}
+
+const RESOURCE_FLYOUT_GAP = 4
+const RESOURCE_FLYOUT_PAD = 5
+const RESOURCE_FLYOUT_MAX_HEIGHT = 220
+
+/**
+ * Compact select-like control: the list opens as a fixed overlay so the editor
+ * shell does not grow vertically (펼침목록).
+ */
+function EditorResourceDropdown({ label, itemCount, open, onOpenChange, children }) {
+  const triggerRef = useRef(null)
+  const flyoutRef = useRef(null)
+  const [style, setStyle] = useState(null)
+
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle(null)
+      return undefined
+    }
+    const place = () => {
+      const trigger = triggerRef.current
+      const flyout = flyoutRef.current
+      if (!trigger) return
+      const ar = trigger.getBoundingClientRect()
+      const width = Math.max(ar.width, flyout?.offsetWidth || ar.width)
+      const height = Math.min(
+        flyout?.offsetHeight || RESOURCE_FLYOUT_MAX_HEIGHT,
+        RESOURCE_FLYOUT_MAX_HEIGHT
+      )
+      let left = ar.left
+      let top = ar.bottom + RESOURCE_FLYOUT_GAP
+      if (top + height > window.innerHeight - RESOURCE_FLYOUT_PAD) {
+        top = ar.top - height - RESOURCE_FLYOUT_GAP
+      }
+      const clamped = clampFixedPosition({
+        left,
+        top,
+        width,
+        height,
+        padding: RESOURCE_FLYOUT_PAD
+      })
+      setStyle({
+        position: 'fixed',
+        left: Math.round(clamped.left),
+        top: Math.round(clamped.top),
+        width: Math.round(width),
+        maxHeight: RESOURCE_FLYOUT_MAX_HEIGHT,
+        zIndex: 95
+      })
+    }
+    place()
+    const raf = requestAnimationFrame(place)
+    const onDown = (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      if (triggerRef.current?.contains(target)) return
+      if (flyoutRef.current?.contains(target)) return
+      onOpenChange(false)
+    }
+    window.addEventListener('resize', place)
+    document.addEventListener('pointerdown', onDown, true)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('resize', place)
+      document.removeEventListener('pointerdown', onDown, true)
+    }
+  }, [open, onOpenChange, itemCount])
+
+  return (
+    <div className="event-editor-resource-root">
+      <button
+        ref={triggerRef}
+        type="button"
+        className="event-editor-resource-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={(e) => {
+          e.preventDefault()
+          e.stopPropagation()
+          onOpenChange(!open)
+        }}
+      >
+        <span className="min-w-0 flex-1 truncate text-left">{label}</span>
+        <span className="event-editor-resource-caret" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open
+        ? createPortal(
+            <InteractionUI
+              ref={flyoutRef}
+              className="event-editor-resource-flyout"
+              style={style ?? { position: 'fixed', visibility: 'hidden', zIndex: 95 }}
+              role="listbox"
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              {children}
+            </InteractionUI>,
+            document.body
+          )
+        : null}
+    </div>
+  )
 }
 
 export default EventEditor

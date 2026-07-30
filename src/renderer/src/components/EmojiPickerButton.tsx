@@ -55,6 +55,8 @@ export type EmojiPickerButtonProps = {
   title?: string
   disabled?: boolean
   flyoutAnchor?: EmojiPickerFlyoutAnchor
+  /** Extra class on the category panel itself (size tweaks per host). */
+  panelClassName?: string
   /**
    * Render the category panel in-flow under the trigger (grows parent / floating
    * panel windows). Default portals a fixed flyout to `document.body`.
@@ -70,6 +72,7 @@ export function EmojiPickerButton({
   title = '이모지 추가',
   disabled = false,
   flyoutAnchor = 'trigger',
+  panelClassName,
   inlinePanel = false
 }: EmojiPickerButtonProps): ReactElement {
   const [open, setOpen] = useState(false)
@@ -203,7 +206,7 @@ export function EmojiPickerButton({
 
   const panelBody = (
     <InteractionUI
-      className="emoji-picker-panel"
+      className={cn('emoji-picker-panel', panelClassName)}
       role="dialog"
       aria-label="이모지 선택"
       onClick={(e) => e.stopPropagation()}

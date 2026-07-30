@@ -39,8 +39,10 @@ export type InteractionUIProps = DivProps | ButtonProps | SpanProps
 const PORTAL_FLYOUT_SELECTOR = [
   '.quick-edit-calendar-flyout',
   '.day-quick-edit-palette-flyout',
+  '.day-quick-edit-highlight-flyout',
   '.emoji-picker-panel',
   '.event-link-flyout',
+  '.event-editor-resource-flyout',
   '.marker-shape-flyout-panel',
   '.custom-color-panel',
   '.event-resource-list-root',
