@@ -298,7 +298,7 @@ export function useCalendarStore(): UseCalendarStoreResult {
     if (loading) return
     const vo = store.settings.viewOptions
     applyColorScheme(getColorScheme(vo))
-    applyAccentColor(normalizeAccentColor(vo.accentColor, '#1a73e8'))
+    applyAccentColor(normalizeAccentColor(vo.accentColor))
   }, [loading, store.settings.viewOptions.colorScheme, store.settings.viewOptions.accentColor])
 
   useEffect(() => {

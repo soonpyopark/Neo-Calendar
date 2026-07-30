@@ -1,3 +1,5 @@
+import { DEFAULT_ACCENT_COLOR } from '../../../shared/calendarColorPalette'
+
 export type ColorScheme = 'light' | 'dark' | 'system'
 
 const ACCENT_STYLE_ELEMENT_ID = 'neo-calendar-accent-color-style'
@@ -50,7 +52,10 @@ export function bootstrapPanelWindowTheme(): void {
     })
 }
 
-export function normalizeAccentColor(value: unknown, fallback = '#1a73e8'): string {
+export function normalizeAccentColor(
+  value: unknown,
+  fallback: string = DEFAULT_ACCENT_COLOR
+): string {
   const s = String(value ?? '').trim()
   return HEX_PATTERN.test(s) ? s.toLowerCase() : fallback
 }

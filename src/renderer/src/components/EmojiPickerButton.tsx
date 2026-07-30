@@ -55,6 +55,11 @@ export type EmojiPickerButtonProps = {
   title?: string
   disabled?: boolean
   flyoutAnchor?: EmojiPickerFlyoutAnchor
+  /**
+   * Render the category panel in-flow under the trigger (grows parent / floating
+   * panel windows). Default portals a fixed flyout to `document.body`.
+   */
+  inlinePanel?: boolean
 }
 
 /** MDC EmojiPickerButton — trigger + portaled category panel. */
@@ -64,7 +69,8 @@ export function EmojiPickerButton({
   buttonClassName,
   title = '이모지 추가',
   disabled = false,
-  flyoutAnchor = 'trigger'
+  flyoutAnchor = 'trigger',
+  inlinePanel = false
 }: EmojiPickerButtonProps): ReactElement {
   const [open, setOpen] = useState(false)
   const [recent, setRecent] = useState<string[]>([])
@@ -94,7 +100,7 @@ export function EmojiPickerButton({
   }, [categories, activeCategory])
 
   useLayoutEffect(() => {
-    if (!open) {
+    if (!open || inlinePanel) {
       setPanelStyle(null)
       return undefined
     }
@@ -161,7 +167,7 @@ export function EmojiPickerButton({
       window.removeEventListener('resize', place)
       window.removeEventListener('scroll', place, true)
     }
-  }, [open, activeCategory, flyoutAnchor])
+  }, [open, activeCategory, flyoutAnchor, inlinePanel])
 
   useEffect(() => {
     if (disabled) setOpen(false)
@@ -195,61 +201,71 @@ export function EmojiPickerButton({
 
   const current = categories.find((cat) => cat.id === activeCategory) ?? categories[0]
 
-  const panel = open ? (
-    <div
-      ref={panelRef}
-      id={panelId}
-      style={panelStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
+  const panelBody = (
+    <InteractionUI
+      className="emoji-picker-panel"
+      role="dialog"
+      aria-label="이모지 선택"
+      onClick={(e) => e.stopPropagation()}
+      onMouseDown={(e) => {
+        e.stopPropagation()
+        setIgnoreMouseEvents(false)
+      }}
     >
-      <InteractionUI
-        className="emoji-picker-panel"
-        role="dialog"
-        aria-label="이모지 선택"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => {
-          e.stopPropagation()
-          setIgnoreMouseEvents(false)
-        }}
-      >
-        <div className="emoji-picker-tabs" role="tablist">
-          {categories.map((cat) => (
+      <div className="emoji-picker-tabs" role="tablist">
+        {categories.map((cat) => (
+          <button
+            key={cat.id}
+            type="button"
+            role="tab"
+            aria-selected={cat.id === activeCategory}
+            className={cn('emoji-picker-tab', cat.id === activeCategory && 'active')}
+            title={cat.label}
+            aria-label={cat.label}
+            onClick={() => setActiveCategory(cat.id)}
+          >
+            {cat.icon}
+          </button>
+        ))}
+      </div>
+      <div className="emoji-picker-grid">
+        {current?.emojis.length ? (
+          current.emojis.map((emoji, idx) => (
             <button
-              key={cat.id}
+              key={`${emoji}-${idx}`}
               type="button"
-              role="tab"
-              aria-selected={cat.id === activeCategory}
-              className={cn('emoji-picker-tab', cat.id === activeCategory && 'active')}
-              title={cat.label}
-              aria-label={cat.label}
-              onClick={() => setActiveCategory(cat.id)}
+              className="emoji-picker-item"
+              title={emoji}
+              onClick={() => pick(emoji)}
             >
-              {cat.icon}
+              {emoji}
             </button>
-          ))}
-        </div>
-        <div className="emoji-picker-grid">
-          {current?.emojis.length ? (
-            current.emojis.map((emoji, idx) => (
-              <button
-                key={`${emoji}-${idx}`}
-                type="button"
-                className="emoji-picker-item"
-                title={emoji}
-                onClick={() => pick(emoji)}
-              >
-                {emoji}
-              </button>
-            ))
-          ) : (
-            <p className="emoji-picker-empty">최근 사용한 이모지가 없습니다</p>
-          )}
-        </div>
-      </InteractionUI>
-    </div>
+          ))
+        ) : (
+          <p className="emoji-picker-empty">최근 사용한 이모지가 없습니다</p>
+        )}
+      </div>
+    </InteractionUI>
+  )
+
+  const panel = open ? (
+    inlinePanel ? (
+      <div ref={panelRef} id={panelId} className="emoji-picker-inline-wrap">
+        {panelBody}
+      </div>
+    ) : (
+      <div
+        ref={panelRef}
+        id={panelId}
+        style={panelStyle ?? { position: 'fixed', visibility: 'hidden', zIndex: 80 }}
+      >
+        {panelBody}
+      </div>
+    )
   ) : null
 
   return (
-    <div ref={rootRef} className={cn('emoji-picker-root', className)}>
+    <div ref={rootRef} className={cn('emoji-picker-root', className, inlinePanel && 'is-inline')}>
       <button
         type="button"
         className={cn('emoji-picker-trigger', buttonClassName)}
@@ -268,7 +284,7 @@ export function EmojiPickerButton({
       >
         <span aria-hidden="true">🙂</span>
       </button>
-      {panel ? createPortal(panel, document.body) : null}
+      {panel ? (inlinePanel ? panel : createPortal(panel, document.body)) : null}
     </div>
   )
 }

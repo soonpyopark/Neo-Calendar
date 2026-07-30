@@ -4,6 +4,8 @@ import type {
   SurfaceViewOptions,
   ViewOptions
 } from './calendarTypes'
+import { DEFAULT_ACCENT_COLOR } from './calendarColorPalette'
+import { normalizeHeaderTitle } from './headerTitle'
 
 export const SURFACE_SCOPED_VIEW_OPTION_KEYS = [
   'eventsHidden',
@@ -11,6 +13,7 @@ export const SURFACE_SCOPED_VIEW_OPTION_KEYS = [
   'showWeekNumbers',
   'weekStartsOnSunday',
   'roundedCorners',
+  'headerTitle',
   'colorScheme',
   'accentColor'
 ] as const satisfies ReadonlyArray<keyof SurfaceViewOptions>
@@ -31,11 +34,12 @@ function pickSurfaceOptions(source: Partial<ViewOptions> | null | undefined): Su
     showWeekNumbers: s.showWeekNumbers !== false,
     weekStartsOnSunday: s.weekStartsOnSunday !== false,
     roundedCorners: Boolean(s.roundedCorners),
+    headerTitle: normalizeHeaderTitle(s.headerTitle),
     colorScheme:
       s.colorScheme === 'dark' || s.colorScheme === 'system' ? s.colorScheme : 'light',
     accentColor: typeof s.accentColor === 'string' && s.accentColor.trim()
       ? s.accentColor
-      : '#039be5',
+      : DEFAULT_ACCENT_COLOR,
     eventsHidden: Boolean(s.eventsHidden),
     completedHidden: Boolean(s.completedHidden)
   }
@@ -104,7 +108,11 @@ export function applyViewOptionsPatch(
 
   for (const key of SURFACE_SCOPED_VIEW_OPTION_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
-    ;(bySurface[surf] as Record<string, unknown>)[key] = patch[key]
+    if (key === 'headerTitle') {
+      ;(bySurface[surf] as Record<string, unknown>)[key] = normalizeHeaderTitle(patch.headerTitle)
+    } else {
+      ;(bySurface[surf] as Record<string, unknown>)[key] = patch[key]
+    }
     touched = true
   }
 

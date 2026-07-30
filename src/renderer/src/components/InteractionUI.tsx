@@ -42,7 +42,12 @@ const PORTAL_FLYOUT_SELECTOR = [
   '.emoji-picker-panel',
   '.event-link-flyout',
   '.marker-shape-flyout-panel',
-  '.custom-color-panel'
+  '.custom-color-panel',
+  '.event-resource-list-root',
+  '.attachment-viewer-root',
+  '.header-title-editor-backdrop',
+  '.header-title-editor-inline-wrap',
+  '.header-title-editor-panel'
 ].join(', ')
 
 function isPortalFlyoutTarget(target: EventTarget | null): boolean {

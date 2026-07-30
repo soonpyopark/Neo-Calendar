@@ -119,14 +119,17 @@ export const CHROME_TOOLBAR_ACTIONS = {
   enterDesktop: 'enter-desktop',
   enterWindow: 'enter-window',
   authToggle: 'auth-toggle',
-  /** App name double-click → full reload (WorkerW embedded). */
-  reload: 'reload'
+  /** App name click → full reload (WorkerW embedded). */
+  reload: 'reload',
+  /** Header calendar title click → edit panel (WorkerW embedded). */
+  editHeaderTitle: 'edit-header-title'
 } as const
 
 /** Header actions that open floating panels while WorkerW-embedded. */
 export const EMBEDDED_FLOATING_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.search,
-  CHROME_TOOLBAR_ACTIONS.settings
+  CHROME_TOOLBAR_ACTIONS.settings,
+  CHROME_TOOLBAR_ACTIONS.editHeaderTitle
 ])
 
 /** Header actions that detach from WorkerW and switch launch mode. */
@@ -145,15 +148,16 @@ export const EMBEDDED_AUTH_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.authToggle
 ])
 
-/** App-name reload while WorkerW-embedded (requires OS double-click). */
+/** App-name reload while WorkerW-embedded (single click, same as search/settings). */
 export const EMBEDDED_RELOAD_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.reload
 ])
 
-/** Toolbar actions that fire only on WM_LBUTTONDBLCLK while embedded. */
-export const EMBEDDED_DOUBLE_CLICK_ACTIONS = new Set<string>([
-  CHROME_TOOLBAR_ACTIONS.reload
-])
+/**
+ * Toolbar actions that fire only on WM_LBUTTONDBLCLK while embedded.
+ * Empty: header reload / title edit use single click like search & settings.
+ */
+export const EMBEDDED_DOUBLE_CLICK_ACTIONS = new Set<string>([])
 
 /** Footer hint prev/pause/play/next while WorkerW-embedded. */
 export const FOOTER_HINT_ACTIONS = {

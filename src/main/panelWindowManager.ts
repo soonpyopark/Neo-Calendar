@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import {
   focusWindowForTextInput,
   lowerFloatingPanelWindow,
+  orderFloatingPanelFront,
   raiseFloatingPanelWindow
 } from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
@@ -537,7 +538,12 @@ export class PanelWindowManager {
     const resizable = init.kind === 'eventEditor' || init.kind === 'settings'
     // Scope / confirm dialogs must stay above sibling panels (detail/quick-edit).
     const forceTopLevel =
-      init.kind === 'recurrenceScope' || init.kind === 'exportOptions' || init.kind === 'login'
+      init.kind === 'recurrenceScope'
+      || init.kind === 'exportOptions'
+      || init.kind === 'login'
+      || init.kind === 'eventResourceList'
+      || init.kind === 'attachmentViewer'
+      || init.kind === 'headerTitleEditor'
     const topLevel =
       topLevelOption ?? (forceTopLevel || (this.options.isWorkerEmbedded?.() ?? false))
 
@@ -594,9 +600,12 @@ export class PanelWindowManager {
     })
 
     win.on('focus', () => {
-      if (!this.awaitingReturnFromExternalApp) return
-      this.awaitingReturnFromExternalApp = false
-      this.restoreTopMostPanels()
+      if (this.awaitingReturnFromExternalApp) {
+        this.awaitingReturnFromExternalApp = false
+        this.restoreTopMostPanels()
+      }
+      // Focused panel above siblings (light reorder — full raise flickers).
+      orderFloatingPanelFront(win)
     })
 
     win.once('closed', () => {
@@ -701,7 +710,7 @@ export class PanelWindowManager {
       )
     })
 
-    // Click on any floating panel — keep all panels open (e.g. detail over desktop, QE stays).
+    // Click on any floating panel — keep all panels open; z-order follows focus.
     if (insideAnyPanel) return
 
     // Working in the app a panel just opened a link / attachment in.

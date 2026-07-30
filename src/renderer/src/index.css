@@ -8,7 +8,7 @@
 @theme {
   --color-gcal-page: var(--gcal-page);
   --color-gcal-page-alt: var(--gcal-page-alt);
-  --color-gcal-blue: var(--gcal-blue, #1a73e8);
+  --color-gcal-blue: var(--gcal-blue, #795548);
   --color-gcal-blue-dark: var(--gcal-blue-dark);
   --color-gcal-blue-soft: var(--gcal-blue-soft);
   --color-gcal-red: #d50000;
@@ -45,9 +45,9 @@
   --gcal-border: #dadce0;
   --gcal-border-light: #e8eaed;
   --gcal-grid-line: #b6bbc0;
-  --gcal-blue: #1a73e8;
-  --gcal-blue-soft: #e8f0fe;
-  --gcal-blue-dark: #174ea6;
+  --gcal-blue: #795548;
+  --gcal-blue-soft: #efebe9;
+  --gcal-blue-dark: #573d34;
   --gcal-green-soft: #e6f4ea;
   --gcal-yellow-soft: #fff8e1;
   --gcal-red-soft: #fce8e6;
@@ -115,9 +115,9 @@
   --gcal-border: #5f6368;
   --gcal-border-light: #3c4043;
   --gcal-grid-line: #3c4043;
-  --gcal-blue: #1a73e8;
-  --gcal-blue-soft: #394457;
-  --gcal-blue-dark: #8ab4f8;
+  --gcal-blue: #a89188;
+  --gcal-blue-soft: #3b312f;
+  --gcal-blue-dark: #b5a29a;
   --gcal-red-soft: #5c2b29;
   --gcal-green-soft: #2d4a38;
   --gcal-yellow-soft: #4a4330;
@@ -603,7 +603,11 @@ textarea {
   border-right: 1px solid var(--gcal-grid-line);
   padding: 4px 6px;
   background-color: var(--gcal-in-month-bg);
-  transition: background-color 0.15s;
+  /*
+   * No background-color transition: has-day-color uses transparent + ::before tint.
+   * Animating transparent → in-month fill (e.g. 「모든 일정 숨기기」) briefly punches
+   * through to the desktop wallpaper.
+   */
   cursor: pointer;
 }
 
@@ -2072,7 +2076,6 @@ body.is-resizing-window {
 
 .day-quick-edit-row {
   display: flex;
-  cursor: pointer;
   align-items: center;
   gap: 0.5rem;
   border-radius: 0.375rem;
@@ -2106,6 +2109,7 @@ body.is-resizing-window {
 .day-quick-edit-item-title {
   min-width: 0;
   flex: 1;
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2116,6 +2120,41 @@ body.is-resizing-window {
 .day-quick-edit-row.is-completed .day-quick-edit-item-title {
   color: var(--gcal-muted);
   text-decoration: line-through;
+}
+
+.day-quick-edit-trailing {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+  padding-left: 0.25rem;
+}
+
+/* Circular hit targets — match footer tool chips so link/attach are distinct from the title. */
+.day-quick-edit-trailing .event-link-icon,
+.day-quick-edit-trailing .event-attach-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 9999px;
+  background: var(--gcal-surface-2, #f1f3f4);
+  color: var(--gcal-muted, #5f6368);
+  opacity: 1;
+  transition: color 0.15s, background-color 0.15s, transform 0.15s;
+}
+
+.day-quick-edit-trailing .event-link-icon:hover,
+.day-quick-edit-trailing .event-attach-icon:hover {
+  color: var(--gcal-blue, #1a73e8);
+  background: var(--gcal-blue-soft, #e8f0fe);
+  transform: scale(1.06);
+}
+
+.day-quick-edit-trailing .event-link-icon svg,
+.day-quick-edit-trailing .event-attach-icon svg {
+  width: 13px;
+  height: 13px;
+  display: block;
 }
 
 .day-quick-edit-footer {
@@ -2309,6 +2348,7 @@ html.neo-panel-window .export-options-shell,
 html.neo-panel-window .export-confirm-shell,
 html.neo-panel-window .login-panel-shell,
 html.neo-panel-window .recurrence-scope-shell,
+html.neo-panel-window .header-title-editor-panel,
 html.neo-panel-window .shell-solid-surface,
 html.neo-panel-window .interaction-ui.rounded-xl.bg-gcal-surface,
 html.neo-panel-window .app-dialog-root .shell-solid-surface,
@@ -2330,6 +2370,7 @@ html.neo-panel-window.dark .export-options-shell,
 html.neo-panel-window.dark .export-confirm-shell,
 html.neo-panel-window.dark .login-panel-shell,
 html.neo-panel-window.dark .recurrence-scope-shell,
+html.neo-panel-window.dark .header-title-editor-panel,
 html.neo-panel-window.dark form.shell-solid-surface,
 html.neo-panel-window.dark .neo-modal-shell,
 html.neo-quick-edit-window.dark .day-quick-edit,
@@ -2878,6 +2919,34 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
 .event-attach-icon:hover {
   opacity: 1;
   color: var(--gcal-heading);
+}
+
+/* Circular hit targets on month/week event bars (compact to fit lane height). */
+.event-bar-trailing .event-link-icon,
+.event-bar-trailing .event-attach-icon {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--gcal-surface, #fff) 90%, transparent);
+  color: var(--gcal-heading, #202124);
+  opacity: 1;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gcal-heading, #202124) 10%, transparent);
+  transition: color 0.15s, background-color 0.15s, transform 0.15s;
+}
+
+.event-bar-trailing .event-link-icon:hover,
+.event-bar-trailing .event-attach-icon:hover {
+  color: var(--gcal-blue, #1a73e8);
+  background: var(--gcal-blue-soft, #e8f0fe);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--gcal-blue, #1a73e8) 28%, transparent);
+  transform: scale(1.06);
+}
+
+.event-bar-trailing .event-link-icon svg,
+.event-bar-trailing .event-attach-icon svg {
+  width: 10px;
+  height: 10px;
+  display: block;
 }
 
 .event-dot {
@@ -3921,4 +3990,168 @@ html.neo-panel-window .settings-panel-shell {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     grid-template-areas: 'save copy export import clear delete';
   }
+}
+
+/* —— Header title editor (floating / inline) — same chrome model as quick-edit —— */
+.header-title-editor-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 34;
+  background: transparent;
+  pointer-events: auto;
+}
+
+.header-title-editor-inline-wrap {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 35;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.header-title-editor-panel {
+  width: 352px;
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.header-title-editor-panel--floating {
+  width: 352px;
+  max-width: none;
+  height: auto;
+  box-shadow: none;
+}
+
+.header-title-editor-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.75rem 0.85rem;
+}
+
+.header-title-editor-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--gcal-heading);
+}
+
+.header-title-editor-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--gcal-muted);
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.header-title-editor-close:hover {
+  background: var(--gcal-surface-2);
+  color: var(--gcal-heading);
+}
+
+.header-title-editor-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  overflow: hidden;
+  padding: 0.75rem 0.85rem 1rem;
+}
+
+.header-title-editor-body .calendar-color-palette-wrap {
+  overflow: hidden;
+}
+
+.header-title-editor-field {
+  display: block;
+}
+
+.header-title-editor-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.75rem;
+  color: var(--gcal-muted);
+}
+
+.header-title-editor-name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.header-title-editor-name-row .emoji-picker-root.is-inline {
+  display: contents;
+}
+
+.header-title-editor-name-row .emoji-picker-trigger {
+  order: 1;
+  flex-shrink: 0;
+}
+
+.header-title-editor-name-row .header-title-editor-input {
+  order: 2;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+
+.header-title-editor-name-row .emoji-picker-inline-wrap {
+  order: 3;
+  flex: 1 1 100%;
+  margin-top: 0.15rem;
+}
+
+.header-title-editor-name-row .emoji-picker-inline-wrap .emoji-picker-panel {
+  width: 100%;
+  max-width: none;
+  box-sizing: border-box;
+}
+
+.emoji-picker-inline-wrap {
+  min-width: 0;
+}
+
+.header-title-editor-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--gcal-border);
+  border-radius: 0.5rem;
+  background: var(--gcal-input, var(--gcal-page-solid, var(--gcal-surface-2)));
+  color: var(--gcal-heading);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.header-title-editor-input:focus {
+  border-color: var(--gcal-blue);
+}
+
+.header-title-editor-range {
+  width: 100%;
+  accent-color: var(--gcal-blue, #1a73e8);
+}
+
+.header-title-editor-preview {
+  margin-top: 0.15rem;
+  flex-shrink: 0;
+  border: 1px dashed var(--gcal-border-light, var(--gcal-border));
+  border-radius: 0.5rem;
+  background: var(--gcal-page-solid, var(--gcal-surface-2));
+  padding: 0.65rem 0.75rem;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

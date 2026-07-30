@@ -1,12 +1,16 @@
-import type { MouseEvent, ReactElement } from 'react'
+import { useState, type MouseEvent, type ReactElement } from 'react'
+import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import {
   getEventLinks,
   getPrimaryEventLinkUrl,
   normalizeEventLinkUrl
 } from '../lib/eventLinks'
 import { openExternalUrl } from '../lib/openExternal'
+import { openEventResourceListPanel } from '../lib/openEventResourceList'
 import { cn } from '../lib/cn'
 import type { CalendarEvent } from '../../../shared/calendarTypes'
+import { EventResourceListDialog } from './EventResourceListDialog'
+import { LinkChainIcon } from './LinkChainIcon'
 
 export type EventLinkIconProps = {
   event?: CalendarEvent | null
@@ -21,6 +25,7 @@ export function EventLinkIcon({
   className,
   title
 }: EventLinkIconProps): ReactElement | null {
+  const [listOpen, setListOpen] = useState(false)
   const links = event
     ? getEventLinks(event)
     : normalizeEventLinkUrl(url ?? '')
@@ -30,31 +35,48 @@ export function EventLinkIcon({
   if (!href) return null
 
   const count = links.length
+  const canShowList = Boolean(event)
+  const eventId = event ? getSeriesId(event) || event.id : ''
   const resolvedTitle =
     title ??
-    (count > 1 ? `바로가기 ${count}개 (더블클릭: 첫 링크 열기)` : '바로가기 열기 (더블클릭)')
+    (canShowList
+      ? count > 1
+        ? `바로가기 ${count}개 (클릭: 목록에서 선택)`
+        : '바로가기 (클릭: 목록에서 열기)'
+      : '바로가기 열기')
 
   return (
-    <span
-      className={cn('event-link-icon', className)}
-      role="button"
-      tabIndex={-1}
-      title={resolvedTitle}
-      aria-label={resolvedTitle}
-      onClick={(e: MouseEvent) => e.stopPropagation()}
-      onDoubleClick={(e: MouseEvent) => {
-        e.preventDefault()
-        e.stopPropagation()
-        void openExternalUrl(href)
-      }}
-    >
-      <svg viewBox="0 0 24 24" width="11" height="11" aria-hidden="true">
-        <path
-          fill="currentColor"
-          d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"
+    <>
+      <span
+        className={cn('event-link-icon', className)}
+        role="button"
+        tabIndex={-1}
+        title={resolvedTitle}
+        aria-label={resolvedTitle}
+        onClick={(e: MouseEvent) => {
+          e.preventDefault()
+          e.stopPropagation()
+          if (!canShowList || !eventId) {
+            void openExternalUrl(href)
+            return
+          }
+          void (async () => {
+            const opened = await openEventResourceListPanel('links', eventId)
+            if (!opened) setListOpen(true)
+          })()
+        }}
+      >
+        <LinkChainIcon size={11} />
+      </span>
+      {listOpen && event ? (
+        <EventResourceListDialog
+          type="links"
+          event={event}
+          surface="inline"
+          onClose={() => setListOpen(false)}
         />
-      </svg>
-    </span>
+      ) : null}
+    </>
   )
 }
 

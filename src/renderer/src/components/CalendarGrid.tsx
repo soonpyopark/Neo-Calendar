@@ -61,6 +61,8 @@ import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { ExportOptionsPanel } from './ExportOptionsPanel'
+import { HeaderTitleEditorPanel } from './HeaderTitleEditorPanel'
+import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import { DayListPreviewPanel } from './DayListPreviewPanel'
 import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js'
 import type { ExportCalendarRequest } from '../../../shared/exportCalendar'
@@ -120,7 +122,6 @@ import {
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
   todayBtnClass,
-  todayIconBtnClass,
   viewModeIconBtnActiveClass,
   viewModeIconBtnClass,
   yearNavBtnClass
@@ -476,6 +477,7 @@ export function CalendarGrid({
   const [selectedKey, setSelectedKey] = useState<string | null>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [dayListPreviewOpen, setDayListPreviewOpen] = useState(false)
+  const [headerTitleEditorOpen, setHeaderTitleEditorOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [loginOpen, setLoginOpen] = useState(false)
   const [loginBusy, setLoginBusy] = useState(false)
@@ -608,6 +610,9 @@ export function CalendarGrid({
       case 'dayListPreview':
         setDayListPreviewOpen(true)
         break
+      case 'headerTitleEditor':
+        setHeaderTitleEditorOpen(true)
+        break
       default:
         break
     }
@@ -623,7 +628,7 @@ export function CalendarGrid({
         ...init,
         ...(anchorClient ? { anchorClient } : {})
       } as OpenPanelWindowRequest
-      void window.neoCalendar.openPanelWindow?.(payload).then((opened) => {
+      void window.neoCalendar.openPanelWindow?.(payload)?.then((opened) => {
         if (opened === false) openInlineChromePanel(init)
       })
     },
@@ -782,12 +787,17 @@ export function CalendarGrid({
                 return []
               const r = el.getBoundingClientRect()
               if (r.width < 1 || r.height < 1) return []
+              // Centered header title is easy to miss — enlarge its embedded hit box.
+              const pad =
+                action === CHROME_TOOLBAR_ACTIONS.editHeaderTitle
+                  ? { x: 6, y: 8 }
+                  : { x: 0, y: 0 }
               return [
                 {
-                  x: Math.round(r.left),
-                  y: Math.round(r.top),
-                  width: Math.round(r.width),
-                  height: Math.round(r.height),
+                  x: Math.round(r.left - pad.x),
+                  y: Math.round(r.top - pad.y),
+                  width: Math.round(r.width + pad.x * 2),
+                  height: Math.round(r.height + pad.y * 2),
                   action
                 }
               ]
@@ -906,7 +916,8 @@ export function CalendarGrid({
     switchReady,
     user,
     footerHintPaused,
-    canGoPrevFooterHint
+    canGoPrevFooterHint,
+    store.settings.viewOptions.headerTitle
   ])
 
   // Re-publish after embed (WorkerW blocks forwarded mousemove).
@@ -936,7 +947,8 @@ export function CalendarGrid({
     exporting,
     modeBusy,
     switchReady,
-    user
+    user,
+    store.settings.viewOptions.headerTitle
   ])
   const year = viewDate.getFullYear()
   const month = viewDate.getMonth()
@@ -949,6 +961,20 @@ export function CalendarGrid({
     }
     setDayListPreviewOpen(true)
   }, [floatingPanels, month, openEmbeddedPanel, requireEdit, year])
+
+  const openHeaderTitleEditor = useCallback((): void => {
+    if (!requireEdit()) return
+    if (isBrowserNeoCalendarHost() || !floatingPanels) {
+      setHeaderTitleEditorOpen(true)
+      return
+    }
+    // Stay WorkerW-embedded — same as search/settings. Do not call focusForTextInput
+    // on the main window (that suspends under-icons / unlocks).
+    openEmbeddedPanel({ kind: 'headerTitleEditor' })
+  }, [floatingPanels, openEmbeddedPanel, requireEdit])
+  const openHeaderTitleEditorRef = useRef(openHeaderTitleEditor)
+  openHeaderTitleEditorRef.current = openHeaderTitleEditor
+
   const weekdayLabels = useMemo(() => {
     if (weekStartsOn === 1) {
       return [...WEEKDAYS_KO.slice(1), WEEKDAYS_KO[0]]
@@ -1452,6 +1478,10 @@ export function CalendarGrid({
       if (!toolbarActionSet.has(action) && !chromeActionSet.has(action)) return
       if (action === CHROME_TOOLBAR_ACTIONS.reload) {
         window.location.reload()
+        return
+      }
+      if (action === CHROME_TOOLBAR_ACTIONS.editHeaderTitle) {
+        openHeaderTitleEditorRef.current()
         return
       }
       const btn = document.querySelector<HTMLElement>(
@@ -2162,12 +2192,14 @@ export function CalendarGrid({
           embedded={embedded}
           user={user}
           loggedIn={canEdit}
+          headerTitle={store.settings.viewOptions.headerTitle}
           searchOpen={searchOpen}
           settingsOpen={settingsOpen}
           exporting={exporting}
           modeBusy={modeBusy}
           switchReady={switchReady}
           chromeRef={chromeRef}
+          onHeaderTitleEdit={openHeaderTitleEditor}
           onOpenSearch={() => {
             if (!requireEdit()) return
             openSearch()
@@ -2403,11 +2435,15 @@ export function CalendarGrid({
             </InteractionUI>
             <InteractionUI
               as="button"
-              className={cn(todayIconBtnClass, !canEdit && LOGIN_MUTED_CLASS)}
+              className={cn(
+                dayListPreviewOpen ? viewModeIconBtnActiveClass : viewModeIconBtnClass,
+                !canEdit && LOGIN_MUTED_CLASS
+              )}
               captureOnHover={captureToolbarOnHover}
               data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
               onClick={openDayListPreview}
               aria-label="세로보기"
+              aria-pressed={dayListPreviewOpen}
               title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
             >
               <PortraitPreviewIcon />
@@ -2641,6 +2677,24 @@ export function CalendarGrid({
           onExport={(request) => void runExportRequest(request)}
         />
       ) : null}
+      <HeaderTitleEditorPanel
+        open={headerTitleEditorOpen}
+        variant="inline"
+        value={store.settings.viewOptions.headerTitle}
+        onClose={() => setHeaderTitleEditorOpen(false)}
+        onChange={(next) => {
+          void patchStoreSettings({
+            viewOptions: {
+              ...store.settings.viewOptions,
+              headerTitle: normalizeHeaderTitle({ ...next, enabled: true })
+            }
+          }).catch(async (error) => {
+            await alert(
+              error instanceof Error ? error.message : '캘린더 이름을 저장하지 못했습니다.'
+            )
+          })
+        }}
+      />
       {inlineOverlays ? (
         <SettingsPanel
           open={settingsOpen}

@@ -9,6 +9,9 @@ import { ExportOptionsPanelHost } from './panelHosts/ExportOptionsPanelHost'
 import { RecurrenceScopePanelHost } from './panelHosts/RecurrenceScopePanelHost'
 import { LoginPanelHost } from './panelHosts/LoginPanelHost'
 import { DayListPreviewPanelHost } from './panelHosts/DayListPreviewPanelHost'
+import { EventResourceListPanelHost } from './panelHosts/EventResourceListPanelHost'
+import { AttachmentViewerPanelHost } from './panelHosts/AttachmentViewerPanelHost'
+import { HeaderTitleEditorPanelHost } from './panelHosts/HeaderTitleEditorPanelHost'
 
 export function PanelApp(): ReactElement | null {
   const [init, setInit] = useState<PanelWindowInit | null>(null)
@@ -52,6 +55,12 @@ export function PanelApp(): ReactElement | null {
       return <LoginPanelHost init={init} />
     case 'dayListPreview':
       return <DayListPreviewPanelHost init={init} />
+    case 'eventResourceList':
+      return <EventResourceListPanelHost init={init} />
+    case 'attachmentViewer':
+      return <AttachmentViewerPanelHost init={init} />
+    case 'headerTitleEditor':
+      return <HeaderTitleEditorPanelHost />
     default:
       return null
   }

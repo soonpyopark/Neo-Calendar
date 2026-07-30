@@ -35,6 +35,7 @@ import type {
   CalendarRecord,
   CalendarStoreSnapshot,
   EventInput,
+  HeaderTitleOptions,
   MemberRecord,
   MemberSaveInput,
   StoreSettings,
@@ -43,6 +44,7 @@ import type {
   TagRecord,
   ViewOptions
 } from '../../../shared/calendarTypes'
+import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import type { AppSettings, AuthUser, OpacityPreviewPatch } from '../../../shared/ipc'
 import { isSuperAdminUser } from '../../../shared/members'
 import {
@@ -201,9 +203,12 @@ function ViewOptionsPanel({
   const [showWeekNumbers, setShowWeekNumbers] = useState(vo.showWeekNumbers !== false)
   const [weekStartsOnSunday, setWeekStartsOnSunday] = useState(vo.weekStartsOnSunday !== false)
   const [roundedCorners, setRoundedCorners] = useState(Boolean(vo.roundedCorners))
+  const [headerTitle, setHeaderTitle] = useState<HeaderTitleOptions>(() =>
+    normalizeHeaderTitle(vo.headerTitle)
+  )
   const [colorScheme, setColorScheme] = useState<ColorScheme>(() => getColorScheme(vo))
   const [accentColor, setAccentColor] = useState(() =>
-    normalizeAccentColor(vo.accentColor, '#1a73e8')
+    normalizeAccentColor(vo.accentColor)
   )
   const [runAtStartup, setRunAtStartup] = useState(Boolean(vo.runAtStartup))
   const [headerOpacity, setHeaderOpacity] = useState(
@@ -219,14 +224,15 @@ function ViewOptionsPanel({
     setShowWeekNumbers(vo.showWeekNumbers !== false)
     setWeekStartsOnSunday(vo.weekStartsOnSunday !== false)
     setRoundedCorners(Boolean(vo.roundedCorners))
+    setHeaderTitle(normalizeHeaderTitle(vo.headerTitle))
     setColorScheme(getColorScheme(vo))
-    setAccentColor(normalizeAccentColor(vo.accentColor, '#1a73e8'))
+    setAccentColor(normalizeAccentColor(vo.accentColor))
     setRunAtStartup(Boolean(vo.runAtStartup))
     setHeaderOpacity(appSettings?.headerOpacity ?? storeSettings.headerOpacity)
     setShellOpacity(appSettings?.shellOpacity ?? storeSettings.shellOpacity)
     void window.neoCalendar.getDataRoot().then(setDataRoot)
     applyColorScheme(getColorScheme(vo))
-    applyAccentColor(normalizeAccentColor(vo.accentColor, '#1a73e8'))
+    applyAccentColor(normalizeAccentColor(vo.accentColor))
   }, [vo, appSettings, storeSettings])
 
   useEffect(() => {
@@ -241,15 +247,25 @@ function ViewOptionsPanel({
       showWeekNumbers,
       weekStartsOnSunday,
       roundedCorners,
+      headerTitle,
       colorScheme,
       accentColor,
       runAtStartup,
       ...patch
     }
+    if (patch.headerTitle) {
+      next.headerTitle = normalizeHeaderTitle(patch.headerTitle)
+    }
     await onPatchStore({ viewOptions: next })
     await onSaveApp({
       weekStartsOn: next.weekStartsOnSunday ? 0 : 1
     })
+  }
+
+  const persistHeaderTitle = (patch: Partial<HeaderTitleOptions>): void => {
+    const next = normalizeHeaderTitle({ ...headerTitle, ...patch })
+    setHeaderTitle(next)
+    void persistView({ headerTitle: next })
   }
 
   return (
@@ -293,6 +309,20 @@ function ViewOptionsPanel({
           <span>
             둥근 모서리
             <span className="text-gcal-muted"> (체크 해제 시 네모난 모서리)</span>
+          </span>
+        </label>
+        <label className="flex items-center gap-2.5 text-sm text-gcal-body">
+          <input
+            type="checkbox"
+            checked={headerTitle.enabled}
+            onChange={(e) => persistHeaderTitle({ enabled: e.target.checked })}
+          />
+          <span>
+            헤더에 내 캘린더 이름 표시
+            <span className="text-gcal-muted">
+              {' '}
+              (로고와 검색 사이 · 클릭으로 이름·이모지·색·크기 편집)
+            </span>
           </span>
         </label>
       </div>

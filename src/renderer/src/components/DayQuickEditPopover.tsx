@@ -567,6 +567,9 @@ export function DayQuickEditPopover({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== 'Escape') return
+      // Portaled choosers / viewers handle Esc first — leave quick edit alone.
+      if (document.querySelector('.event-resource-list-root')) return
+      if (document.querySelector('.attachment-viewer-root')) return
       if (paletteOpen) {
         setPaletteOpen(false)
         return
@@ -596,6 +599,9 @@ export function DayQuickEditPopover({
       if (target.closest('.event-detail-shell')) return
       if (target.closest('.recurrence-scope-shell')) return
       if (target.closest('.event-editor-shell')) return
+      // Link / attachment chooser + image viewer are portaled to body.
+      if (target.closest('.event-resource-list-root')) return
+      if (target.closest('.attachment-viewer-root')) return
       onClose()
     }
     document.addEventListener('pointerdown', onPointerDown, true)
@@ -777,7 +783,15 @@ export function DayQuickEditPopover({
             />
           </form>
 
-          <ul className="day-quick-edit-list settings-scroll">
+          <ul
+            className="day-quick-edit-list settings-scroll"
+            onMouseDown={(e) => {
+              // Empty list area below items — clear the selected row highlight / footer target.
+              if (e.target === e.currentTarget) {
+                setSelectedEvent(null)
+              }
+            }}
+          >
             {dayEvents.length === 0 ? (
               <li className="day-quick-edit-empty">등록된 일정이 없습니다</li>
             ) : (
@@ -841,25 +855,6 @@ export function DayQuickEditPopover({
                         setDropSeriesId(null)
                         if (fromId) reorderMovable(fromId, seriesId)
                       }}
-                      onClick={(e) => {
-                        if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
-                        openEventDetailFromRow(item, {
-                          x: e.clientX,
-                          y: e.clientY,
-                          screenX: e.screenX,
-                          screenY: e.screenY
-                        })
-                      }}
-                      onDoubleClick={(e) => {
-                        if ((e.target as Element | null)?.closest?.('.day-quick-edit-check')) return
-                        e.preventDefault()
-                        e.stopPropagation()
-                        clearEventClickTimer()
-                        suppressEventClickRef.current = true
-                        setSelectedEvent(item)
-                        if (isHoliday) return
-                        onEditEvent?.(item)
-                      }}
                     >
                       <input
                         type="checkbox"
@@ -883,8 +878,26 @@ export function DayQuickEditPopover({
                       <span
                         className="day-quick-edit-item-title"
                         title={item.title}
-                        role={isHoliday ? undefined : 'button'}
-                        tabIndex={isHoliday ? undefined : 0}
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          openEventDetailFromRow(item, {
+                            x: e.clientX,
+                            y: e.clientY,
+                            screenX: e.screenX,
+                            screenY: e.screenY
+                          })
+                        }}
+                        onDoubleClick={(e) => {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          clearEventClickTimer()
+                          suppressEventClickRef.current = true
+                          setSelectedEvent(item)
+                          if (isHoliday) return
+                          onEditEvent?.(item)
+                        }}
                         onKeyDown={(e) => {
                           if (e.key !== 'Enter' && e.key !== ' ') return
                           e.preventDefault()

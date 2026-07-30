@@ -13,6 +13,7 @@ import { openExternalUrl } from '../lib/openExternal'
 import { getCalendarTheme } from '../lib/colors'
 import { cn } from '../lib/cn'
 import { EventTagIcons } from './EventTagIcons'
+import { LinkChainIcon } from './LinkChainIcon'
 import { LinkifiedText } from './LinkifiedText'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 
@@ -188,18 +189,7 @@ export function EventDetailContent({
             <ul className="mt-3 m-0 list-none space-y-1 p-0">
               {links.map((item) => (
                 <li key={item.id} className="flex items-start gap-1.5 text-sm leading-relaxed">
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="14"
-                    height="14"
-                    className="mt-0.5 shrink-0 text-gcal-muted"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill="currentColor"
-                      d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"
-                    />
-                  </svg>
+                  <LinkChainIcon size={14} className="mt-0.5 shrink-0 text-gcal-muted" />
                   <a
                     href={item.url}
                     target="_blank"

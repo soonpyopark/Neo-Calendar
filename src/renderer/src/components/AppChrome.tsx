@@ -14,6 +14,8 @@ import {
   iconBtnDisabledClass,
   softBlueIconBtnMutedClass
 } from '../lib/headerButtonClasses'
+import type { HeaderTitleOptions } from '../../../shared/calendarTypes'
+import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import type { AuthUser, LaunchMode } from '../../../shared/ipc'
 import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
 
@@ -26,6 +28,8 @@ export type AppChromeProps = {
   user: AuthUser | null
   /** When set, overrides `Boolean(user)` for toolbar enablement (browser token fallback). */
   loggedIn?: boolean
+  /** Optional personal calendar name between logo and search. */
+  headerTitle?: HeaderTitleOptions | null
   searchOpen: boolean
   settingsOpen: boolean
   exporting?: boolean
@@ -41,6 +45,8 @@ export type AppChromeProps = {
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
+  /** Open header-title editor (double-click on the title). */
+  onHeaderTitleEdit?: () => void
   /** Logged-out click on edit-gated chrome controls. */
   onLoginRequired?: () => void
 }
@@ -49,6 +55,7 @@ export function AppChrome({
   mode,
   user,
   loggedIn: loggedInProp,
+  headerTitle: headerTitleProp = null,
   searchOpen,
   settingsOpen,
   exporting = false,
@@ -62,6 +69,7 @@ export function AppChrome({
   onEnterDesktop,
   onEnterWindow,
   onAuthToggle,
+  onHeaderTitleEdit,
   onLoginRequired
 }: AppChromeProps): ReactElement {
   const isDesktop = mode === 'desktop'
@@ -70,6 +78,10 @@ export function AppChrome({
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
   const captureOnHover = !embedded
+  /** Desktop (incl. WorkerW): single click like search/settings. Window: double-click. */
+  const chromeTextSingleClick = isDesktop
+  const headerTitle = normalizeHeaderTitle(headerTitleProp)
+  const showHeaderTitle = Boolean(headerTitle.enabled && headerTitle.text.trim())
 
   const setChromeRef = (node: HTMLDivElement | null): void => {
     localChromeRef.current = node
@@ -77,20 +89,48 @@ export function AppChrome({
     else if (chromeRef) (chromeRef as { current: HTMLDivElement | null }).current = node
   }
 
+  const runReload = (): void => {
+    if (!loggedIn) {
+      onLoginRequired?.()
+      return
+    }
+    window.location.reload()
+  }
+
+  const runHeaderTitleEdit = (): void => {
+    if (!loggedIn) {
+      onLoginRequired?.()
+      return
+    }
+    onHeaderTitleEdit?.()
+  }
+
   return (
     <div
       ref={setChromeRef}
       className={cn(
-        'interaction-ui flex min-w-0 items-center justify-between gap-2',
+        'interaction-ui relative flex min-w-0 items-center gap-2',
         isWindow && 'is-window-mode'
       )}
       data-shell-chrome="header-actions"
       onDoubleClick={(event) => {
         event.preventDefault()
         event.stopPropagation()
+        if (chromeTextSingleClick) return
+        const target = event.target
+        if (!(target instanceof Element)) return
+        if (
+          target.closest(`[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.editHeaderTitle}"]`)
+        ) {
+          runHeaderTitleEdit()
+          return
+        }
+        if (target.closest(`[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.reload}"]`)) {
+          runReload()
+        }
       }}
     >
-      <div className="flex min-w-0 items-center gap-2.5 whitespace-nowrap app-chrome-drag">
+      <div className="relative z-10 flex min-w-0 shrink-0 items-center gap-2.5 whitespace-nowrap app-chrome-drag">
         <div className="flex items-baseline gap-2">
           <InteractionUI
             as="button"
@@ -100,17 +140,31 @@ export function AppChrome({
             )}
             captureOnHover={captureOnHover}
             data-toolbar-action={CHROME_TOOLBAR_ACTIONS.reload}
-            title={loggedIn ? '더블클릭하여 새로고침' : '로그인 후 사용할 수 있습니다'}
+            title={
+              loggedIn
+                ? chromeTextSingleClick
+                  ? '클릭하여 새로고침'
+                  : '더블클릭하여 새로고침'
+                : '로그인 후 사용할 수 있습니다'
+            }
             aria-label="새로고침"
-            onDoubleClick={(event) => {
-              event.preventDefault()
-              event.stopPropagation()
-              if (!loggedIn) {
-                onLoginRequired?.()
-                return
-              }
-              window.location.reload()
-            }}
+            onClick={
+              chromeTextSingleClick
+                ? (event) => {
+                    event.preventDefault()
+                    runReload()
+                  }
+                : undefined
+            }
+            onDoubleClick={
+              chromeTextSingleClick
+                ? undefined
+                : (event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    runReload()
+                  }
+            }
           >
             {APP_NAME}
           </InteractionUI>
@@ -118,7 +172,50 @@ export function AppChrome({
         </div>
       </div>
 
-      <div className="app-chrome-no-drag flex min-w-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
+      {/* True horizontal center of the full header (not the leftover flex gap). */}
+      {showHeaderTitle ? (
+        <div className="app-chrome-header-title-slot pointer-events-none absolute inset-0 z-[1] flex items-center justify-center px-2">
+          <InteractionUI
+            as="span"
+            className="app-chrome-header-title app-chrome-no-drag pointer-events-auto max-w-[min(100%,42%)] cursor-pointer truncate px-1 py-0.5 font-semibold tracking-tight"
+            style={{
+              color: headerTitle.color,
+              fontSize: `${headerTitle.fontSizePx}px`,
+              lineHeight: 1.2
+            }}
+            captureOnHover={captureOnHover}
+            data-toolbar-action={CHROME_TOOLBAR_ACTIONS.editHeaderTitle}
+            title={
+              loggedIn
+                ? chromeTextSingleClick
+                  ? `${headerTitle.text} (클릭하여 편집)`
+                  : `${headerTitle.text} (더블클릭하여 편집)`
+                : headerTitle.text
+            }
+            onClick={
+              chromeTextSingleClick
+                ? (event) => {
+                    event.preventDefault()
+                    runHeaderTitleEdit()
+                  }
+                : undefined
+            }
+            onDoubleClick={
+              chromeTextSingleClick
+                ? undefined
+                : (event) => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    runHeaderTitleEdit()
+                  }
+            }
+          >
+            {headerTitle.text}
+          </InteractionUI>
+        </div>
+      ) : null}
+
+      <div className="app-chrome-no-drag relative z-10 ml-auto flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
         <InteractionUI
           as="button"
           className={cn(

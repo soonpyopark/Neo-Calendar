@@ -69,7 +69,7 @@ export class PeriodToolbarClickBridge {
     const origin = this.options.getScreenOrigin()
     if (!origin) return
 
-    const hit = this.hitZone(pt, origin, zones)
+    const hit = this.hitZone(pt, origin, zones, button)
     if (!hit) return
 
     const needsDbl = EMBEDDED_DOUBLE_CLICK_ACTIONS.has(hit.action)
@@ -92,8 +92,10 @@ export class PeriodToolbarClickBridge {
   private hitZone(
     pt: ScreenPoint,
     origin: { x: number; y: number },
-    zones: ClickForwardClientZone[]
+    zones: ClickForwardClientZone[],
+    button: MouseButton
   ): { action: string; clientX: number; clientY: number } | null {
+    const hits: ClickForwardClientZone[] = []
     for (const zone of zones) {
       const screenZone: WidgetBounds = {
         x: origin.x + zone.x,
@@ -101,15 +103,23 @@ export class PeriodToolbarClickBridge {
         width: zone.width,
         height: zone.height
       }
-      if (contains(screenZone, pt)) {
-        return {
-          action: zone.action,
-          clientX: Math.round(pt.x - origin.x),
-          clientY: Math.round(pt.y - origin.y)
-        }
-      }
+      if (contains(screenZone, pt)) hits.push(zone)
     }
-    return null
+    if (hits.length === 0) return null
+
+    // Overlapping chrome (e.g. centered title vs search): prefer dbl-click actions on
+    // WM_LBUTTONDBLCLK, and skip them on single click so the real button still works.
+    const preferred =
+      button === 'left-dblclick'
+        ? (hits.find((z) => EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ?? null)
+        : (hits.find((z) => !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ?? hits[0] ?? null)
+    if (!preferred) return null
+
+    return {
+      action: preferred.action,
+      clientX: Math.round(pt.x - origin.x),
+      clientY: Math.round(pt.y - origin.y)
+    }
   }
 }
 

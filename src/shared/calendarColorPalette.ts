@@ -1,3 +1,6 @@
+/** Default theme accent (테마 색상) — Material brown / 고동. */
+export const DEFAULT_ACCENT_COLOR = '#795548'
+
 /** MDC calendar / accent color palette (8-column grid). */
 export const CALENDAR_COLOR_PALETTE = [
   '#1976d2',

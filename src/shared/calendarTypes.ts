@@ -139,12 +139,22 @@ export type SyncHolidaysResult = {
 /** Electron shell vs LAN/browser editor (MDC ClientSurface). */
 export type ClientSurface = 'native' | 'browser'
 
+/** Custom label between app logo and search in the header chrome. */
+export type HeaderTitleOptions = {
+  enabled: boolean
+  text: string
+  color: string
+  fontSizePx: number
+}
+
 /** Presentation prefs stored per surface (theme, week start, hide flags, …). */
 export type SurfaceViewOptions = {
   showWeekNumbers: boolean
   weekStartsOnSunday: boolean
   /** Neo chrome: rounded shell/header/footer. Default on for new installs. */
   roundedCorners: boolean
+  /** Optional personal calendar name in the header (between logo and search). */
+  headerTitle: HeaderTitleOptions
   colorScheme: 'light' | 'dark' | 'system'
   accentColor: string
   eventsHidden: boolean

@@ -1,10 +1,12 @@
 import { DEFAULT_WIDGET_BOUNDS } from './constants'
+import { DEFAULT_ACCENT_COLOR } from './calendarColorPalette'
 import type {
   CalendarRecord,
   CalendarStoreSnapshot,
   StoreSettings,
   TagRecord
 } from './calendarTypes'
+import { DEFAULT_HEADER_TITLE } from './headerTitle'
 
 export const HOLIDAYS_KR_CALENDAR_ID = 'holidays-kr'
 
@@ -111,8 +113,9 @@ export function createDefaultSettings(): StoreSettings {
       showWeekNumbers: true,
       weekStartsOnSunday: true,
       roundedCorners: true,
+      headerTitle: { ...DEFAULT_HEADER_TITLE },
       colorScheme: 'light',
-      accentColor: '#039be5',
+      accentColor: DEFAULT_ACCENT_COLOR,
       runAtStartup: true,
       eventsHidden: false,
       completedHidden: false

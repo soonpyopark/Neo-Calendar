@@ -15,6 +15,17 @@ export type PanelKind =
   | 'recurrenceScope'
   | 'login'
   | 'dayListPreview'
+  | 'eventResourceList'
+  | 'attachmentViewer'
+  | 'headerTitleEditor'
+
+/** Compact header-title editor (name / size / color) — initial size; host resizes to content. */
+export const HEADER_TITLE_EDITOR_PANEL_WIDTH = 352
+export const HEADER_TITLE_EDITOR_PANEL_HEIGHT = 380
+
+/** Link / attachment chooser floating panel size. */
+export const EVENT_RESOURCE_LIST_PANEL_WIDTH = 448
+export const EVENT_RESOURCE_LIST_PANEL_HEIGHT = 420
 
 export type PanelAnchorRect = QuickEditAnchorRect
 
@@ -81,6 +92,20 @@ export type PanelWindowInit =
       year: number
       /** 0-based month. */
       month: number
+    }
+  | {
+      kind: 'eventResourceList'
+      /** Which resource list to show. */
+      type: 'links' | 'attachments'
+      eventId: string
+    }
+  | {
+      kind: 'attachmentViewer'
+      eventId: string
+      attachmentId: string
+    }
+  | {
+      kind: 'headerTitleEditor'
     }
 
 export type OpenPanelWindowRequest = PanelWindowInit & {
@@ -357,7 +382,12 @@ export function computePanelWindowBounds(options: {
     })
   }
 
-  if (init.kind === 'settings' || init.kind === 'search' || init.kind === 'dayListPreview') {
+  if (
+    init.kind === 'settings'
+    || init.kind === 'search'
+    || init.kind === 'dayListPreview'
+    || init.kind === 'attachmentViewer'
+  ) {
     return centerInMainWindow({
       mainOrigin,
       mainSize,
@@ -374,6 +404,16 @@ export function computePanelWindowBounds(options: {
       workArea,
       width: 440,
       height: 560
+    })
+  }
+
+  if (init.kind === 'eventResourceList') {
+    return centeredBounds({
+      mainOrigin,
+      mainSize,
+      workArea,
+      width: EVENT_RESOURCE_LIST_PANEL_WIDTH,
+      height: EVENT_RESOURCE_LIST_PANEL_HEIGHT
     })
   }
 
@@ -394,6 +434,16 @@ export function computePanelWindowBounds(options: {
       workArea,
       width: 392,
       height: 340
+    })
+  }
+
+  if (init.kind === 'headerTitleEditor') {
+    return centeredBounds({
+      mainOrigin,
+      mainSize,
+      workArea,
+      width: HEADER_TITLE_EDITOR_PANEL_WIDTH,
+      height: HEADER_TITLE_EDITOR_PANEL_HEIGHT
     })
   }
 

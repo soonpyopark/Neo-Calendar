@@ -18,6 +18,7 @@ type User32FocusApi = {
   ) => boolean
 }
 
+const HWND_TOP = 0
 const HWND_TOPMOST = -1
 const HWND_NOTOPMOST = -2
 const SWP_NOMOVE = 0x0002
@@ -103,6 +104,40 @@ export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined):
     user32.BringWindowToTop(hwnd)
   } catch (error) {
     console.warn('[focus] native panel raise failed', error)
+  }
+}
+
+/**
+ * Reorder a panel above sibling floating panels without re-asserting topmost /
+ * parent (those cause flicker if done on every focus).
+ */
+export function orderFloatingPanelFront(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+
+  try {
+    win.moveTop()
+  } catch (error) {
+    console.warn('[focus] panel moveTop failed', error)
+  }
+
+  if (process.platform !== 'win32') return
+  const user32 = getUser32()
+  if (!user32) return
+
+  try {
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    if (hwnd === 0n) return
+    user32.SetWindowPos(
+      hwnd,
+      HWND_TOP,
+      0,
+      0,
+      0,
+      0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    )
+  } catch (error) {
+    console.warn('[focus] native panel order failed', error)
   }
 }
 

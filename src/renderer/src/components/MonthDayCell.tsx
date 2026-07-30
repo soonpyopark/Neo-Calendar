@@ -87,6 +87,7 @@ export function MonthDayCell({
     : segments
   const { visibleCount, hiddenEventCount } = resolveDayVisibleEventLimit(uiSegments, eventCapacity)
   const visibleSegments = eventsHidden ? [] : uiSegments.slice(0, visibleCount)
+  // Hide day tint with events — but never tween through a fully clear cell (desktop flash).
   const displayDayColor = eventsHidden ? null : (dayColor ?? null)
 
   const weekdayClass = cell.weekday === 0 ? 'sunday' : cell.weekday === 6 ? 'saturday' : ''

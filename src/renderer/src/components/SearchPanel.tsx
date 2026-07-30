@@ -8,8 +8,9 @@ import {
 import { getEventLinks } from '../lib/eventLinks'
 import { getSeriesId } from '../../../shared/mdcExport/eventOccurrences.js'
 import { formatTime24, isTimedEvent } from '../../../shared/mdcExport/eventBarFormat.js'
-import { useOpenAttachment } from './AttachmentViewerProvider'
-import { openExternalUrl } from '../lib/openExternal'
+import { openEventResourceListPanel } from '../lib/openEventResourceList'
+import { EventResourceListDialog } from './EventResourceListDialog'
+import { LinkChainIcon } from './LinkChainIcon'
 import {
   SEARCH_PAGE_SIZE_OPTIONS,
   buildSearchPageItems,
@@ -22,7 +23,7 @@ import {
 } from '../lib/searchEvents'
 import { cn } from '../lib/cn'
 import DateInput from './DateInput'
-import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
+import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 
 const pagerBtnClass =
   'inline-flex h-8 w-8 items-center justify-center rounded-full text-gcal-muted transition-colors hover:bg-gcal-surface-2 hover:text-gcal-heading disabled:pointer-events-none disabled:opacity-35'
@@ -127,14 +128,7 @@ function DefaultRangeIcon(): ReactElement {
 }
 
 function LinkGlyph({ className }: { className?: string }): ReactElement {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" className={className} aria-hidden="true">
-      <path
-        fill="currentColor"
-        d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"
-      />
-    </svg>
-  )
+  return <LinkChainIcon size={16} className={className} />
 }
 
 function AttachGlyph({ className }: { className?: string }): ReactElement {
@@ -232,103 +226,6 @@ function CountIconButton({
         </span>
       ) : null}
     </button>
-  )
-}
-
-function SearchResourceDetail({
-  detail,
-  onClose
-}: {
-  detail: { type: 'links' | 'attachments'; event: CalendarEvent } | null
-  onClose: () => void
-}): ReactElement | null {
-  const openAttachment = useOpenAttachment()
-  if (!detail) return null
-
-  const { type, event } = detail
-  const isLinks = type === 'links'
-  const links = getEventLinks(event)
-  const attachments = Array.isArray(event.attachments) ? event.attachments : []
-  const items = isLinks ? links : attachments
-  const eventId = getSeriesId(event) || event?.id
-  const title = isLinks ? '링크 목록' : '첨부파일 목록'
-
-  return (
-    <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-transparent px-4"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        className="neo-modal-shell w-full max-w-md overflow-hidden"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="neo-modal-shell-header flex items-center justify-between px-4 py-3">
-          <h2 className="text-sm font-semibold text-gcal-heading">
-            {title}
-            <span className="ml-1.5 font-normal text-gcal-muted">({items.length})</span>
-          </h2>
-          <button
-            type="button"
-            className="rounded-full px-2.5 py-1 text-sm font-medium text-gcal-blue transition-colors hover:bg-gcal-blue-soft"
-            onClick={onClose}
-          >
-            닫기
-          </button>
-        </div>
-        <ul className="settings-scroll max-h-[min(50vh,360px)] space-y-1.5 overflow-y-auto p-3">
-          {items.length === 0 ? (
-            <li className="px-2 py-6 text-center text-sm text-gcal-muted">항목이 없습니다.</li>
-          ) : null}
-          {isLinks
-            ? (links as EventLink[]).map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-start gap-2 rounded-lg border border-gcal-border-light bg-gcal-page px-3 py-2.5 text-left transition-colors hover:bg-gcal-surface"
-                    onClick={() => void openExternalUrl(item.url)}
-                  >
-                    <LinkGlyph className="mt-0.5 shrink-0 text-sky-600" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-gcal-heading">
-                        {item.title || item.url}
-                      </span>
-                      {item.title ? (
-                        <span className="mt-0.5 block truncate text-xs text-gcal-muted">
-                          {item.url}
-                        </span>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              ))
-            : attachments.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 rounded-lg border border-gcal-border-light bg-gcal-page px-3 py-2.5 text-left transition-colors hover:bg-gcal-surface disabled:opacity-50"
-                    disabled={!eventId || !item?.id}
-                    onClick={() => {
-                      if (!eventId || !item?.id) return
-                      void openAttachment(eventId, item.id)
-                    }}
-                  >
-                    <AttachGlyph className="shrink-0 text-sky-500" />
-                    <span className="min-w-0 flex-1 truncate text-sm text-gcal-heading">
-                      {(item as { name?: string; fileName?: string; path?: string }).name ||
-                        (item as { fileName?: string }).fileName ||
-                        (item as { path?: string }).path ||
-                        '(파일)'}
-                    </span>
-                  </button>
-                </li>
-              ))}
-        </ul>
-      </div>
-    </div>
   )
 }
 
@@ -721,12 +618,31 @@ export function SearchPanel({
                           <CountIconButton
                             kind="attach"
                             count={attachments.length}
-                            onOpen={() => setResourceDetail({ type: 'attachments', event })}
+                            onOpen={() => {
+                              const eventId = getSeriesId(event) || event.id
+                              void (async () => {
+                                const opened = await openEventResourceListPanel(
+                                  'attachments',
+                                  eventId
+                                )
+                                if (!opened) {
+                                  setResourceDetail({ type: 'attachments', event })
+                                }
+                              })()
+                            }}
                           />
                           <CountIconButton
                             kind="link"
                             count={links.length}
-                            onOpen={() => setResourceDetail({ type: 'links', event })}
+                            onOpen={() => {
+                              const eventId = getSeriesId(event) || event.id
+                              void (async () => {
+                                const opened = await openEventResourceListPanel('links', eventId)
+                                if (!opened) {
+                                  setResourceDetail({ type: 'links', event })
+                                }
+                              })()
+                            }}
                           />
                         </div>
 
@@ -864,7 +780,13 @@ export function SearchPanel({
         </div>
       </div>
 
-      <SearchResourceDetail detail={resourceDetail} onClose={() => setResourceDetail(null)} />
+      {resourceDetail ? (
+        <EventResourceListDialog
+          type={resourceDetail.type}
+          event={resourceDetail.event}
+          onClose={() => setResourceDetail(null)}
+        />
+      ) : null}
     </div>
   )
 }

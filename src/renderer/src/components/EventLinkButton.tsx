@@ -1,4 +1,12 @@
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type ReactElement
+} from 'react'
 import { createPortal } from 'react-dom'
 import type { EventLink } from '../../../shared/calendarTypes'
 import {
@@ -6,8 +14,13 @@ import {
   normalizeEventLinkUrl,
   normalizeEventLinksArray
 } from '../lib/eventLinks'
+import { clampFixedPosition } from '../lib/popoverPosition'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
 import { InteractionUI } from './InteractionUI'
+import { LinkChainIcon } from './LinkChainIcon'
+
+const FLYOUT_GAP = 8
+const VIEWPORT_PAD = 5
 
 export type EventLinkButtonProps = {
   links?: EventLink[]
@@ -26,7 +39,8 @@ export function EventLinkButton({
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const rootRef = useRef<HTMLDivElement | null>(null)
-  const [style, setStyle] = useState<React.CSSProperties | undefined>()
+  const flyoutRef = useRef<HTMLDivElement | null>(null)
+  const [style, setStyle] = useState<CSSProperties | undefined>()
   const hasLink = resolved.length > 0
 
   useEffect(() => {
@@ -37,21 +51,49 @@ export function EventLinkButton({
     if (open) setDraft('')
   }, [open])
 
-  useEffect(() => {
-    if (!open) return
+  useLayoutEffect(() => {
+    if (!open) {
+      setStyle(undefined)
+      return
+    }
     setIgnoreMouseEvents(false)
+
     const place = (): void => {
       const btn = rootRef.current?.querySelector('button')
       if (!btn) return
       const ar = btn.getBoundingClientRect()
+      // Match color-palette left: align to the day-color trigger in the same footer.
+      const footerLeft = btn.closest('.day-quick-edit-footer-left')
+      const colorTrigger = footerLeft?.querySelector(
+        '.day-quick-edit-color-trigger'
+      ) as HTMLElement | null
+      const alignLeft = (colorTrigger?.getBoundingClientRect() ?? ar).left
+      const footer = btn.closest('.day-quick-edit-footer')?.getBoundingClientRect()
+      const flyout = flyoutRef.current
+      const width = flyout?.offsetWidth || Math.min(280, window.innerWidth - VIEWPORT_PAD * 2)
+      const height = flyout?.offsetHeight || 120
+      let left = alignLeft
+      let top = (footer?.top ?? ar.top) - height - FLYOUT_GAP
+      if (top < VIEWPORT_PAD) top = ar.bottom + FLYOUT_GAP
+      const clamped = clampFixedPosition({
+        left,
+        top,
+        width,
+        height,
+        padding: VIEWPORT_PAD
+      })
       setStyle({
         position: 'fixed',
-        left: Math.min(ar.left, window.innerWidth - 300),
-        top: Math.min(ar.bottom + 8, window.innerHeight - 180),
+        left: Math.round(clamped.left),
+        top: Math.round(clamped.top),
         zIndex: 80
       })
     }
+
     place()
+    // Remeasure after layout — height depends on empty vs listed links.
+    const raf = requestAnimationFrame(place)
+
     const onDown = (e: PointerEvent): void => {
       const t = e.target
       if (!(t instanceof Element)) return
@@ -61,10 +103,11 @@ export function EventLinkButton({
     window.addEventListener('resize', place)
     document.addEventListener('pointerdown', onDown, true)
     return () => {
+      cancelAnimationFrame(raf)
       window.removeEventListener('resize', place)
       document.removeEventListener('pointerdown', onDown, true)
     }
-  }, [open])
+  }, [open, resolved.length])
 
   const addDraft = (e?: FormEvent): void => {
     e?.preventDefault()
@@ -101,17 +144,13 @@ export function EventLinkButton({
           if (!disabled) setOpen((v) => !v)
         }}
       >
-        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
-          <path
-            fill="currentColor"
-            d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"
-          />
-        </svg>
+        <LinkChainIcon size={16} />
         {hasLink ? <span className="event-link-picker-badge">{resolved.length > 9 ? '9+' : resolved.length}</span> : null}
       </button>
       {open && !disabled
         ? createPortal(
             <InteractionUI
+              ref={flyoutRef}
               className="event-link-flyout"
               style={style}
               onClick={(e) => e.stopPropagation()}
