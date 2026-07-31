@@ -31,6 +31,10 @@ export const softBlueIconBtnClass =
 export const softBlueIconBtnActiveClass =
   'border-gcal-blue bg-[#bbdefb] text-gcal-blue-dark hover:bg-[#90caf9] dark:border-gcal-blue dark:bg-gcal-blue-soft'
 
+/** Pressed state for hide-all / hide-completed — red so the toggle is obvious. */
+export const softRedIconBtnActiveClass =
+  'border-[#e57373] bg-[#ef9a9a] text-[#b71c1c] hover:bg-[#e57373] dark:border-[#e57373] dark:bg-[#5c2b29] dark:text-[#fce8e6] dark:hover:bg-[#7a3b38]'
+
 /** Current mode already applied — keep control but fade it. */
 export const softBlueIconBtnMutedClass = 'opacity-45 hover:opacity-70'
 

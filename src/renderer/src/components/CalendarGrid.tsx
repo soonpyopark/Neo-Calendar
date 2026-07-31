@@ -121,6 +121,7 @@ import {
   navBtnClass,
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
+  softRedIconBtnActiveClass,
   todayBtnClass,
   viewModeIconBtnActiveClass,
   viewModeIconBtnClass,
@@ -2395,7 +2396,7 @@ export function CalendarGrid({
               className={cn(
                 desktopModeIconBtnClass,
                 softBlueIconBtnClass,
-                eventsHidden && softBlueIconBtnActiveClass,
+                eventsHidden && softRedIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
               captureOnHover={captureToolbarOnHover}
@@ -2418,7 +2419,7 @@ export function CalendarGrid({
               className={cn(
                 desktopModeIconBtnClass,
                 softBlueIconBtnClass,
-                completedHidden && softBlueIconBtnActiveClass,
+                completedHidden && softRedIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
               captureOnHover={captureToolbarOnHover}
