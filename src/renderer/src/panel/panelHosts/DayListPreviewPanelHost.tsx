@@ -28,6 +28,20 @@ export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement 
     [routePanel]
   )
 
+  // Double-click a title: open the detail editor for that series / occurrence day.
+  const openEventEditor = useCallback(
+    (eventId: string, dayKey: string): void => {
+      routePanel({
+        kind: 'eventEditor',
+        eventId,
+        defaultDate: dayKey,
+        occurrenceDate: dayKey,
+        returnQuickEdit: null
+      })
+    },
+    [routePanel]
+  )
+
   if (loading) return null
 
   return (
@@ -41,6 +55,7 @@ export function DayListPreviewPanelHost({ init }: { init: Init }): ReactElement 
         eventsHidden={eventsHidden}
         completedHidden={Boolean(store.settings.viewOptions.completedHidden)}
         onOpenDay={addEventOnDay}
+        onOpenEvent={openEventEditor}
         onSortDirChange={(dir) => {
           void patchStoreSettings({
             viewOptions: {

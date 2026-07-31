@@ -11,6 +11,7 @@ export type DayListExportEvent = {
   id: string
   /** Stored series id for lookups (links, attachments). */
   eventId: string
+  calendarId: string
   /** `head` + `details` joined by newlines. */
   line: string
   /** Title line. */

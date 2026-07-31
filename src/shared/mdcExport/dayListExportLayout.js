@@ -109,6 +109,7 @@ export function prepareDayListExportLayout(store, range, options = {}) {
           id: `${event.id}-${dayKey}`,
           // Stored series id — lets viewers look the event back up (links, attachments).
           eventId: getSeriesId(event) ?? event.id,
+          calendarId: String(event.calendarId ?? ''),
           line: [head, ...details.map((item) => item.text)].join('\n'),
           /** Title line. */
           head,

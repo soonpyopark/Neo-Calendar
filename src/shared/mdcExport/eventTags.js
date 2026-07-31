@@ -2,6 +2,11 @@
  * Event tag helpers — master catalog on store.tags, event.tagIds references.
  */
 
+/** Completed marker in day-list / export titles. */
+export const COMPLETED_LABEL = '(완료)'
+/** Accent for COMPLETED_LABEL in UI + PDF/Excel rich text. */
+export const COMPLETED_LABEL_COLOR = '#0070CE'
+
 /**
  * @param {unknown} value
  * @returns {string[]}
@@ -45,23 +50,57 @@ export function resolveEventTags(event, tags) {
 }
 
 /**
- * Bracket prefix for display, e.g. "[행정][출장]".
+ * Bracket prefix for display, e.g. "[행정, 출장]".
  * @param {object} event
  * @param {object[]} tags
  */
 export function formatEventTagPrefix(event, tags) {
   const resolved = resolveEventTags(event, tags);
   if (!resolved.length) return '';
-  return resolved.map((tag) => `[${tag.name}]`).join('');
+  const names = resolved.map((tag) => String(tag.name ?? '').trim()).filter(Boolean);
+  if (!names.length) return '';
+  return `[${names.join(', ')}]`;
 }
 
 /**
- * Title with tag prefix: "[행정] 점심 커피".
+ * Title with tag / completed markers:
+ * "[개인, 행정] (완료) 점심 커피"
  * @param {object} event
  * @param {object[]} tags
  */
 export function formatTaggedEventTitle(event, tags) {
-  const title = event?.title ?? '';
+  const title = String(event?.title ?? '');
   const prefix = formatEventTagPrefix(event, tags);
-  return prefix ? `${prefix} ${title}` : title;
+  const completed = event?.completed ? COMPLETED_LABEL : '';
+  return [prefix, completed, title].filter(Boolean).join(' ');
+}
+
+/**
+ * Split a title/head line so `(완료)` can be styled separately.
+ * @param {string} text
+ * @returns {{ text: string, completed: boolean }[]}
+ */
+export function splitEventTitleRuns(text) {
+  const source = String(text ?? '')
+  if (!source) return []
+  if (!source.includes(COMPLETED_LABEL)) {
+    return [{ text: source, completed: false }]
+  }
+
+  /** @type {{ text: string, completed: boolean }[]} */
+  const runs = []
+  let cursor = 0
+  while (cursor < source.length) {
+    const hit = source.indexOf(COMPLETED_LABEL, cursor)
+    if (hit < 0) {
+      runs.push({ text: source.slice(cursor), completed: false })
+      break
+    }
+    if (hit > cursor) {
+      runs.push({ text: source.slice(cursor, hit), completed: false })
+    }
+    runs.push({ text: COMPLETED_LABEL, completed: true })
+    cursor = hit + COMPLETED_LABEL.length
+  }
+  return runs.filter((run) => run.text)
 }

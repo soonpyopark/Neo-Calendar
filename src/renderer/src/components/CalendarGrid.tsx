@@ -119,6 +119,8 @@ import {
   headerShellClass,
   iconBtnDisabledClass,
   navBtnClass,
+  dayListPreviewIconBtnActiveClass,
+  dayListPreviewIconBtnClass,
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
   softRedIconBtnActiveClass,
@@ -2441,8 +2443,8 @@ export function CalendarGrid({
               as="button"
               className={cn(
                 desktopModeIconBtnClass,
-                softBlueIconBtnClass,
-                dayListPreviewOpen && softBlueIconBtnActiveClass,
+                dayListPreviewIconBtnClass,
+                dayListPreviewOpen && dayListPreviewIconBtnActiveClass,
                 !canEdit && LOGIN_MUTED_CLASS
               )}
               captureOnHover={captureToolbarOnHover}
@@ -2667,6 +2669,14 @@ export function CalendarGrid({
           shortcutsSuspended={Boolean(editor)}
           onOpenDay={(dayKey) => {
             openEventEditor(null, { defaultDate: dayKey })
+          }}
+          onOpenEvent={(eventId, dayKey) => {
+            const master = findMasterEvent(eventId)
+            if (!master) {
+              void alert('일정을 찾을 수 없습니다.')
+              return
+            }
+            openEventEditor(master, { defaultDate: dayKey })
           }}
           onSortDirChange={(dir) => {
             void patchStoreSettings({

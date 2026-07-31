@@ -1189,6 +1189,21 @@ input[type='search']::-ms-clear,
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
+  border-radius: 0.25rem;
+}
+
+.day-list-preview-line.is-openable {
+  cursor: pointer;
+}
+
+.day-list-preview-line.is-openable:hover {
+  background: color-mix(in srgb, var(--gcal-blue) 10%, transparent);
+}
+
+/* `(완료)` marker — matches PDF/Excel day-list accent. */
+.day-list-preview-completed {
+  color: #0070ce;
+  font-weight: 700;
 }
 
 .day-list-preview-event + .day-list-preview-event {

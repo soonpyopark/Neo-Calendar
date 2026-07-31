@@ -8,6 +8,7 @@ import {
   type ReactElement
 } from 'react'
 import { prepareDayListExportLayout } from '../../../shared/mdcExport/dayListExportLayout.js'
+import { splitEventTitleRuns } from '../../../shared/mdcExport/eventTags.js'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -15,6 +16,7 @@ import {
   DoubleChevronRightIcon
 } from './CalendarHeaderIcons'
 import type { CalendarStoreSnapshot } from '../../../shared/calendarTypes'
+import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { splitLinkifySegments } from '../lib/linkify'
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
@@ -34,6 +36,8 @@ export type DayListPreviewPanelProps = {
   completedHidden?: boolean
   /** Double-click a date → add a new event on that day (this preview stays open). */
   onOpenDay?: (dayKey: string) => void
+  /** Double-click an event title → open the detail editor (preview stays open). */
+  onOpenEvent?: (eventId: string, dayKey: string) => void
   /** Persist 세로보기 sort preference (보기 옵션 · dayListSortDesc). */
   onSortDirChange?: (dir: 'asc' | 'desc') => void
   /**
@@ -51,8 +55,14 @@ const FONT_SCALE_STEP = 0.1
 /**
  * One text run. `matchIndex` is the panel-wide ordinal of an in-panel find hit,
  * `url` marks runs that belong to a URL detected inside the text.
+ * `completed` styles the `(완료)` marker (#0070CE bold).
  */
-type TextPart = { text: string; matchIndex: number | null; url: string | null }
+type TextPart = {
+  text: string
+  matchIndex: number | null
+  url: string | null
+  completed?: boolean
+}
 
 type AttachmentRef = { eventId: string; attachmentId: string }
 
@@ -64,6 +74,10 @@ type PreviewDetailLine = {
 
 type PreviewEvent = {
   id: string
+  eventId: string
+  dayKey: string
+  /** False for 대한민국의 휴일 — title is not editable. */
+  editable: boolean
   color: string
   /** Title line runs. */
   parts: TextPart[]
@@ -95,9 +109,12 @@ function splitOnQuery(
   text: string,
   needle: string,
   startIndex: number,
-  url: string | null
+  url: string | null,
+  completed = false
 ): { parts: TextPart[]; nextIndex: number } {
-  if (!needle || !text) return { parts: [{ text, matchIndex: null, url }], nextIndex: startIndex }
+  if (!needle || !text) {
+    return { parts: [{ text, matchIndex: null, url, completed }], nextIndex: startIndex }
+  }
 
   const parts: TextPart[] = []
   const haystack = text.toLowerCase()
@@ -108,13 +125,22 @@ function splitOnQuery(
   for (;;) {
     const hit = haystack.indexOf(target, cursor)
     if (hit < 0) break
-    if (hit > cursor) parts.push({ text: text.slice(cursor, hit), matchIndex: null, url })
-    parts.push({ text: text.slice(hit, hit + needle.length), matchIndex: index, url })
+    if (hit > cursor) {
+      parts.push({ text: text.slice(cursor, hit), matchIndex: null, url, completed })
+    }
+    parts.push({
+      text: text.slice(hit, hit + needle.length),
+      matchIndex: index,
+      url,
+      completed
+    })
     index += 1
     cursor = hit + needle.length
   }
 
-  if (cursor < text.length) parts.push({ text: text.slice(cursor), matchIndex: null, url })
+  if (cursor < text.length) {
+    parts.push({ text: text.slice(cursor), matchIndex: null, url, completed })
+  }
   return { parts, nextIndex: index }
 }
 
@@ -122,12 +148,29 @@ function splitOnQuery(
 function buildTextParts(
   text: string,
   needle: string,
-  startIndex: number
+  startIndex: number,
+  completed = false
 ): { parts: TextPart[]; nextIndex: number } {
   const parts: TextPart[] = []
   let index = startIndex
   for (const segment of splitLinkifySegments(text)) {
-    const split = splitOnQuery(segment.text, needle, index, segment.url)
+    const split = splitOnQuery(segment.text, needle, index, segment.url, completed)
+    parts.push(...split.parts)
+    index = split.nextIndex
+  }
+  return { parts, nextIndex: index }
+}
+
+/** Title line: keep `(완료)` as its own styled run, then linkify / find-highlight. */
+function buildTitleParts(
+  text: string,
+  needle: string,
+  startIndex: number
+): { parts: TextPart[]; nextIndex: number } {
+  const parts: TextPart[] = []
+  let index = startIndex
+  for (const run of splitEventTitleRuns(text)) {
+    const split = buildTextParts(run.text, needle, index, run.completed)
     parts.push(...split.parts)
     index = split.nextIndex
   }
@@ -213,14 +256,21 @@ function PartRuns({
 }): ReactElement {
   return (
     <>
-      {parts.map((part, i) =>
-        part.matchIndex === null ? (
-          <span key={i}>{part.text}</span>
-        ) : (
+      {parts.map((part, i) => {
+        const completedClass = part.completed ? 'day-list-preview-completed' : undefined
+        if (part.matchIndex === null) {
+          return (
+            <span key={i} className={completedClass}>
+              {part.text}
+            </span>
+          )
+        }
+        return (
           <mark
             key={i}
             className={cn(
               'day-list-find-hit',
+              completedClass,
               part.matchIndex === activeIndex && 'is-active'
             )}
             data-find-index={part.matchIndex}
@@ -228,7 +278,7 @@ function PartRuns({
             {part.text}
           </mark>
         )
-      )}
+      })}
     </>
   )
 }
@@ -284,6 +334,7 @@ export function DayListPreviewPanel({
   eventsHidden = false,
   completedHidden = false,
   onOpenDay,
+  onOpenEvent,
   onSortDirChange,
   shortcutsSuspended = false,
   onClose
@@ -344,7 +395,7 @@ export function DayListPreviewPanel({
       const events = eventsHidden
         ? []
         : row.events.map((event) => {
-            const split = buildTextParts(event.head, needle, index)
+            const split = buildTitleParts(event.head, needle, index)
             index = split.nextIndex
             const detailLines: PreviewDetailLine[] = event.details.map((detail) => {
               const detailSplit = buildTextParts(detail.text, needle, index)
@@ -359,6 +410,9 @@ export function DayListPreviewPanel({
             })
             return {
               id: event.id,
+              eventId: event.eventId,
+              dayKey: row.dayKey,
+              editable: event.calendarId !== HOLIDAYS_KR_CALENDAR_ID,
               color: event.color,
               parts: split.parts,
               detailLines
@@ -706,8 +760,27 @@ export function DayListPreviewPanel({
                     >
                       {row.events.map((event) => (
                         <div key={event.id} className="day-list-preview-event">
-                          {/* 완료 표시는 내보내기와 마찬가지로 입히지 않는다 (인쇄물과 동일한 모습). */}
-                          <p className="day-list-preview-line">
+                          {/* 제목 문구는 내보내기와 동일: "[태그] (완료) 제목" — 취소선 등 별도 스타일은 넣지 않음. */}
+                          <p
+                            className={cn(
+                              'day-list-preview-line',
+                              onOpenEvent && event.editable && 'is-openable'
+                            )}
+                            title={
+                              onOpenEvent && event.editable
+                                ? '더블클릭: 상세 편집'
+                                : undefined
+                            }
+                            onDoubleClick={
+                              onOpenEvent && event.editable
+                                ? (domEvent) => {
+                                    domEvent.preventDefault()
+                                    domEvent.stopPropagation()
+                                    onOpenEvent(event.eventId, event.dayKey)
+                                  }
+                                : undefined
+                            }
+                          >
                             <span
                               className="day-list-preview-dot"
                               style={{ backgroundColor: event.color }}

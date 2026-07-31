@@ -8,6 +8,10 @@ import {
   prepareMonthExportLayout,
   prepareRangeGridExportLayout,
 } from '../../shared/mdcExport/monthExportLayout.js'
+import {
+  COMPLETED_LABEL_COLOR,
+  splitEventTitleRuns,
+} from '../../shared/mdcExport/eventTags.js'
 
 const FONT_NAME = 'Malgun Gothic'
 const THIN_BORDER = {
@@ -259,6 +263,37 @@ function measureDayListEventHeight(doc, event, textWidth) {
 }
 
 /**
+ * Draw a day-list title line with `(완료)` in #0070CE bold.
+ * @param {import('pdfkit').default} doc
+ * @param {string} head
+ * @param {number} textX
+ * @param {number} y
+ * @param {number} textWidth
+ */
+function drawDayListHead(doc, head, textX, y, textWidth) {
+  const runs = splitEventTitleRuns(head)
+  doc.fontSize(PDF_EVENT_FONT_SIZE)
+  if (runs.length === 0) {
+    doc.font('Body').fillColor(EXPORT_COLORS.body).text('', textX, y, { width: textWidth })
+    return
+  }
+  runs.forEach((run, index) => {
+    const isLast = index === runs.length - 1
+    if (run.completed) {
+      doc.font('Bold').fillColor(COMPLETED_LABEL_COLOR)
+    } else {
+      doc.font('Body').fillColor(EXPORT_COLORS.body)
+    }
+    doc.text(run.text, index === 0 ? textX : undefined, index === 0 ? y : undefined, {
+      width: textWidth,
+      continued: !isLast,
+      lineBreak: true,
+    })
+  })
+  doc.font('Body').fillColor(EXPORT_COLORS.body)
+}
+
+/**
  * Draw one day-list event and return the height it consumed.
  * @param {import('pdfkit').default} doc
  * @param {{ head?: string, line: string, details?: { text: string }[], color: string }} event
@@ -270,12 +305,12 @@ function drawDayListEvent(doc, event, textX, y, textWidth) {
   const head = event.head ?? event.line;
   const detailText = getDayListDetailText(event);
 
-  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE);
   const headHeight = Math.max(
     PDF_MIN_EVENT_BAR_HEIGHT,
     doc.heightOfString(head, { width: Math.max(1, textWidth) }),
   );
-  doc.fillColor(EXPORT_COLORS.body).text(head, textX, y, { width: textWidth, lineBreak: true });
+  drawDayListHead(doc, head, textX, y, textWidth);
 
   if (!detailText) return headHeight;
 
@@ -823,22 +858,35 @@ async function buildExcelDayListBuffer(layout) {
               text: '▎ ',
               font: { name: FONT_NAME, size: 9, color: { argb: hexToArgb(event.color) } },
             });
+            for (const run of splitEventTitleRuns(line)) {
+              richText.push({
+                text: run.text,
+                font: {
+                  name: FONT_NAME,
+                  size: 9,
+                  bold: run.completed,
+                  color: {
+                    argb: hexToArgb(
+                      run.completed ? COMPLETED_LABEL_COLOR : EXPORT_COLORS.body
+                    ),
+                  },
+                },
+              });
+            }
           } else {
             richText.push({
               text: '  ',
               font: { name: FONT_NAME, size: 9 },
             });
-          }
-          richText.push({
-            text: line,
-            font: {
-              name: FONT_NAME,
-              size: 9,
-              color: {
-                argb: hexToArgb(lineIndex === 0 ? EXPORT_COLORS.body : EXPORT_COLORS.muted),
+            richText.push({
+              text: line,
+              font: {
+                name: FONT_NAME,
+                size: 9,
+                color: { argb: hexToArgb(EXPORT_COLORS.muted) },
               },
-            },
-          });
+            });
+          }
         });
       });
       contentCell.value = { richText };

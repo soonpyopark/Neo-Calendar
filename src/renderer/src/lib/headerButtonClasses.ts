@@ -31,6 +31,13 @@ export const softBlueIconBtnClass =
 export const softBlueIconBtnActiveClass =
   'border-gcal-blue bg-[#bbdefb] text-gcal-blue-dark hover:bg-[#90caf9] dark:border-gcal-blue dark:bg-gcal-blue-soft'
 
+/** 세로보기 — richer blue so it reads clearly next to the soft-blue hide toggles. */
+export const dayListPreviewIconBtnClass =
+  'border-[#64b5f6] bg-[#90caf9] text-[#0d47a1] hover:bg-[#64b5f6] dark:border-[#64b5f6] dark:bg-[#1565c0] dark:text-[#e3f2fd] dark:hover:bg-[#1976d2]'
+
+export const dayListPreviewIconBtnActiveClass =
+  'border-[#1e88e5] bg-[#42a5f5] text-[#0d47a1] hover:bg-[#1e88e5] dark:border-[#42a5f5] dark:bg-[#0d47a1] dark:text-[#e3f2fd] dark:hover:bg-[#1565c0]'
+
 /** Pressed state for hide-all / hide-completed — red so the toggle is obvious. */
 export const softRedIconBtnActiveClass =
   'border-[#e57373] bg-[#ef9a9a] text-[#b71c1c] hover:bg-[#e57373] dark:border-[#e57373] dark:bg-[#5c2b29] dark:text-[#fce8e6] dark:hover:bg-[#7a3b38]'
