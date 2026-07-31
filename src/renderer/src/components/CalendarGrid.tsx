@@ -251,23 +251,6 @@ type DayCell = {
   date: Date
 }
 
-function isMonthInWeekBuffer(
-  anchor: Date,
-  weekStartsOn: 0 | 1,
-  weeksBefore: number,
-  weeksAfter: number,
-  year: number,
-  monthIndex: number
-): boolean {
-  const weeks = generateWeekRange(anchor, weekStartsOn, weeksBefore, weeksAfter)
-  return weeks.some((week) =>
-    week.some(
-      ({ date }) =>
-        date.getFullYear() === year && date.getMonth() === monthIndex && date.getDate() === 1
-    )
-  )
-}
-
 function mapWeekToDayCells(
   week: Array<{ date: Date }>,
   displayYear: number,
@@ -995,36 +978,28 @@ export function CalendarGrid({
   )
   const weekDays = useMemo(() => buildWeekDays(viewDate, weekStartsOn), [viewDate, weekStartsOn])
 
-  const scrollAnchorRef = useRef(viewDate)
-  const [scrollAnchorVersion, setScrollAnchorVersion] = useState(0)
   const viewDateRef = useRef(viewDate)
   viewDateRef.current = viewDate
   const hasInitialScrollRef = useRef(false)
   const prevViewMonthRef = useRef('')
   const prevWeeksInViewportRef = useRef(0)
+  /** Chrome/toolbar nav: ignore scroll-derived month until settle (stops flicker + dead clicks). */
+  const chromeNavLockUntilRef = useRef(0)
   const viewModeRef = useRef(viewMode)
   viewModeRef.current = viewMode
   const prevViewModeForAlignRef = useRef(viewMode)
 
-  useLayoutEffect(() => {
-    if (viewMode !== 'month') {
-      const anchor = viewDateRef.current
-      scrollAnchorRef.current = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate())
-      setScrollAnchorVersion((version) => version + 1)
-    }
-  }, [viewMode])
+  const lockChromeNav = (ms = 450): void => {
+    chromeNavLockUntilRef.current = Date.now() + ms
+  }
 
-  const weekRangeAnchor = useMemo(() => {
-    const current = scrollAnchorRef.current
-    if (
-      isMonthInWeekBuffer(current, weekStartsOn, WEEKS_BEFORE, WEEKS_AFTER, year, month)
-    ) {
-      return current
-    }
-    const next = new Date(year, month, 1)
-    scrollAnchorRef.current = next
-    return next
-  }, [year, month, weekStartsOn, scrollAnchorVersion])
+  /**
+   * Always anchor the infinite buffer on the viewed month's day-1.
+   * Keeping a stale buffer and only scrolling caused Sunday-start months
+   * (e.g. 2027-08) to land one week early (Jul 25…31 as the first row).
+   * With day-1 as anchor, that week is always at index WEEKS_BEFORE.
+   */
+  const weekRangeAnchor = useMemo(() => new Date(year, month, 1), [year, month])
 
   /** MDC infinite buffer (~113 weeks) mapped to DayCells for the header month. */
   const scrollWeeks = useMemo(() => {
@@ -1091,8 +1066,10 @@ export function CalendarGrid({
     onVisibleMonthChange: (nextYear: number, nextMonth1: number) => {
       // Ignore trailing scroll reports from the previous mode's container (MDC viewModeRef).
       if (viewModeRef.current !== 'month') return
-      const next = new Date(nextYear, nextMonth1 - 1, 1)
-      setViewDate(next)
+      if (Date.now() < chromeNavLockUntilRef.current) return
+      const cur = viewDateRef.current
+      if (cur.getFullYear() === nextYear && cur.getMonth() === nextMonth1 - 1) return
+      setViewDate(new Date(nextYear, nextMonth1 - 1, 1))
     },
     // Desktop / window mode: never navigate month/week by wheel (wallpaper layer).
     wheelLocked: wheelLocked || mode === 'desktop' || mode === 'window' || !canEdit
@@ -1126,6 +1103,7 @@ export function CalendarGrid({
     if (enteredMonth || prevViewMonthRef.current !== monthKey || weeksCountChanged) {
       if (weeksCountChanged || enteredMonth) consumeSkipScroll()
       prevViewMonthRef.current = monthKey
+      // Buffer remounts on month change (day-1 anchor) — pin before paint.
       scrollToMonthRef.current(year, month, weekStartsOn, 'auto')
     }
   }, [
@@ -1255,16 +1233,19 @@ export function CalendarGrid({
   )
 
   const shiftMonth = (delta: number): void => {
+    lockChromeNav()
     setViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1))
     setQuickEdit(null)
   }
 
   const shiftYear = (delta: number): void => {
+    lockChromeNav()
     setViewDate((prev) => new Date(prev.getFullYear() + delta, prev.getMonth(), 1))
     setQuickEdit(null)
   }
 
   const shiftWeek = (delta: number): void => {
+    lockChromeNav()
     setViewDate((prev) => addDays(prev, delta * 7))
     setQuickEdit(null)
   }
@@ -1285,6 +1266,7 @@ export function CalendarGrid({
 
   const goToday = (): void => {
     if (!requireEdit()) return
+    lockChromeNav(500)
     const d = new Date()
     if (viewMode === 'month') {
       // Day-1 of current month so header + infinite scroll stay on this month.
@@ -1303,6 +1285,7 @@ export function CalendarGrid({
 
   const handleViewModeChange = (nextMode: ViewMode): void => {
     if (!requireEdit()) return
+    lockChromeNav(500)
     if (nextMode === 'month' || nextMode === 'year') {
       setViewDate((prev) => new Date(prev.getFullYear(), prev.getMonth(), 1))
     } else if (nextMode === 'week') {
@@ -2126,6 +2109,7 @@ export function CalendarGrid({
               className={cn('year-month-title', !canEdit && LOGIN_MUTED_CLASS)}
               onClick={() => {
                 if (!requireEdit()) return
+                lockChromeNav(500)
                 setViewDate(new Date(year, monthIndex, 1))
                 setViewMode('month')
               }}
@@ -2548,6 +2532,7 @@ export function CalendarGrid({
                 <div
                   key={weekStartKey}
                   className="month-week"
+                  data-week-start={weekStartKey}
                   ref={(node) => setWeekRef(weekStartKey, node)}
                 >
                   {showWeekNumbers ? (

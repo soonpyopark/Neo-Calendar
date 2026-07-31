@@ -642,13 +642,13 @@ export class PanelWindowManager {
         this.outsideBlockedUntil,
         Date.now() + OUTSIDE_CLOSE_GRACE_MS
       )
-      // Beat sibling focus from the originating click (e.g. QE complete checkbox).
+      // After QE checkbox click, sibling may briefly reorder above — push modal
+      // back visually only. Re-focusing here causes QE ↔ scope flicker loops.
       if (MODAL_ABOVE_SIBLINGS.has(slot)) {
         setTimeout(() => {
           if (!isWinAlive(win)) return
-          raiseFloatingPanelWindow(win)
-          focusWindowForTextInput(win)
-        }, 0)
+          orderFloatingPanelFront(win)
+        }, 50)
       }
     })
 
@@ -658,12 +658,11 @@ export class PanelWindowManager {
         this.restoreTopMostPanels()
         return
       }
-      // Modal confirm/scope stays above quickEdit even if the sibling regains focus
-      // (complete checkbox click often re-focuses the originating quickEdit window).
+      // Modal confirm/scope must stay above quickEdit / detail. Visual reorder
+      // only — calling focusWindowForTextInput here ping-pongs focus and flickers.
       const modal = this.frontModalEntry()
       if (modal && modal.win !== win) {
-        raiseFloatingPanelWindow(modal.win)
-        focusWindowForTextInput(modal.win)
+        orderFloatingPanelFront(modal.win)
         return
       }
       // Focused panel above siblings (light reorder — full raise flickers).

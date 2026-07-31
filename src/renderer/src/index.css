@@ -563,11 +563,19 @@ textarea {
   overflow: hidden;
 }
 
-/* MDC infinite month: snap-scroll week rows inside a fixed viewport. */
+/* MDC infinite month: week rows inside a fixed viewport.
+ * No mandatory scroll-snap — it fought programmatic month align and jumped one
+ * week early (e.g. 2029-07 Sun-start → viewport stuck on Jun 24…Jul 28). */
 .month-view:not(.week-view) .month-body {
+  position: relative;
   overflow-y: auto;
-  scroll-snap-type: y mandatory;
+  scroll-snap-type: none;
+  /* Prevent browser scroll anchoring from fighting day-1 pin when the next
+     month's 1st is already on the bottom row (Aug→Sep style forward nav). */
+  overflow-anchor: none;
   scrollbar-width: none;
+  /* Week row % heights must resolve against the visible body, not scroll content. */
+  container-type: size;
 }
 
 .month-view:not(.week-view) .month-body::-webkit-scrollbar {
@@ -581,11 +589,12 @@ textarea {
 }
 
 .month-view:not(.week-view) .month-week {
-  flex: 0 0 calc(100% / var(--weeks-in-viewport, 5));
-  height: calc(100% / var(--weeks-in-viewport, 5));
-  min-height: calc(100% / var(--weeks-in-viewport, 5));
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+  /* cqh = month-body client height — stable 5/6 week rows inside the scrollport */
+  flex: 0 0 calc(100cqh / var(--weeks-in-viewport, 5));
+  height: calc(100cqh / var(--weeks-in-viewport, 5));
+  min-height: calc(100cqh / var(--weeks-in-viewport, 5));
+  box-sizing: border-box;
+  overflow-anchor: none;
 }
 
 .month-week:last-child {
