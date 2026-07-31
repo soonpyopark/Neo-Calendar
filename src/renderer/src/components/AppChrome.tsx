@@ -18,7 +18,6 @@ import type { HeaderTitleOptions } from '../../../shared/calendarTypes'
 import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import type { AuthUser, LaunchMode } from '../../../shared/ipc'
 import { CHROME_TOOLBAR_ACTIONS } from '../../../shared/ipc'
-import { isBrowserNeoCalendarHost } from '../lib/browserNeoCalendar'
 
 function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
@@ -79,11 +78,6 @@ export function AppChrome({
   const localChromeRef = useRef<HTMLDivElement | null>(null)
   const modeButtonsReady = switchReady && !modeBusy
   const captureOnHover = !embedded
-  /**
-   * Desktop + browser: single click like search/settings.
-   * Electron window mode: double-click (avoids accidental reload while dragging).
-   */
-  const chromeTextSingleClick = isDesktop || isBrowserNeoCalendarHost()
   const headerTitle = normalizeHeaderTitle(headerTitleProp)
   const showHeaderTitle = Boolean(headerTitle.enabled && headerTitle.text.trim())
 
@@ -117,22 +111,6 @@ export function AppChrome({
         isWindow && 'is-window-mode'
       )}
       data-shell-chrome="header-actions"
-      onDoubleClick={(event) => {
-        event.preventDefault()
-        event.stopPropagation()
-        if (chromeTextSingleClick) return
-        const target = event.target
-        if (!(target instanceof Element)) return
-        if (
-          target.closest(`[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.editHeaderTitle}"]`)
-        ) {
-          runHeaderTitleEdit()
-          return
-        }
-        if (target.closest(`[data-toolbar-action="${CHROME_TOOLBAR_ACTIONS.reload}"]`)) {
-          runReload()
-        }
-      }}
     >
       <div className="relative z-10 flex min-w-0 shrink-0 items-center gap-2.5 whitespace-nowrap app-chrome-drag">
         <div className="flex items-baseline gap-2">
@@ -144,31 +122,12 @@ export function AppChrome({
             )}
             captureOnHover={captureOnHover}
             data-toolbar-action={CHROME_TOOLBAR_ACTIONS.reload}
-            title={
-              loggedIn
-                ? chromeTextSingleClick
-                  ? '클릭하여 새로고침'
-                  : '더블클릭하여 새로고침'
-                : '로그인 후 사용할 수 있습니다'
-            }
+            title={loggedIn ? '클릭하여 새로고침' : '로그인 후 사용할 수 있습니다'}
             aria-label="새로고침"
-            onClick={
-              chromeTextSingleClick
-                ? (event) => {
-                    event.preventDefault()
-                    runReload()
-                  }
-                : undefined
-            }
-            onDoubleClick={
-              chromeTextSingleClick
-                ? undefined
-                : (event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    runReload()
-                  }
-            }
+            onClick={(event) => {
+              event.preventDefault()
+              runReload()
+            }}
           >
             {APP_NAME}
           </InteractionUI>
@@ -191,31 +150,12 @@ export function AppChrome({
             captureOnHover={captureOnHover}
             data-toolbar-action={CHROME_TOOLBAR_ACTIONS.editHeaderTitle}
             aria-label="내 캘린더 이름 편집"
-            title={
-              loggedIn
-                ? chromeTextSingleClick
-                  ? `${headerTitle.text} (클릭하여 편집)`
-                  : `${headerTitle.text} (더블클릭하여 편집)`
-                : headerTitle.text
-            }
-            onClick={
-              chromeTextSingleClick
-                ? (event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    runHeaderTitleEdit()
-                  }
-                : undefined
-            }
-            onDoubleClick={
-              chromeTextSingleClick
-                ? undefined
-                : (event) => {
-                    event.preventDefault()
-                    event.stopPropagation()
-                    runHeaderTitleEdit()
-                  }
-            }
+            title={loggedIn ? `${headerTitle.text} (클릭하여 편집)` : headerTitle.text}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              runHeaderTitleEdit()
+            }}
           >
             {headerTitle.text}
           </InteractionUI>

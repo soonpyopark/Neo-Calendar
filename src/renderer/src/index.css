@@ -774,11 +774,11 @@ textarea {
 }
 
 /*
- * Today / selected already own the chip, and an outer ring would be cut by
- * .day-number's overflow — draw the highlight inside the chip instead.
+ * Today already owns the chip — draw the highlight as an inner ring so it
+ * isn't clipped by .day-number's overflow. Selected focus stays on the cell
+ * background; keep the filled highlight circle above the soft-blue chip.
  */
-.day-cell.today .day-number.has-highlight .solar::after,
-.day-cell.selected .day-number.has-highlight .solar::after {
+.day-cell.today .day-number.has-highlight .solar::after {
   inset: 1px;
   background: none;
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--day-highlight, #ded074) 95%, transparent);
@@ -803,6 +803,11 @@ textarea {
   border-radius: 999px;
   background: var(--gcal-blue-soft);
   color: var(--gcal-blue-dark);
+}
+
+/* Focus chip under the highlight — cell .selected tint already shows focus. */
+.day-cell.selected:not(.today) .day-number.has-highlight .solar {
+  background: transparent;
 }
 
 .day-events {
@@ -2328,6 +2333,11 @@ body.is-resizing-window {
   padding: 0.5rem;
   box-shadow: var(--shadow-g-lg, 0 8px 28px rgba(60, 64, 67, 0.22));
   box-sizing: border-box;
+}
+
+.day-quick-edit-footer-left .day-quick-edit-highlight-trigger svg {
+  width: 18px;
+  height: 18px;
 }
 
 .day-quick-edit-highlight-trigger.has-highlight {

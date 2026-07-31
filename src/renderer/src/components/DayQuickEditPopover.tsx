@@ -1062,36 +1062,14 @@ export function DayQuickEditPopover({
                 <svg
                   className="day-quick-edit-highlight-icon"
                   viewBox="0 0 24 24"
-                  width="16"
-                  height="16"
+                  width="18"
+                  height="18"
                   aria-hidden
                 >
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                  />
-                  <circle
-                    cx="12"
-                    cy="12"
-                    r="9"
+                  <path
+                    d="M12 2.6l2.7 5.48 6.05.88-4.38 4.27 1.03 6.02L12 16.4l-5.4 2.85 1.03-6.02-4.38-4.27 6.05-.88L12 2.6z"
                     fill={displayDayHighlight ?? 'currentColor'}
-                    opacity={displayDayHighlight ? 0.9 : 0.18}
                   />
-                  <text
-                    x="12"
-                    y="12.5"
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize="12.5"
-                    fontWeight="600"
-                    fill={displayDayHighlight ? '#202124' : 'currentColor'}
-                  >
-                    7
-                  </text>
                 </svg>
               </button>
             ) : null}

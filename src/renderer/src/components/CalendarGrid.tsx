@@ -2107,9 +2107,6 @@ export function CalendarGrid({
         desktopEmbedded={embedded}
         themeEpoch={themeEpoch}
         onLoginRequired={promptLogin}
-        onDaySelect={(date) => {
-          setSelectedKey(toDateKey(date.getFullYear(), date.getMonth(), date.getDate()))
-        }}
         onDayQuickEdit={(date, rect) => openQuickEditFromDate(date, rect)}
       />
     )
@@ -2161,8 +2158,7 @@ export function CalendarGrid({
                   onClick={(e) => {
                     e.stopPropagation()
                     if (!cell.inMonth) return
-                    if (!requireEdit()) return
-                    setSelectedKey(cell.dateKey)
+                    if (!canEdit) promptLogin()
                   }}
                   onDoubleClick={
                     embedded

@@ -115,7 +115,7 @@ export function HeaderTitleEditorPanel({
               className="header-title-editor-input"
               value={draft.text}
               maxLength={HEADER_TITLE_MAX_LEN}
-              placeholder="😎 당신을 위한 데스크톱 캘린더"
+              placeholder="😎 당신을 위한 데스크톱 캘린더 😍"
               autoFocus
               onChange={(event) => {
                 const text = event.target.value.slice(0, HEADER_TITLE_MAX_LEN)

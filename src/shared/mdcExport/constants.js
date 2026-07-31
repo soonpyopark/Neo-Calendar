@@ -7,7 +7,7 @@ export const DEFAULT_VIEW_OPTIONS = {
   roundedCorners: true,
   headerTitle: {
     enabled: true,
-    text: '😎 당신을 위한 데스크톱 캘린더',
+    text: '😎 당신을 위한 데스크톱 캘린더 😍',
     color: '#795548',
     fontSizePx: 20
   },

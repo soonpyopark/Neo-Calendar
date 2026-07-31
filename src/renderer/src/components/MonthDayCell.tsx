@@ -48,7 +48,6 @@ export type MonthDayCellProps = {
   desktopEmbedded?: boolean
   themeEpoch?: number
   onLoginRequired?: () => void
-  onDaySelect: (date: Date) => void
   onDayQuickEdit: (date: Date, anchorRect: DOMRect) => void
 }
 
@@ -56,7 +55,7 @@ function cn(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(' ')
 }
 
-/** Month/week day cell — click: focus; dblclick (cell / bar / more): quick edit. */
+/** Month/week day cell — focus only with dblclick quick edit (all modes). */
 export function MonthDayCell({
   cell,
   segments,
@@ -74,7 +73,6 @@ export function MonthDayCell({
   desktopEmbedded = false,
   themeEpoch = 0,
   onLoginRequired,
-  onDaySelect,
   onDayQuickEdit
 }: MonthDayCellProps): ReactElement {
   const interactive = canEdit
@@ -143,11 +141,7 @@ export function MonthDayCell({
       )}
       style={cellStyle}
       data-date-key={dayKey}
-      onClick={
-        interactive
-          ? () => onDaySelect(cell.date)
-          : () => onLoginRequired?.()
-      }
+      onClick={interactive ? undefined : () => onLoginRequired?.()}
       onDoubleClick={desktopEmbedded ? undefined : handleCellDoubleClick}
     >
       <DayNumber

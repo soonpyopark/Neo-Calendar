@@ -60,6 +60,20 @@ type PanelSlot = PanelKind
  */
 const EXPLICIT_CLOSE_ONLY_SLOTS = new Set<PanelSlot>(['dayListPreview'])
 
+/**
+ * Confirm / scope dialogs that must stay above sibling panels (quickEdit, detail).
+ * Without this, a checkbox click in quickEdit can refocus that window and cover
+ * the newly opened recurrence-complete dialog.
+ */
+const MODAL_ABOVE_SIBLINGS = new Set<PanelSlot>([
+  'recurrenceScope',
+  'exportOptions',
+  'login',
+  'eventResourceList',
+  'attachmentViewer',
+  'headerTitleEditor'
+])
+
 type PanelEntry = {
   slot: PanelSlot
   win: BrowserWindow
@@ -367,6 +381,22 @@ export class PanelWindowManager {
     for (const entry of this.entriesBySlot.values()) {
       raiseFloatingPanelWindow(entry.win)
     }
+    this.raiseFrontModalIfAny()
+  }
+
+  /** Prefer modal confirm/scope windows over quickEdit / detail siblings. */
+  private frontModalEntry(): PanelEntry | null {
+    for (const slot of MODAL_ABOVE_SIBLINGS) {
+      const entry = this.entriesBySlot.get(slot)
+      if (entry && isWinAlive(entry.win)) return entry
+    }
+    return null
+  }
+
+  private raiseFrontModalIfAny(): void {
+    const modal = this.frontModalEntry()
+    if (!modal) return
+    raiseFloatingPanelWindow(modal.win)
   }
 
   /**
@@ -612,12 +642,29 @@ export class PanelWindowManager {
         this.outsideBlockedUntil,
         Date.now() + OUTSIDE_CLOSE_GRACE_MS
       )
+      // Beat sibling focus from the originating click (e.g. QE complete checkbox).
+      if (MODAL_ABOVE_SIBLINGS.has(slot)) {
+        setTimeout(() => {
+          if (!isWinAlive(win)) return
+          raiseFloatingPanelWindow(win)
+          focusWindowForTextInput(win)
+        }, 0)
+      }
     })
 
     win.on('focus', () => {
       if (this.awaitingReturnFromExternalApp) {
         this.awaitingReturnFromExternalApp = false
         this.restoreTopMostPanels()
+        return
+      }
+      // Modal confirm/scope stays above quickEdit even if the sibling regains focus
+      // (complete checkbox click often re-focuses the originating quickEdit window).
+      const modal = this.frontModalEntry()
+      if (modal && modal.win !== win) {
+        raiseFloatingPanelWindow(modal.win)
+        focusWindowForTextInput(modal.win)
+        return
       }
       // Focused panel above siblings (light reorder — full raise flickers).
       orderFloatingPanelFront(win)

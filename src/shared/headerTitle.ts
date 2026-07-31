@@ -8,7 +8,7 @@ export const HEADER_TITLE_FONT_MAX = 28
 export const HEADER_TITLE_FONT_DEFAULT = 20
 /** Matches default viewOptions.accentColor (테마 색상). */
 export const HEADER_TITLE_COLOR_DEFAULT = DEFAULT_ACCENT_COLOR
-export const HEADER_TITLE_TEXT_DEFAULT = '😎 당신을 위한 데스크톱 캘린더'
+export const HEADER_TITLE_TEXT_DEFAULT = '😎 당신을 위한 데스크톱 캘린더 😍'
 
 export const DEFAULT_HEADER_TITLE: HeaderTitleOptions = {
   enabled: true,
@@ -61,6 +61,9 @@ export function normalizeHeaderTitle(input: unknown): HeaderTitleOptions {
     text === '나를 위한 데스크톱 캘린더'
     || text === '당신을 위한 데스크톱 캘린더'
     || text === '😎당신을 위한 데스크톱 캘린더'
+    || text === '😎 당신을 위한 데스크톱 캘린더'
+    || text === '😎 너만을 위한 데스크톱 캘린더 😎'
+    || text === '😎 너를 위한 데스크톱 캘린더 😎'
   ) {
     text = HEADER_TITLE_TEXT_DEFAULT
   }
@@ -70,4 +73,37 @@ export function normalizeHeaderTitle(input: unknown): HeaderTitleOptions {
     color: normalizeColor(raw.color),
     fontSizePx: clampFontSize(raw.fontSizePx)
   }
+}
+
+const HEADER_TITLE_CACHE_KEY = 'neo.calendar.headerTitle'
+
+/** Last known header title for the current tab — avoids factory-default flash on reload. */
+export function readCachedHeaderTitle(): HeaderTitleOptions | null {
+  if (typeof sessionStorage === 'undefined') return null
+  try {
+    const raw = sessionStorage.getItem(HEADER_TITLE_CACHE_KEY)
+    if (!raw) return null
+    return normalizeHeaderTitle(JSON.parse(raw) as unknown)
+  } catch {
+    return null
+  }
+}
+
+export function writeCachedHeaderTitle(value: unknown): void {
+  if (typeof sessionStorage === 'undefined') return
+  try {
+    sessionStorage.setItem(HEADER_TITLE_CACHE_KEY, JSON.stringify(normalizeHeaderTitle(value)))
+  } catch {
+    /* private mode / quota */
+  }
+}
+
+/** Renderer bootstrap snapshot: cached title, else hidden until the real store hydrates. */
+export function headerTitleForBootstrap(): HeaderTitleOptions {
+  return (
+    readCachedHeaderTitle() ?? {
+      ...DEFAULT_HEADER_TITLE,
+      enabled: false
+    }
+  )
 }

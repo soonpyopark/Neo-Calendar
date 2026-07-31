@@ -12,6 +12,7 @@ import type {
   TagRecord
 } from '../../../shared/calendarTypes'
 import { createEmptySnapshot } from '../../../shared/calendarDefaults'
+import { headerTitleForBootstrap, writeCachedHeaderTitle } from '../../../shared/headerTitle'
 import {
   applyAccentColor,
   applyColorScheme,
@@ -82,7 +83,12 @@ export type UseCalendarStoreResult = {
 }
 
 export function useCalendarStore(): UseCalendarStoreResult {
-  const [store, setStore] = useState<CalendarStoreSnapshot>(() => createEmptySnapshot())
+  const [store, setStore] = useState<CalendarStoreSnapshot>(() => {
+    const snap = createEmptySnapshot()
+    // Avoid flashing the factory header title before getCalendarStore resolves.
+    snap.settings.viewOptions.headerTitle = headerTitleForBootstrap()
+    return snap
+  })
   const [loading, setLoading] = useState(true)
   const history = useHistoryStack()
   const suppressHistoryRef = useRef(false)
@@ -92,6 +98,7 @@ export function useCalendarStore(): UseCalendarStoreResult {
   const applyStore = useCallback(async (next: CalendarStoreSnapshot) => {
     storeRef.current = next
     setStore(next)
+    writeCachedHeaderTitle(next.settings?.viewOptions?.headerTitle)
     if (isBrowserNeoCalendarHost()) {
       void saveOfflineSnapshot(next).catch(() => {
         /* best-effort cache */
@@ -633,6 +640,9 @@ export function useCalendarStore(): UseCalendarStoreResult {
             }
           }
           storeRef.current = next
+          if (patch.viewOptions?.headerTitle !== undefined) {
+            writeCachedHeaderTitle(next.settings.viewOptions.headerTitle)
+          }
           return next
         })
       }
