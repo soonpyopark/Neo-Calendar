@@ -31,6 +31,10 @@ export const softBlueIconBtnClass =
 export const softBlueIconBtnActiveClass =
   'border-gcal-blue bg-[#bbdefb] text-gcal-blue-dark hover:bg-[#90caf9] dark:border-gcal-blue dark:bg-gcal-blue-soft'
 
+/** Month density −/+ next to 세로보기. */
+export const densityIconBtnClass =
+  'border-gcal-border bg-gcal-surface-2 text-gcal-heading hover:bg-[#e8eaed] dark:border-gcal-border dark:bg-gcal-surface-2 dark:hover:bg-gcal-surface'
+
 /** 세로보기 — richer blue so it reads clearly next to the soft-blue hide toggles. */
 export const dayListPreviewIconBtnClass =
   'border-[#64b5f6] bg-[#90caf9] text-[#0d47a1] hover:bg-[#64b5f6] dark:border-[#64b5f6] dark:bg-[#1565c0] dark:text-[#e3f2fd] dark:hover:bg-[#1976d2]'

@@ -115,6 +115,7 @@ export function createDefaultSettings(): StoreSettings {
       roundedCorners: true,
       headerTitle: { ...DEFAULT_HEADER_TITLE },
       dayListSortDesc: true,
+      eventDensity: 1,
       colorScheme: 'light',
       accentColor: DEFAULT_ACCENT_COLOR,
       runAtStartup: true,

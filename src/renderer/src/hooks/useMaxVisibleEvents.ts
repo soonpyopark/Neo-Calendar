@@ -1,21 +1,32 @@
-import { useEffect, useState, type RefObject } from 'react'
+import { useEffect, useMemo, useState, type RefObject } from 'react'
 import {
   getEventLayoutCssVars,
   getEventRowCapacity,
+  normalizeEventDensity,
   resolveDayVisibleEventLimit
 } from '../../../shared/eventLayoutMetrics'
 
-export { getEventRowCapacity, resolveDayVisibleEventLimit, getEventLayoutCssVars }
+export {
+  getEventRowCapacity,
+  resolveDayVisibleEventLimit,
+  getEventLayoutCssVars,
+  normalizeEventDensity
+}
 
 /**
  * Measure month-body height / weeks-in-viewport → how many event bars fit
  * before showing "N개 더보기" (MDC useMaxVisibleEvents).
+ * `density` scales bar/day-number metrics (lower → more bars visible).
  */
 export function useMaxVisibleEvents(
   containerRef: RefObject<HTMLElement | null>,
-  weeksInViewport = 5
+  weeksInViewport = 5,
+  density = 1
 ): { maxAll: number; maxWithMore: number } {
-  const [capacity, setCapacity] = useState(() => getEventRowCapacity(0))
+  const normalizedDensity = normalizeEventDensity(density)
+  const [capacity, setCapacity] = useState(() =>
+    getEventRowCapacity(0, normalizedDensity)
+  )
 
   useEffect(() => {
     const container = containerRef.current
@@ -24,7 +35,7 @@ export function useMaxVisibleEvents(
     let raf = 0
     const update = (): void => {
       const rowHeight = container.clientHeight / weeksInViewport
-      setCapacity(getEventRowCapacity(rowHeight))
+      setCapacity(getEventRowCapacity(rowHeight, normalizedDensity))
     }
     const schedule = (): void => {
       if (raf) return
@@ -44,11 +55,15 @@ export function useMaxVisibleEvents(
       window.removeEventListener('resize', schedule)
       if (raf) window.cancelAnimationFrame(raf)
     }
-  }, [containerRef, weeksInViewport])
+  }, [containerRef, weeksInViewport, normalizedDensity])
 
   return capacity
 }
 
-export function useEventLayoutCssVars(): Record<string, string> {
-  return getEventLayoutCssVars()
+export function useEventLayoutCssVars(density = 1): Record<string, string> {
+  const normalizedDensity = normalizeEventDensity(density)
+  return useMemo(
+    () => getEventLayoutCssVars(normalizedDensity),
+    [normalizedDensity]
+  )
 }

@@ -85,6 +85,7 @@
   --gcal-focus-ring-inner: #ffffff;
   --gcal-focus-ring-outer: #323130;
   --gcal-mini-month-bg: #dcdcdc;
+  --event-density: 1;
   --event-lane-height: 18px;
   --event-lane-step: 20px;
   --day-event-gap: 6px;
@@ -729,8 +730,8 @@ textarea {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: clamp(4px, 0.65vh, 8px);
-  min-height: clamp(20px, 3vh, 30px);
+  gap: calc(clamp(4px, 0.65vh, 8px) * var(--event-density, 1));
+  min-height: calc(clamp(20px, 3vh, 30px) * var(--event-density, 1));
   max-width: 100%;
   overflow: hidden;
 }
@@ -739,9 +740,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: clamp(22px, 3vh, 30px);
-  height: clamp(22px, 3vh, 30px);
-  font-size: clamp(12px, 1.8vh, 15px);
+  min-width: calc(clamp(22px, 3vh, 30px) * var(--event-density, 1));
+  height: calc(clamp(22px, 3vh, 30px) * var(--event-density, 1));
+  font-size: calc(clamp(12px, 1.8vh, 15px) * var(--event-density, 1));
   font-weight: 500;
   line-height: 1;
   color: var(--gcal-heading);
@@ -749,14 +750,14 @@ textarea {
 
 .day-number .lunar {
   line-height: 1;
-  font-size: clamp(9px, 1.3vh, 11px);
+  font-size: calc(clamp(9px, 1.3vh, 11px) * var(--event-density, 1));
   color: var(--gcal-muted);
 }
 
 /* 24절기·삼복(춘분, 초복 등) — 연한 빨강 */
 .day-number .solar-term {
   line-height: 1;
-  font-size: clamp(9px, 1.3vh, 11px);
+  font-size: calc(clamp(9px, 1.3vh, 11px) * var(--event-density, 1));
   color: #e57373;
 }
 
@@ -839,7 +840,7 @@ textarea {
   padding: 0 3px 0 0;
   border: 0;
   border-radius: 4px;
-  font-size: clamp(9px, 1.4vh, 12px);
+  font-size: calc(clamp(9px, 1.4vh, 12px) * var(--event-density, 1));
   font-weight: 500;
   text-align: left;
   white-space: nowrap;
@@ -3195,7 +3196,7 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
   border-radius: 0;
   background: transparent;
   color: var(--gcal-muted);
-  font-size: clamp(9px, 1.4vh, 12px);
+  font-size: calc(clamp(9px, 1.4vh, 12px) * var(--event-density, 1));
   font-weight: 500;
   text-align: left;
   cursor: pointer;

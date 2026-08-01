@@ -160,6 +160,11 @@ export type SurfaceViewOptions = {
    * Default true for new installs / missing key.
    */
   dayListSortDesc: boolean
+  /**
+   * Month/week event-bar density (0.75–1.25). Lower = smaller bars/text and more
+   * events before "N개 더보기". Default 1.
+   */
+  eventDensity: number
   colorScheme: 'light' | 'dark' | 'system'
   accentColor: string
   eventsHidden: boolean

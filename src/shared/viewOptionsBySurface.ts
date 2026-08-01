@@ -6,6 +6,7 @@ import type {
 } from './calendarTypes'
 import { DEFAULT_ACCENT_COLOR } from './calendarColorPalette'
 import { normalizeHeaderTitle } from './headerTitle'
+import { normalizeEventDensity } from './eventLayoutMetrics'
 
 export const SURFACE_SCOPED_VIEW_OPTION_KEYS = [
   'eventsHidden',
@@ -15,6 +16,7 @@ export const SURFACE_SCOPED_VIEW_OPTION_KEYS = [
   'roundedCorners',
   'headerTitle',
   'dayListSortDesc',
+  'eventDensity',
   'colorScheme',
   'accentColor'
 ] as const satisfies ReadonlyArray<keyof SurfaceViewOptions>
@@ -37,6 +39,7 @@ function pickSurfaceOptions(source: Partial<ViewOptions> | null | undefined): Su
     roundedCorners: Boolean(s.roundedCorners),
     headerTitle: normalizeHeaderTitle(s.headerTitle),
     dayListSortDesc: s.dayListSortDesc !== false,
+    eventDensity: normalizeEventDensity(s.eventDensity),
     colorScheme:
       s.colorScheme === 'dark' || s.colorScheme === 'system' ? s.colorScheme : 'light',
     accentColor: typeof s.accentColor === 'string' && s.accentColor.trim()
@@ -112,6 +115,10 @@ export function applyViewOptionsPatch(
     if (!Object.prototype.hasOwnProperty.call(patch, key)) continue
     if (key === 'headerTitle') {
       ;(bySurface[surf] as Record<string, unknown>)[key] = normalizeHeaderTitle(patch.headerTitle)
+    } else if (key === 'eventDensity') {
+      ;(bySurface[surf] as Record<string, unknown>)[key] = normalizeEventDensity(
+        patch.eventDensity
+      )
     } else {
       ;(bySurface[surf] as Record<string, unknown>)[key] = patch[key]
     }

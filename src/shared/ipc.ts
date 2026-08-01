@@ -108,7 +108,9 @@ export const PERIOD_TOOLBAR_ACTIONS = {
   webEditor: 'web-editor',
   dayListPreview: 'day-list-preview',
   toggleEvents: 'toggle-events',
-  toggleCompleted: 'toggle-completed'
+  toggleCompleted: 'toggle-completed',
+  densityDown: 'density-down',
+  densityUp: 'density-up'
 } as const
 
 export const CHROME_TOOLBAR_ACTIONS = {

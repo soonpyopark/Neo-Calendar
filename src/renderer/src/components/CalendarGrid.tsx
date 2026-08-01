@@ -68,6 +68,13 @@ import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js
 import type { ExportCalendarRequest } from '../../../shared/exportCalendar'
 import { useEventLayoutCssVars, useMaxVisibleEvents } from '../hooks/useMaxVisibleEvents'
 import {
+  EVENT_DENSITY_MAX,
+  EVENT_DENSITY_MIN,
+  EVENT_DENSITY_STEP,
+  normalizeEventDensity,
+  stepEventDensity
+} from '../../../shared/eventLayoutMetrics'
+import {
   getOccurrenceDate,
   getSeriesId,
   isRecurringEvent,
@@ -103,6 +110,8 @@ import {
   ChevronRightIcon,
   DoubleChevronLeftIcon,
   DoubleChevronRightIcon,
+  DensityDownIcon,
+  DensityUpIcon,
   HideCompletedCheckIcon,
   HideEventsEyeIcon,
   MonthViewIcon,
@@ -121,6 +130,7 @@ import {
   navBtnClass,
   dayListPreviewIconBtnActiveClass,
   dayListPreviewIconBtnClass,
+  densityIconBtnClass,
   softBlueIconBtnActiveClass,
   softBlueIconBtnClass,
   softRedIconBtnActiveClass,
@@ -706,6 +716,7 @@ export function CalendarGrid({
 
   const eventsHidden = store.settings.viewOptions.eventsHidden
   const completedHidden = store.settings.viewOptions.completedHidden
+  const eventDensity = normalizeEventDensity(store.settings.viewOptions.eventDensity)
   const showWeekNumbers = store.settings.viewOptions.showWeekNumbers !== false
   const roundedCorners = Boolean(store.settings.viewOptions.roundedCorners)
   const dayColors = store.settings.dayColors ?? {}
@@ -1014,8 +1025,12 @@ export function CalendarGrid({
     viewMode === 'week' ? 1 : viewMode === 'month' ? getWeeksInMonth(year, month, weekStartsOn) : 0
 
   /** MDC: row height ÷ weeks → how many bars fit before "더보기". */
-  const eventCapacity = useMaxVisibleEvents(monthBodyRef, effectiveWeeksInViewport)
-  const eventLayoutCssVars = useEventLayoutCssVars()
+  const eventCapacity = useMaxVisibleEvents(
+    monthBodyRef,
+    effectiveWeeksInViewport,
+    eventDensity
+  )
+  const eventLayoutCssVars = useEventLayoutCssVars(eventDensity)
 
   const layoutEvents = useMemo(
     () => (completedHidden ? visibleEvents.filter((event) => !event.completed) : visibleEvents),
@@ -2012,7 +2027,11 @@ export function CalendarGrid({
     }
   }
 
-  const setViewFlag = (patch: { eventsHidden?: boolean; completedHidden?: boolean }): void => {
+  const setViewFlag = (patch: {
+    eventsHidden?: boolean
+    completedHidden?: boolean
+    eventDensity?: number
+  }): void => {
     if (!requireEdit()) return
     void patchStoreSettings({
       viewOptions: {
@@ -2022,6 +2041,10 @@ export function CalendarGrid({
     }).catch(async (error) => {
       await alert(error instanceof Error ? error.message : '표시 설정을 저장하지 못했습니다.')
     })
+  }
+
+  const adjustEventDensity = (delta: number): void => {
+    setViewFlag({ eventDensity: stepEventDensity(eventDensity, delta) })
   }
 
   const exportReferenceDate = useMemo(() => {
@@ -2455,6 +2478,48 @@ export function CalendarGrid({
               title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
             >
               <PortraitPreviewIcon />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
+                densityIconBtnClass,
+                iconBtnDisabledClass,
+                !canEdit && LOGIN_MUTED_CLASS
+              )}
+              captureOnHover={captureToolbarOnHover}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.densityDown}
+              onClick={() => adjustEventDensity(-EVENT_DENSITY_STEP)}
+              disabled={!canEdit || eventDensity <= EVENT_DENSITY_MIN}
+              aria-label="일정 글자·막대 작게 (더 많이 표시)"
+              title={
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : `일정 작게 (${eventDensity.toFixed(1)}) — 칸에 더 많이 표시`
+              }
+            >
+              <DensityDownIcon />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
+                densityIconBtnClass,
+                iconBtnDisabledClass,
+                !canEdit && LOGIN_MUTED_CLASS
+              )}
+              captureOnHover={captureToolbarOnHover}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.densityUp}
+              onClick={() => adjustEventDensity(EVENT_DENSITY_STEP)}
+              disabled={!canEdit || eventDensity >= EVENT_DENSITY_MAX}
+              aria-label="일정 글자·막대 크게"
+              title={
+                !canEdit
+                  ? LOGIN_REQUIRED_TITLE
+                  : `일정 크게 (${eventDensity.toFixed(1)}) — 가독성 우선`
+              }
+            >
+              <DensityUpIcon />
             </InteractionUI>
           </div>
         </div>

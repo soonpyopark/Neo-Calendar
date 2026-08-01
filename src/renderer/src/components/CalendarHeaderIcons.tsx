@@ -164,6 +164,24 @@ export function PortraitPreviewIcon(): ReactElement {
   )
 }
 
+/** Month density: smaller bars / more events before "더보기". */
+export function DensityDownIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="currentColor" d="M19 13H5v-2h14z" />
+    </svg>
+  )
+}
+
+/** Month density: larger bars / fewer events before "더보기". */
+export function DensityUpIcon(): ReactElement {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z" />
+    </svg>
+  )
+}
+
 export function HideEventsEyeIcon({ open }: { open: boolean }): ReactElement {
   if (open) {
     return (
