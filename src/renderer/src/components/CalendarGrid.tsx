@@ -993,12 +993,28 @@ export function CalendarGrid({
 
   const openDayListPreview = useCallback((): void => {
     if (!requireEdit()) return
-    if (!isBrowserNeoCalendarHost() && floatingPanels) {
-      openEmbeddedPanel({ kind: 'dayListPreview', year, month })
+    if (isBrowserNeoCalendarHost() || !floatingPanels) {
+      setDayListPreviewOpen((open) => !open)
       return
     }
+    // Floating panel: openEmbedded toggles close when already open.
+    if (dayListPreviewOpen) {
+      window.neoCalendar.closePanelSlot?.('dayListPreview')
+      setDayListPreviewOpen(false)
+      return
+    }
+    openEmbeddedPanel({ kind: 'dayListPreview', year, month })
     setDayListPreviewOpen(true)
-  }, [floatingPanels, month, openEmbeddedPanel, requireEdit, year])
+  }, [dayListPreviewOpen, floatingPanels, month, openEmbeddedPanel, requireEdit, year])
+
+  // Floating 세로보기 closed via X / Esc — keep toolbar pressed state in sync.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onDayListPreviewOpenChanged) return
+    return api.onDayListPreviewOpenChanged((open) => {
+      setDayListPreviewOpen(open)
+    })
+  }, [])
 
   const openHeaderTitleEditor = useCallback((): void => {
     if (!requireEdit()) return

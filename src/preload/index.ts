@@ -134,6 +134,15 @@ const api: NeoCalendarApi = {
       ipcRenderer.removeListener('panel-request-dismiss', handler)
     }
   },
+  onDayListPreviewOpenChanged: (listener: (open: boolean) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, open: boolean): void => {
+      listener(Boolean(open))
+    }
+    ipcRenderer.on('day-list-preview-open-changed', handler)
+    return () => {
+      ipcRenderer.removeListener('day-list-preview-open-changed', handler)
+    }
+  },
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => {
     const handler = (
       _event: Electron.IpcRendererEvent,

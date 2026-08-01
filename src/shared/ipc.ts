@@ -292,6 +292,8 @@ export type NeoCalendarApi = {
    * Outside-click uses this instead of destroying the window cold.
    */
   onPanelRequestDismiss: (listener: () => void) => () => void
+  /** Main → main calendar: floating 세로보기 opened/closed (toolbar pressed state). */
+  onDayListPreviewOpenChanged: (listener: (open: boolean) => void) => () => void
   /** Main → renderer: open editor/detail after floating quick edit defers. */
   onQuickEditDeferred: (listener: (payload: QuickEditDeferToMainPayload) => void) => () => void
   /** Main → renderer: run period toolbar action after embedded click unlock. */

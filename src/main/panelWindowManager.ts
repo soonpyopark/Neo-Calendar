@@ -300,6 +300,16 @@ export class PanelWindowManager {
     this.evictSlot(slot)
   }
 
+  private notifyDayListPreviewOpen(open: boolean): void {
+    const main = this.getMainWindow() ?? this.lastMainWindow
+    if (!main || main.isDestroyed()) return
+    try {
+      main.webContents.send('day-list-preview-open-changed', open)
+    } catch {
+      /* ignore */
+    }
+  }
+
   private registerEntry(
     slot: PanelSlot,
     win: BrowserWindow,
@@ -310,6 +320,7 @@ export class PanelWindowManager {
     const entry: PanelEntry = { slot, win, webContentsId, init, anchorScreen }
     this.entriesBySlot.set(slot, entry)
     this.slotByWebContentsId.set(webContentsId, slot)
+    if (slot === 'dayListPreview') this.notifyDayListPreviewOpen(true)
     this.notifyPanelStackChanged()
   }
 
@@ -322,6 +333,7 @@ export class PanelWindowManager {
       if (this.slotByWebContentsId.get(webContentsId) === slot) {
         this.slotByWebContentsId.delete(webContentsId)
       }
+      if (slot === 'dayListPreview') this.notifyDayListPreviewOpen(false)
       if (this.entriesBySlot.size === 0) {
         this.stopOutsideListener()
       }
@@ -329,6 +341,7 @@ export class PanelWindowManager {
     } catch {
       this.entriesBySlot.delete(slot)
       this.slotByWebContentsId.delete(webContentsId)
+      if (slot === 'dayListPreview') this.notifyDayListPreviewOpen(false)
       if (this.entriesBySlot.size === 0) {
         this.stopOutsideListener()
       }
@@ -555,6 +568,14 @@ export class PanelWindowManager {
         && String(existing.init.dayKey ?? '') === String(init.dayKey ?? '')
       ) {
         this.closeSlot('eventDetail')
+        return
+      }
+    }
+    // 세로보기 toolbar button: click again closes the floating window.
+    if (init.kind === 'dayListPreview') {
+      const existing = this.entriesBySlot.get('dayListPreview')
+      if (existing && isWinAlive(existing.win)) {
+        this.closeSlot('dayListPreview')
         return
       }
     }
