@@ -64,7 +64,8 @@ import {
   EMBEDDED_FOOTER_HINT_ACTIONS,
   EMBEDDED_FOOTER_LINK_ACTIONS,
   EMBEDDED_RELOAD_CHROME_ACTIONS,
-  PERIOD_TOOLBAR_ACTIONS
+  PERIOD_TOOLBAR_ACTIONS,
+  YEAR_MONTH_OPEN_ACTIONS
 } from '../shared/ipc'
 import {
   getShellRunAtStartup,
@@ -135,7 +136,10 @@ let auth: AuthService
 let desktopMode: DesktopModeController
 let webServer: CalendarWebServer | null = null
 let tray: AppTray | null = null
-const PERIOD_TOOLBAR_ACTION_IDS = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
+const PERIOD_TOOLBAR_ACTION_IDS = new Set<string>([
+  ...Object.values(PERIOD_TOOLBAR_ACTIONS),
+  ...YEAR_MONTH_OPEN_ACTIONS
+])
 /** Visible day-cell footprints for WorkerW custom double-click → quick edit. */
 let dayCellHitZones: DayCellClientZone[] = []
 /** Header/shell rects where day double-click must not fire. */

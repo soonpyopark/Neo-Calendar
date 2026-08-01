@@ -50,7 +50,10 @@ import {
   EMBEDDED_MODE_CHROME_ACTIONS,
   EMBEDDED_RELOAD_CHROME_ACTIONS,
   FOOTER_HINT_ACTIONS,
-  PERIOD_TOOLBAR_ACTIONS
+  PERIOD_TOOLBAR_ACTIONS,
+  YEAR_MONTH_OPEN_ACTIONS,
+  parseYearMonthOpenAction,
+  yearMonthOpenAction
 } from '../../../shared/ipc'
 import {
   type OpenPanelWindowRequest,
@@ -153,7 +156,10 @@ const LOGIN_REQUIRED_TITLE = '로그인 후 사용할 수 있습니다'
 const LOGIN_MUTED_CLASS = 'cursor-not-allowed opacity-40'
 
 const WEEKDAYS_KO = ['일', '월', '화', '수', '목', '금', '토'] as const
-const PERIOD_TOOLBAR_ACTION_ID_SET = new Set<string>(Object.values(PERIOD_TOOLBAR_ACTIONS))
+const PERIOD_TOOLBAR_ACTION_ID_SET = new Set<string>([
+  ...Object.values(PERIOD_TOOLBAR_ACTIONS),
+  ...YEAR_MONTH_OPEN_ACTIONS
+])
 
 function toPanelAnchor(anchor: EventPopoverAnchor): PanelAnchorRect | null {
   if (!anchor) return null
@@ -587,6 +593,7 @@ export function CalendarGrid({
   const userRef = useRef(user)
   userRef.current = user
   const promptLoginRef = useRef<() => void>(() => undefined)
+  const goToMonthViewRef = useRef<(monthIndex: number) => void>(() => undefined)
   modeEmbeddedRef.current = {
     mode,
     embedded,
@@ -832,7 +839,34 @@ export function CalendarGrid({
           }
         ]
       })
-      api.setClickForwardHitZones([...toolbarZones, ...chromeZones, ...footerZones])
+      // Year-view month titles: WorkerW double-click → month view (not click-through).
+      const yearMonthZones = Array.from(
+        document.querySelectorAll<HTMLElement>(
+          '.neo-cal-shell .year-month-title[data-toolbar-action]'
+        )
+      ).flatMap((el) => {
+        const action = el.dataset.toolbarAction ?? ''
+        if (!action || !PERIOD_TOOLBAR_ACTION_ID_SET.has(action)) return []
+        const r = el.getBoundingClientRect()
+        if (r.width < 1 || r.height < 1) return []
+        // Slightly taller hit box so “3월” is easy to double-click under icons.
+        const padY = 4
+        return [
+          {
+            x: Math.round(r.left),
+            y: Math.round(r.top - padY),
+            width: Math.round(r.width),
+            height: Math.round(r.height + padY * 2),
+            action
+          }
+        ]
+      })
+      api.setClickForwardHitZones([
+        ...toolbarZones,
+        ...chromeZones,
+        ...footerZones,
+        ...yearMonthZones
+      ])
 
       const vw = window.innerWidth
       const vh = window.innerHeight
@@ -866,7 +900,7 @@ export function CalendarGrid({
 
       const excludeZones = Array.from(
         document.querySelectorAll<HTMLElement>(
-          '[data-shell-chrome="header"], [data-shell-chrome="header-actions"], [data-shell-chrome="period-header"], [data-shell-chrome="footer"], [data-shell-chrome="weekday-header"]'
+          '[data-shell-chrome="header"], [data-shell-chrome="header-actions"], [data-shell-chrome="period-header"], [data-shell-chrome="footer"], [data-shell-chrome="weekday-header"], .year-month-title'
         )
       ).flatMap((el) => {
         const r = el.getBoundingClientRect()
@@ -1496,6 +1530,11 @@ export function CalendarGrid({
         openHeaderTitleEditorRef.current()
         return
       }
+      const yearMonthIndex = parseYearMonthOpenAction(action)
+      if (yearMonthIndex != null) {
+        goToMonthViewRef.current(yearMonthIndex)
+        return
+      }
       const btn = document.querySelector<HTMLElement>(
         `.neo-cal-shell [data-toolbar-action="${action}"]`
       )
@@ -2121,6 +2160,14 @@ export function CalendarGrid({
     )
   }
 
+  const goToMonthView = (monthIndex: number): void => {
+    if (!requireEdit()) return
+    lockChromeNav(500)
+    setViewDate(new Date(year, monthIndex, 1))
+    setViewMode('month')
+  }
+  goToMonthViewRef.current = goToMonthView
+
   const renderYearView = (): ReactElement => (
     <div className="year-view flex-1">
       {Array.from({ length: 12 }, (_, monthIndex) => {
@@ -2128,18 +2175,31 @@ export function CalendarGrid({
         return (
           <div
             key={monthIndex}
-            className={cn('year-month', monthIndex === month && 'is-current')}
+            className={cn(
+              'year-month',
+              'interaction-ui',
+              monthIndex === month && 'is-current',
+              !canEdit && LOGIN_MUTED_CLASS
+            )}
+            onDoubleClick={(e) => {
+              // Day cells handle their own double-click (quick edit) and stopPropagation.
+              e.preventDefault()
+              goToMonthView(monthIndex)
+            }}
+            title={!canEdit ? LOGIN_REQUIRED_TITLE : `${year}년 ${monthIndex + 1}월 보기로 이동`}
           >
             <InteractionUI
               as="button"
               className={cn('year-month-title', !canEdit && LOGIN_MUTED_CLASS)}
-              onClick={() => {
-                if (!requireEdit()) return
-                lockChromeNav(500)
-                setViewDate(new Date(year, monthIndex, 1))
-                setViewMode('month')
+              data-toolbar-action={yearMonthOpenAction(monthIndex)}
+              onClick={() => goToMonthView(monthIndex)}
+              onDoubleClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                goToMonthView(monthIndex)
               }}
               aria-label={`${year}년 ${monthIndex + 1}월로 이동`}
+              title={!canEdit ? LOGIN_REQUIRED_TITLE : `${monthIndex + 1}월 보기로 이동`}
             >
               {monthIndex + 1}월
             </InteractionUI>

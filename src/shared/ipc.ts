@@ -155,11 +155,28 @@ export const EMBEDDED_RELOAD_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.reload
 ])
 
+/** Year-view month title → open that month (`open-year-month-0` … `open-year-month-11`). */
+export const YEAR_MONTH_OPEN_ACTION_PREFIX = 'open-year-month-'
+
+export function yearMonthOpenAction(monthIndex: number): string {
+  return `${YEAR_MONTH_OPEN_ACTION_PREFIX}${monthIndex}`
+}
+
+export function parseYearMonthOpenAction(action: string): number | null {
+  if (!action.startsWith(YEAR_MONTH_OPEN_ACTION_PREFIX)) return null
+  const n = Number(action.slice(YEAR_MONTH_OPEN_ACTION_PREFIX.length))
+  return Number.isInteger(n) && n >= 0 && n <= 11 ? n : null
+}
+
+export const YEAR_MONTH_OPEN_ACTIONS: string[] = Array.from({ length: 12 }, (_, i) =>
+  yearMonthOpenAction(i)
+)
+
 /**
  * Toolbar actions that fire only on WM_LBUTTONDBLCLK while embedded.
- * Empty: header reload / title edit use single click like search & settings.
+ * Year-view month titles require a double-click to enter month view.
  */
-export const EMBEDDED_DOUBLE_CLICK_ACTIONS = new Set<string>([])
+export const EMBEDDED_DOUBLE_CLICK_ACTIONS = new Set<string>(YEAR_MONTH_OPEN_ACTIONS)
 
 /** Footer hint prev/pause/play/next while WorkerW-embedded. */
 export const FOOTER_HINT_ACTIONS = {

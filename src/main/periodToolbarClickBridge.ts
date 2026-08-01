@@ -20,16 +20,22 @@ type BridgeOptions = {
 }
 
 const COOLDOWN_MS = 350
+/** Fallback if GetDoubleClickTime is unavailable. */
+const DEFAULT_DBLCLICK_MS = 500
+/** Second click may jitter over desktop icons above WorkerW. */
+const CLICK_JITTER_PX = 48
 
 /**
  * WorkerW-embedded: single click on period toolbar → run action in renderer (stay embedded).
- * Actions in EMBEDDED_DOUBLE_CLICK_ACTIONS require OS double-click instead.
+ * Actions in EMBEDDED_DOUBLE_CLICK_ACTIONS need two left clicks (same as day-cell bridge);
+ * WH_MOUSE_LL often never sees WM_LBUTTONDBLCLK.
  */
 export class PeriodToolbarClickBridge {
   private unsubscribe: (() => void) | null = null
   private lastZoneCount = -1
   private lastClickAt = 0
   private lastAction: string | null = null
+  private lastPress: { action: string; at: number; x: number; y: number } | null = null
   private readonly options: BridgeOptions
 
   constructor(options: BridgeOptions) {
@@ -48,14 +54,17 @@ export class PeriodToolbarClickBridge {
     this.unsubscribe?.()
     this.unsubscribe = null
     this.lastZoneCount = -1
+    this.lastPress = null
   }
 
   private handleMouseDown(pt: ScreenPoint, button: MouseButton): void {
     if (!this.options.isArmed()) {
       this.lastZoneCount = -1
+      this.lastPress = null
       return
     }
     if (this.options.shouldProcessEmbeddedClick && !this.options.shouldProcessEmbeddedClick(pt)) {
+      this.lastPress = null
       return
     }
 
@@ -69,18 +78,67 @@ export class PeriodToolbarClickBridge {
     const origin = this.options.getScreenOrigin()
     if (!origin) return
 
-    const hit = this.hitZone(pt, origin, zones, button)
-    if (!hit) return
-
-    const needsDbl = EMBEDDED_DOUBLE_CLICK_ACTIONS.has(hit.action)
-    if (needsDbl && button !== 'left-dblclick') return
-    if (!needsDbl && button === 'left-dblclick') return
-
     const now = Date.now()
-    if (hit.action === this.lastAction && now - this.lastClickAt < COOLDOWN_MS) return
+    const dblWindow = DEFAULT_DBLCLICK_MS
+
+    if (button === 'left-dblclick') {
+      const hit = this.hitZone(pt, origin, zones, 'left-dblclick')
+      if (!hit || !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(hit.action)) {
+        this.lastPress = null
+        return
+      }
+      this.confirmAction(hit)
+      return
+    }
+
+    // Prefer single-click zones when they overlap dbl-click-only titles.
+    const singleHit = this.hitZone(pt, origin, zones, 'left')
+    if (singleHit && !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(singleHit.action)) {
+      this.lastPress = null
+      if (singleHit.action === this.lastAction && now - this.lastClickAt < COOLDOWN_MS) return
+      this.confirmAction(singleHit)
+      return
+    }
+
+    let dblHit = this.hitZone(pt, origin, zones, 'left-dblclick')
+    const prev = this.lastPress
+    if (
+      !dblHit &&
+      prev &&
+      EMBEDDED_DOUBLE_CLICK_ACTIONS.has(prev.action) &&
+      now - prev.at <= dblWindow &&
+      Math.hypot(pt.x - prev.x, pt.y - prev.y) <= CLICK_JITTER_PX
+    ) {
+      dblHit = {
+        action: prev.action,
+        clientX: Math.round(pt.x - origin.x),
+        clientY: Math.round(pt.y - origin.y)
+      }
+    }
+
+    if (!dblHit || !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(dblHit.action)) {
+      this.lastPress = null
+      return
+    }
+
+    if (prev && prev.action === dblHit.action && now - prev.at <= dblWindow) {
+      this.confirmAction(dblHit)
+      return
+    }
+
+    this.lastPress = { action: dblHit.action, at: now, x: pt.x, y: pt.y }
+    console.log('[toolbar-click] first click recorded', dblHit.action)
+  }
+
+  private confirmAction(hit: { action: string; clientX: number; clientY: number }): void {
+    const now = Date.now()
+    if (hit.action === this.lastAction && now - this.lastClickAt < COOLDOWN_MS) {
+      this.lastPress = null
+      return
+    }
+    this.lastPress = null
     this.lastClickAt = now
     this.lastAction = hit.action
-
     console.log('[toolbar-click] confirmed → embedded action', hit.action)
     this.options.onToolbarClick({
       action: hit.action,
@@ -107,11 +165,13 @@ export class PeriodToolbarClickBridge {
     }
     if (hits.length === 0) return null
 
-    // Overlapping chrome (e.g. centered title vs search): prefer dbl-click actions on
-    // WM_LBUTTONDBLCLK, and skip them on single click so the real button still works.
+    // Overlapping chrome: prefer dbl-click actions when pairing / on WM_LBUTTONDBLCLK;
+    // on plain left prefer single-click actions so normal toolbar buttons still win.
     const preferred =
       button === 'left-dblclick'
-        ? (hits.find((z) => EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ?? null)
+        ? (hits.find((z) => EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ??
+          hits.find((z) => !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ??
+          null)
         : (hits.find((z) => !EMBEDDED_DOUBLE_CLICK_ACTIONS.has(z.action)) ?? hits[0] ?? null)
     if (!preferred) return null
 
