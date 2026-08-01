@@ -19,7 +19,6 @@ import { CalendarFileFormatButton } from './CalendarFileFormatButton'
 import { getDefaultCalendarColor } from '../../../shared/calendarColorPalette'
 import { sortCalendarsByOrder } from '../../../shared/calendarOrder'
 import { HOLIDAYS_KR_CALENDAR_ID, isProtectedCalendarId } from '../../../shared/calendarDefaults'
-import { normalizeEventDensity } from '../../../shared/eventLayoutMetrics'
 import {
   detectCalendarFileFormat,
   downloadCalendarFile,
@@ -346,14 +345,6 @@ function ViewOptionsPanel({
             </span>
           </span>
         </label>
-        <p className="text-sm text-gcal-body">
-          월간 일정 밀도
-          <span className="text-gcal-muted">
-            {' '}
-            (헤더 체크 아이콘 오른쪽 − + 와 동일 · 현재{' '}
-            {normalizeEventDensity(vo.eventDensity).toFixed(1)})
-          </span>
-        </p>
       </div>
 
       <fieldset className="mt-8 space-y-3 border-0 p-0">
