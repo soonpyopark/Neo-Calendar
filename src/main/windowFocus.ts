@@ -65,17 +65,85 @@ function getUser32(): User32FocusApi | null {
 }
 
 /**
- * WorkerW-embedded desktop: ensure a floating panel is not owned by / parented
- * to the wallpaper HWND (which would keep it under the main calendar layer).
+ * Detach a panel from WorkerW / wallpaper parenting so it can paint above the
+ * under-icons calendar, without asserting WS_EX_TOPMOST.
  */
-export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined): void {
-  if (!win || win.isDestroyed()) return
-
+function detachFloatingPanelParent(win: BrowserWindow): void {
   try {
     win.setParentWindow(null)
   } catch (error) {
     console.warn('[focus] setParentWindow(null) failed', error)
   }
+
+  if (process.platform !== 'win32') return
+  const user32 = getUser32()
+  if (!user32) return
+  try {
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    if (hwnd === 0n) return
+    user32.SetParent(hwnd, 0n)
+  } catch (error) {
+    console.warn('[focus] native SetParent(0) failed', error)
+  }
+}
+
+/**
+ * Present a panel above the desktop/calendar as a normal top-level window.
+ * Other apps can cover it when focused (used by 세로보기 / dayListPreview).
+ */
+export function presentFloatingPanelWindow(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+
+  detachFloatingPanelParent(win)
+
+  try {
+    win.setAlwaysOnTop(false)
+    win.moveTop()
+  } catch (error) {
+    console.warn('[focus] panel present failed', error)
+  }
+
+  if (process.platform !== 'win32') return
+  const user32 = getUser32()
+  if (!user32) return
+
+  try {
+    const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
+    if (hwnd === 0n) return
+    // HWND_TOP (not TOPMOST): front among normal windows; other apps can cover it.
+    user32.SetWindowPos(
+      hwnd,
+      HWND_NOTOPMOST,
+      0,
+      0,
+      0,
+      0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW
+    )
+    user32.SetWindowPos(
+      hwnd,
+      HWND_TOP,
+      0,
+      0,
+      0,
+      0,
+      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE
+    )
+    user32.BringWindowToTop(hwnd)
+  } catch (error) {
+    console.warn('[focus] native panel present failed', error)
+  }
+}
+
+/**
+ * WorkerW-embedded desktop: ensure a floating panel is not owned by / parented
+ * to the wallpaper HWND (which would keep it under the main calendar layer).
+ * Stays WS_EX_TOPMOST so quick-edit / dialogs remain above other apps.
+ */
+export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined): void {
+  if (!win || win.isDestroyed()) return
+
+  detachFloatingPanelParent(win)
 
   try {
     win.setAlwaysOnTop(true, 'screen-saver')
@@ -91,7 +159,6 @@ export function raiseFloatingPanelWindow(win: BrowserWindow | null | undefined):
   try {
     const hwnd = hwndFromBuffer(win.getNativeWindowHandle())
     if (hwnd === 0n) return
-    user32.SetParent(hwnd, 0n)
     user32.SetWindowPos(
       hwnd,
       HWND_TOPMOST,

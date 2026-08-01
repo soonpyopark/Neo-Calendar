@@ -4,6 +4,7 @@ import {
   focusWindowForTextInput,
   lowerFloatingPanelWindow,
   orderFloatingPanelFront,
+  presentFloatingPanelWindow,
   raiseFloatingPanelWindow
 } from './windowFocus'
 import { subscribeGlobalMouseDown, type ScreenPoint } from './globalMouseHook'
@@ -59,6 +60,12 @@ type PanelSlot = PanelKind
  * surface: it stays put while links, attachments and editors are opened from it.
  */
 const EXPLICIT_CLOSE_ONLY_SLOTS = new Set<PanelSlot>(['dayListPreview'])
+
+/**
+ * Stay above the under-icons calendar as normal top-level windows (not WS_EX_TOPMOST),
+ * so other apps can cover them when focused. Quick-edit / dialogs remain topmost.
+ */
+const NORMAL_ZORDER_SLOTS = new Set<PanelSlot>(['dayListPreview'])
 
 /**
  * Confirm / scope dialogs that must stay above sibling panels (quickEdit, detail).
@@ -376,12 +383,24 @@ export class PanelWindowManager {
     }
   }
 
-  /** Back on a panel: retake the topmost band the external app borrowed. */
+  /** Back on a panel: retake z-order the external app borrowed. */
   private restoreTopMostPanels(): void {
     for (const entry of this.entriesBySlot.values()) {
-      raiseFloatingPanelWindow(entry.win)
+      if (NORMAL_ZORDER_SLOTS.has(entry.slot)) {
+        presentFloatingPanelWindow(entry.win)
+      } else {
+        raiseFloatingPanelWindow(entry.win)
+      }
     }
     this.raiseFrontModalIfAny()
+  }
+
+  private presentPanelWindow(slot: PanelSlot, win: BrowserWindow): void {
+    if (NORMAL_ZORDER_SLOTS.has(slot)) {
+      presentFloatingPanelWindow(win)
+    } else {
+      raiseFloatingPanelWindow(win)
+    }
   }
 
   /** Prefer modal confirm/scope windows over quickEdit / detail siblings. */
@@ -591,6 +610,8 @@ export class PanelWindowManager {
       || init.kind === 'headerTitleEditor'
     const topLevel =
       topLevelOption ?? (forceTopLevel || (this.options.isWorkerEmbedded?.() ?? false))
+    // 세로보기: top-level (above WorkerW) but not always-on-top over other apps.
+    const pinAboveOtherApps = topLevel && !NORMAL_ZORDER_SLOTS.has(slot)
 
     const win = new BrowserWindow({
       x: windowBounds.x,
@@ -609,7 +630,7 @@ export class PanelWindowManager {
       focusable: true,
       show: false,
       hasShadow: false,
-      alwaysOnTop: topLevel,
+      alwaysOnTop: pinAboveOtherApps,
       backgroundColor: '#00000000',
       webPreferences: {
         preload: join(__dirname, '../preload/index.js'),
@@ -629,13 +650,13 @@ export class PanelWindowManager {
 
     const webContentsId = win.webContents.id
     win.setIgnoreMouseEvents(false)
-    // Always raise so scope dialogs appear above sibling panels (quickEdit / eventDetail).
-    raiseFloatingPanelWindow(win)
+    // Raise so scope dialogs appear above sibling panels (quickEdit / eventDetail).
+    this.presentPanelWindow(slot, win)
     this.registerEntry(slot, win, init, anchorScreen)
 
     win.once('ready-to-show', () => {
       if (win.isDestroyed()) return
-      raiseFloatingPanelWindow(win)
+      this.presentPanelWindow(slot, win)
       win.show()
       focusWindowForTextInput(win)
       this.outsideBlockedUntil = Math.max(
