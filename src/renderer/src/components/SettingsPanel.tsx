@@ -350,7 +350,7 @@ function ViewOptionsPanel({
           월간 일정 밀도
           <span className="text-gcal-muted">
             {' '}
-            (헤더 세로보기 옆 − + 와 동일 · 현재{' '}
+            (헤더 체크 아이콘 오른쪽 − + 와 동일 · 현재{' '}
             {normalizeEventDensity(vo.eventDensity).toFixed(1)})
           </span>
         </p>

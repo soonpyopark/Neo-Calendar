@@ -2398,6 +2398,23 @@ export function CalendarGrid({
               as="button"
               className={cn(
                 desktopModeIconBtnClass,
+                dayListPreviewIconBtnClass,
+                dayListPreviewOpen && dayListPreviewIconBtnActiveClass,
+                !canEdit && LOGIN_MUTED_CLASS
+              )}
+              captureOnHover={captureToolbarOnHover}
+              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
+              onClick={openDayListPreview}
+              aria-label="세로보기"
+              aria-pressed={dayListPreviewOpen}
+              title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
+            >
+              <PortraitPreviewIcon />
+            </InteractionUI>
+            <InteractionUI
+              as="button"
+              className={cn(
+                desktopModeIconBtnClass,
                 softBlueIconBtnClass,
                 (!canEdit || !webEditUrl) && LOGIN_MUTED_CLASS
               )}
@@ -2461,23 +2478,6 @@ export function CalendarGrid({
               }
             >
               <HideCompletedCheckIcon checked={completedHidden} />
-            </InteractionUI>
-            <InteractionUI
-              as="button"
-              className={cn(
-                desktopModeIconBtnClass,
-                dayListPreviewIconBtnClass,
-                dayListPreviewOpen && dayListPreviewIconBtnActiveClass,
-                !canEdit && LOGIN_MUTED_CLASS
-              )}
-              captureOnHover={captureToolbarOnHover}
-              data-toolbar-action={PERIOD_TOOLBAR_ACTIONS.dayListPreview}
-              onClick={openDayListPreview}
-              aria-label="세로보기"
-              aria-pressed={dayListPreviewOpen}
-              title={!canEdit ? LOGIN_REQUIRED_TITLE : '세로보기 (일자별 미리보기)'}
-            >
-              <PortraitPreviewIcon />
             </InteractionUI>
             <InteractionUI
               as="button"
