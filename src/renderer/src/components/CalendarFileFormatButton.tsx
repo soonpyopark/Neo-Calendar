@@ -11,6 +11,7 @@ export type CalendarFileFormatButtonProps = {
   mode: 'import' | 'export'
   onSelectFormat: (format: CalendarFileFormat) => void
   className?: string
+  disabled?: boolean
 }
 
 export function CalendarFileFormatButton({
@@ -18,7 +19,8 @@ export function CalendarFileFormatButton({
   variant = 'secondary',
   mode,
   onSelectFormat,
-  className
+  className,
+  disabled = false
 }: CalendarFileFormatButtonProps): ReactElement {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
@@ -45,14 +47,19 @@ export function CalendarFileFormatButton({
     <div className="relative inline-block" ref={rootRef}>
       <button
         type="button"
+        disabled={disabled}
         className={cn(
           buttonClassName,
           mode === 'import' && variant === 'primary' && 'text-white',
+          disabled && 'opacity-60',
           className
         )}
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() => {
+          if (disabled) return
+          setOpen((prev) => !prev)
+        }}
       >
         {label}
       </button>
@@ -89,6 +96,8 @@ export function getImportAcceptAttribute(format: CalendarFileFormat): string {
       return 'text/calendar,.ics'
     case 'csv':
       return 'text/csv,.csv'
+    case 'zip':
+      return 'application/zip,.zip'
     default:
       return ''
   }
@@ -96,5 +105,5 @@ export function getImportAcceptAttribute(format: CalendarFileFormat): string {
 
 /** File picker filter for all supported import formats. */
 export function getAllImportAcceptAttribute(): string {
-  return '.json,.ics,.csv,application/json,text/calendar,text/csv'
+  return '.json,.ics,.csv,.zip,application/json,text/calendar,text/csv,application/zip'
 }

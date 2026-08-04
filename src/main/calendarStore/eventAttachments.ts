@@ -202,6 +202,49 @@ export class EventAttachmentService {
     }
   }
 
+  /**
+   * Deep-copy attachment files from one event folder into another (new ids / storedNames).
+   * Used when duplicating an event onto another date.
+   */
+  copyBetweenEvents(sourceEventId: string, targetEventId: string): CalendarEvent {
+    const sourceId = sanitizeId(sourceEventId)
+    const targetId = sanitizeId(targetEventId)
+    if (sourceId === targetId) {
+      return this.requireEditableEvent(targetId)
+    }
+    const source = this.requireEditableEvent(sourceId)
+    const target = this.requireEditableEvent(targetId)
+    const sourceAttachments = Array.isArray(source.attachments) ? source.attachments : []
+    if (sourceAttachments.length === 0) return target
+
+    const dir = this.eventDir(targetId)
+    mkdirSync(dir, { recursive: true })
+    const next = [...(target.attachments ?? [])]
+    const sourceDir = this.eventDir(sourceId)
+
+    for (const meta of sourceAttachments) {
+      if (next.length >= MAX_ATTACHMENTS_PER_EVENT) break
+      if (!meta?.storedName?.trim()) continue
+      const srcPath = join(sourceDir, basename(meta.storedName))
+      if (!existsSync(srcPath) || !statSync(srcPath).isFile()) continue
+      const ext = extname(meta.storedName || meta.name || '')
+      const id = randomUUID().replace(/-/g, '')
+      const storedName = `${id}${ext ? ext.toLowerCase() : ''}`
+      copyFileSync(srcPath, join(dir, storedName))
+      next.push({
+        id,
+        name: meta.name || 'file',
+        storedName,
+        mime: meta.mime || guessMime(ext),
+        size: typeof meta.size === 'number' ? meta.size : statSync(srcPath).size,
+        addedAt: new Date().toISOString()
+      })
+    }
+
+    if (next.length === (target.attachments ?? []).length) return target
+    return this.store.editEvent(targetId, { attachments: next })
+  }
+
   private addOneFile(attachments: EventAttachment[], dir: string, sourcePath: string): void {
     if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) return
     const originalName = basename(sourcePath)

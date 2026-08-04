@@ -867,6 +867,18 @@ function CalendarSettingsPanel({
 
   const handleExportCalendar = async (format: CalendarFileFormat): Promise<void> => {
     try {
+      if (format === 'zip') {
+        const result = await window.neoCalendar.exportCalendarZip(calendar.id)
+        if (result?.cancelled) return
+        const files = Number(result?.attachmentFiles) || 0
+        await alert(
+          files > 0
+            ? `「${calendar.name}」 캘린더와 첨부 파일 ${files}개를 ZIP으로 저장했습니다.`
+            : `「${calendar.name}」 캘린더를 ZIP으로 저장했습니다.`,
+          { title: '내보내기 완료' }
+        )
+        return
+      }
       const exportData = {
         calendar,
         events: (store.events ?? []).filter((event) => event.calendarId === calendar.id)
@@ -893,9 +905,32 @@ function CalendarSettingsPanel({
       const picked = await window.neoCalendar.pickCalendarImportFile()
       if (picked.cancelled) return
 
+      if (picked.kind === 'zip-restored') {
+        throw new Error(
+          '전체 ZIP 백업은 설정 → 가져오기 / 내보내기의 파일 선택으로 가져와 주세요.'
+        )
+      }
+
+      if (picked.kind === 'zip') {
+        const result = await window.neoCalendar.importCalendarZipFromPath(
+          calendar.id,
+          picked.filePath
+        )
+        if (result?.cancelled) return
+        const count = Number(result?.importedCount) || 0
+        const files = Number(result?.attachmentFiles) || 0
+        await alert(
+          files > 0
+            ? `「${calendar.name}」에 일정 ${count}건과 첨부 파일 ${files}개를 가져왔습니다.`
+            : `「${calendar.name}」에 일정 ${count}건을 가져왔습니다.`,
+          { title: '가져오기 완료' }
+        )
+        return
+      }
+
       const format = detectCalendarFileFormat(picked.filename)
-      if (!format) {
-        throw new Error('JSON, ICS, CSV 파일만 가져올 수 있습니다.')
+      if (!format || format === 'zip') {
+        throw new Error('JSON, ICS, CSV, ZIP 파일만 가져올 수 있습니다.')
       }
       const parsed = parseImportPayload(picked.content, format, picked.filename)
       const events = extractEventsFromImportPayload(parsed)

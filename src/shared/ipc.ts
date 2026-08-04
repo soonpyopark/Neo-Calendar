@@ -350,15 +350,50 @@ export type NeoCalendarApi = {
     attachmentFiles?: number
     store?: CalendarStoreSnapshot
   }>
+  /** Full-store ZIP restore from a path already chosen by the unified file picker. */
+  importBackupZipFromPath: (zipPath: string) => Promise<{
+    ok: boolean
+    cancelled?: boolean
+    path?: string
+    attachmentFiles?: number
+    store?: CalendarStoreSnapshot
+  }>
+  exportCalendarZip: (calendarId: string) => Promise<{
+    ok: boolean
+    cancelled?: boolean
+    path?: string
+    attachmentFiles?: number
+    eventsWithAttachments?: number
+  }>
+  importCalendarZipFromPath: (
+    calendarId: string,
+    zipPath: string
+  ) => Promise<{
+    ok: boolean
+    cancelled?: boolean
+    path?: string
+    attachmentFiles?: number
+    importedCount?: number
+  }>
   pickCalendarImportFile: () => Promise<
     | { cancelled: true }
-    | { cancelled: false; content: string; filename: string }
+    | { cancelled: false; kind: 'text'; content: string; filename: string }
+    | { cancelled: false; kind: 'zip'; filePath: string; filename: string }
+    /** Browser: ZIP was already uploaded/restored during the picker step. */
+    | {
+        cancelled: false
+        kind: 'zip-restored'
+        filename: string
+        attachmentFiles?: number
+      }
   >
   addEvent: (input: EventInput) => Promise<CalendarEvent>
   editEvent: (id: string, patch: Partial<CalendarEvent>) => Promise<CalendarEvent>
   removeEvent: (id: string) => Promise<void>
   /** Native multi-file picker → copy into data/attachments/{eventId}/ */
   addEventAttachments: (eventId: string) => Promise<CalendarEvent>
+  /** Deep-copy attachment files from one event onto another (new file ids). */
+  copyEventAttachments: (sourceEventId: string, targetEventId: string) => Promise<CalendarEvent>
   removeEventAttachment: (eventId: string, attachmentId: string) => Promise<CalendarEvent>
   openEventAttachment: (eventId: string, attachmentId: string) => Promise<void>
   /** Image attachment for the in-app viewer; non-images resolve to `{ ok: false }`. */

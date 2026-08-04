@@ -245,6 +245,20 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('calendar:import-backup-zip') as ReturnType<
       NeoCalendarApi['importBackupZip']
     >,
+  importBackupZipFromPath: (zipPath: string) =>
+    ipcRenderer.invoke('calendar:import-backup-zip-path', zipPath) as ReturnType<
+      NeoCalendarApi['importBackupZipFromPath']
+    >,
+  exportCalendarZip: (calendarId: string) =>
+    ipcRenderer.invoke('calendar:export-calendar-zip', calendarId) as ReturnType<
+      NeoCalendarApi['exportCalendarZip']
+    >,
+  importCalendarZipFromPath: (calendarId: string, zipPath: string) =>
+    ipcRenderer.invoke(
+      'calendar:import-calendar-zip-path',
+      calendarId,
+      zipPath
+    ) as ReturnType<NeoCalendarApi['importCalendarZipFromPath']>,
   pickCalendarImportFile: () =>
     ipcRenderer.invoke('calendar:pick-import-file') as ReturnType<
       NeoCalendarApi['pickCalendarImportFile']
@@ -256,6 +270,12 @@ const api: NeoCalendarApi = {
   removeEvent: (id: string) => ipcRenderer.invoke('calendar:remove-event', id) as Promise<void>,
   addEventAttachments: (eventId: string) =>
     ipcRenderer.invoke('calendar:add-attachments', eventId) as Promise<CalendarEvent>,
+  copyEventAttachments: (sourceEventId: string, targetEventId: string) =>
+    ipcRenderer.invoke(
+      'calendar:copy-attachments',
+      sourceEventId,
+      targetEventId
+    ) as Promise<CalendarEvent>,
   removeEventAttachment: (eventId: string, attachmentId: string) =>
     ipcRenderer.invoke(
       'calendar:remove-attachment',

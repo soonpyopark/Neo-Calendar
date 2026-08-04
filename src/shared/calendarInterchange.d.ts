@@ -1,6 +1,6 @@
 import type { CalendarEvent, CalendarRecord, CalendarStoreSnapshot } from './calendarTypes'
 
-export type CalendarFileFormat = 'json' | 'ics' | 'csv'
+export type CalendarFileFormat = 'json' | 'ics' | 'csv' | 'zip'
 
 export type CalendarFileFormatMeta = {
   value: CalendarFileFormat

@@ -258,6 +258,22 @@ export async function exportBackupZip(
   }
 }
 
+/** Restore a full-store ZIP already chosen by the unified import picker. */
+export function importBackupZipFromPath(
+  store: CalendarStore,
+  zipPath: string,
+  importerLoginId?: string | null
+): BackupZipResult {
+  const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
+  try {
+    extractZipSafe(zipPath, extractDir)
+    const restored = restoreFromExtractedDir(store, extractDir, importerLoginId)
+    return { ...restored, path: zipPath }
+  } finally {
+    tryDeleteDir(extractDir)
+  }
+}
+
 export async function importBackupZip(
   store: CalendarStore,
   ownerWindow?: BrowserWindow | null,
@@ -277,12 +293,164 @@ export async function importBackupZip(
     return { ok: true, cancelled: true }
   }
 
-  const zipPath = result.filePaths[0]
-  const extractDir = mkdtempSync(join(tmpdir(), 'neo-restore-'))
+  return importBackupZipFromPath(store, result.filePaths[0], importerLoginId)
+}
+
+function findCalendarExportJson(extractDir: string): string | null {
+  const preferred = ['calendar.json', 'export.json']
+  for (const name of preferred) {
+    const path = join(extractDir, name)
+    if (existsSync(path) && statSync(path).isFile()) return path
+  }
+  for (const name of readdirSync(extractDir)) {
+    if (!name.toLowerCase().endsWith('.json')) continue
+    if (name === 'store.json') continue
+    const path = join(extractDir, name)
+    if (statSync(path).isFile()) return path
+  }
+  return null
+}
+
+function readEventsFromCalendarZip(extractDir: string): unknown[] {
+  const calendarJson = findCalendarExportJson(extractDir)
+  if (calendarJson) {
+    const payload = JSON.parse(readFileSync(calendarJson, 'utf8')) as {
+      events?: unknown[]
+    }
+    if (Array.isArray(payload?.events)) return payload.events
+    if (Array.isArray(payload)) return payload
+  }
+  const storePath = findStoreJson(extractDir)
+  if (storePath) {
+    const payload = JSON.parse(readFileSync(storePath, 'utf8')) as {
+      events?: unknown[]
+    }
+    if (Array.isArray(payload?.events)) return payload.events
+  }
+  throw new Error('ZIP에서 가져올 일정 데이터를 찾지 못했습니다.')
+}
+
+function restoreAttachmentsForIdMap(
+  store: CalendarStore,
+  extractDir: string,
+  idMap: Array<{ sourceId: string; newId: string }>
+): number {
+  const zipAttachments = join(extractDir, 'attachments')
+  if (!existsSync(zipAttachments)) return 0
+  const attachmentsRoot = join(store.dataRoot, 'attachments')
+  let fileCount = 0
+  for (const { sourceId, newId } of idMap) {
+    const safeSource = trySanitizeId(sourceId)
+    const safeNew = trySanitizeId(newId)
+    if (!safeSource || !safeNew) continue
+    const sourceDir = join(zipAttachments, safeSource)
+    if (!existsSync(sourceDir) || !statSync(sourceDir).isDirectory()) continue
+    const destDir = join(attachmentsRoot, safeNew)
+    mkdirSync(destDir, { recursive: true })
+    for (const name of readdirSync(sourceDir)) {
+      const source = join(sourceDir, name)
+      if (!statSync(source).isFile()) continue
+      if (/[<>:"/\\|?*\x00-\x1f]/.test(name)) continue
+      copyFileSync(source, join(destDir, name))
+      fileCount += 1
+    }
+  }
+  return fileCount
+}
+
+/** Single-calendar ZIP: calendar JSON + that calendar's attachment files. */
+export async function exportCalendarZip(
+  store: CalendarStore,
+  calendarId: string,
+  ownerWindow?: BrowserWindow | null
+): Promise<BackupZipResult> {
+  const snap = store.getSnapshot()
+  const calendar = snap.calendars.find((c) => c.id === calendarId)
+  if (!calendar) throw new Error('캘린더를 찾을 수 없습니다.')
+  const events = snap.events.filter((e) => e.calendarId === calendarId)
+  const safeName = String(calendar.name ?? 'calendar').replace(/[\\/:*?"<>|]/g, '_')
+  const stamp = stampForZip()
+
+  const saveOpts: Electron.SaveDialogOptions = {
+    title: '캘린더 ZIP 내보내기',
+    defaultPath: `${safeName}-export-${stamp}.zip`,
+    filters: [{ name: 'ZIP', extensions: ['zip'] }]
+  }
+  const result = await withNativeDialog(async () =>
+    ownerWindow && !ownerWindow.isDestroyed()
+      ? dialog.showSaveDialog(ownerWindow, saveOpts)
+      : dialog.showSaveDialog(saveOpts)
+  )
+  if (result.canceled || !result.filePath) {
+    return { ok: true, cancelled: true }
+  }
+
+  const staging = mkdtempSync(join(tmpdir(), 'neo-cal-export-'))
+  try {
+    writeFileSync(
+      join(staging, 'calendar.json'),
+      `${JSON.stringify({ calendar, events }, null, 2)}\n`,
+      'utf8'
+    )
+    const attachStaging = join(staging, 'attachments')
+    mkdirSync(attachStaging, { recursive: true })
+    const attachmentsRoot = join(store.dataRoot, 'attachments')
+    let fileCount = 0
+    let eventCount = 0
+    for (const evt of events) {
+      const safeId = trySanitizeId(evt.id)
+      if (!safeId) continue
+      const attachments = evt.attachments ?? []
+      if (attachments.length === 0) continue
+      let copiedForEvent = 0
+      const eventDir = join(attachStaging, safeId)
+      for (const att of attachments) {
+        const fileName = basename(String(att.storedName ?? ''))
+        if (!fileName) continue
+        const source = join(attachmentsRoot, safeId, fileName)
+        if (!existsSync(source)) continue
+        mkdirSync(eventDir, { recursive: true })
+        copyFileSync(source, join(eventDir, fileName))
+        fileCount += 1
+        copiedForEvent += 1
+      }
+      if (copiedForEvent > 0) eventCount += 1
+    }
+    const zip = new AdmZip()
+    zip.addLocalFolder(staging)
+    zip.writeZip(result.filePath)
+    return {
+      ok: true,
+      cancelled: false,
+      path: result.filePath,
+      attachmentFiles: fileCount,
+      eventsWithAttachments: eventCount
+    }
+  } finally {
+    tryDeleteDir(staging)
+  }
+}
+
+/** Import a calendar/backup ZIP into one existing calendar (events merge + attachments). */
+export function importCalendarZipFromPath(
+  store: CalendarStore,
+  calendarId: string,
+  zipPath: string,
+  importerLoginId?: string | null
+): BackupZipResult & { importedCount?: number } {
+  const extractDir = mkdtempSync(join(tmpdir(), 'neo-cal-import-'))
   try {
     extractZipSafe(zipPath, extractDir)
-    const restored = restoreFromExtractedDir(store, extractDir, importerLoginId)
-    return { ...restored, path: zipPath }
+    const events = readEventsFromCalendarZip(extractDir)
+    const imported = store.importEventsIntoCalendar(calendarId, events, importerLoginId)
+    const fileCount = restoreAttachmentsForIdMap(store, extractDir, imported.idMap)
+    return {
+      ok: true,
+      cancelled: false,
+      path: zipPath,
+      attachmentFiles: fileCount,
+      importedCount: imported.importedCount
+    }
   } finally {
     tryDeleteDir(extractDir)
   }

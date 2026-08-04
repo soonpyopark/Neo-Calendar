@@ -13,10 +13,14 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   DoubleChevronLeftIcon,
-  DoubleChevronRightIcon
+  DoubleChevronRightIcon,
+  ExcelIcon,
+  PdfIcon
 } from './CalendarHeaderIcons'
 import type { CalendarStoreSnapshot } from '../../../shared/calendarTypes'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js'
+import type { ExportCalendarFormat } from '../../../shared/exportCalendar'
 import { splitLinkifySegments } from '../lib/linkify'
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
@@ -355,6 +359,7 @@ export function DayListPreviewPanel({
   const [findOpen, setFindOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [activeIndex, setActiveIndex] = useState(0)
+  const [exporting, setExporting] = useState(false)
   const findInputRef = useRef<HTMLInputElement>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
 
@@ -449,6 +454,47 @@ export function DayListPreviewPanel({
     setViewMonth(now.getFullYear() * 12 + now.getMonth())
     setTodayRequest((prev) => prev + 1)
   }, [])
+
+  /** Same day-list export as the main 내보내기 dialog (current preview month). */
+  const exportShownMonth = useCallback(
+    async (format: ExportCalendarFormat): Promise<void> => {
+      if (exporting) return
+      const startDate = toDateKey(shownYear, shownMonth, 1)
+      const endDate = toDateKey(
+        shownYear,
+        shownMonth,
+        new Date(shownYear, shownMonth + 1, 0).getDate()
+      )
+      const formatLabel = format === 'excel' ? 'Excel' : 'PDF'
+      const rangeLabel = formatExportRangeLabel(startDate, endDate)
+      setExporting(true)
+      try {
+        const result = await window.neoCalendar.exportCalendar({
+          format,
+          layout: 'dayList',
+          startDate,
+          endDate,
+          includeCompleted: true,
+          includeHolidays: true,
+          excludeHiddenCalendars: true,
+          asAdmin: true
+        })
+        if (result.canceled) return
+        if (!result.ok) {
+          await alert(result.error || `${formatLabel} 내보내기에 실패했습니다.`)
+          return
+        }
+        await alert(`${rangeLabel} 일간 목록을(를) ${formatLabel} 파일로 저장했습니다.`)
+      } catch (error) {
+        await alert(
+          error instanceof Error ? error.message : `${formatLabel} 내보내기에 실패했습니다.`
+        )
+      } finally {
+        setExporting(false)
+      }
+    },
+    [alert, exporting, shownMonth, shownYear]
+  )
 
   const closeFind = useCallback((): void => {
     setFindOpen(false)
@@ -577,15 +623,6 @@ export function DayListPreviewPanel({
               </button>
               <button
                 type="button"
-                className="day-list-preview-today"
-                onClick={goToday}
-                aria-label="오늘"
-                title="오늘"
-              >
-                오늘
-              </button>
-              <button
-                type="button"
                 className="day-quick-edit-close"
                 onClick={() => setViewMonth((prev) => prev + 1)}
                 aria-label="다음 달"
@@ -601,6 +638,35 @@ export function DayListPreviewPanel({
                 title="다음 년도"
               >
                 <DoubleChevronRightIcon />
+              </button>
+              <button
+                type="button"
+                className="day-list-preview-today"
+                onClick={goToday}
+                aria-label="오늘"
+                title="오늘"
+              >
+                오늘
+              </button>
+              <button
+                type="button"
+                className="day-quick-edit-close"
+                disabled={exporting}
+                onClick={() => void exportShownMonth('excel')}
+                aria-label="Excel로 저장"
+                title="Excel로 저장 (일자별 목록)"
+              >
+                <ExcelIcon />
+              </button>
+              <button
+                type="button"
+                className="day-quick-edit-close"
+                disabled={exporting}
+                onClick={() => void exportShownMonth('pdf')}
+                aria-label="PDF로 저장"
+                title="PDF로 저장 (일자별 목록)"
+              >
+                <PdfIcon />
               </button>
             </div>
             <div className="flex shrink-0 items-center gap-1">

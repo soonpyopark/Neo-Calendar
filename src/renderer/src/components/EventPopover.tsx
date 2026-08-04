@@ -1,11 +1,15 @@
 import {
   useEffect,
+  useRef,
+  useState,
   type CSSProperties,
   type ReactElement,
   type RefObject
 } from 'react'
 import { useAppDialog } from './AppDialogProvider'
+import { EventCopyDateFlyout } from './EventCopyDateFlyout'
 import { EventDetailCalendarName, EventDetailContent } from './EventDetailContent'
+import { shiftDateKey } from '../lib/shiftEventDates'
 import {
   getAnchoredPopoverPosition,
   getCenteredPanelStyle,
@@ -47,6 +51,9 @@ export type EventPopoverProps = {
   onToggleCompleted?: (event: CalendarEvent, completed: boolean) => void
   onShiftDate?: (event: CalendarEvent, deltaDays: number) => void
   shifting?: boolean
+  /** Copy this occurrence onto another date (single instance). */
+  onCopyToDate?: (event: CalendarEvent, targetDateKey: string) => void | Promise<void>
+  copying?: boolean
   /** Inline stack base z-index (wrapper); shell uses +1. Default 70. */
   zIndex?: number
   /** Raise this panel above sibling overlays (e.g. quick edit). */
@@ -67,12 +74,16 @@ export function EventPopover({
   onToggleCompleted,
   onShiftDate,
   shifting = false,
+  onCopyToDate,
+  copying = false,
   zIndex = 70,
   onRaise
 }: EventPopoverProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const { confirm } = useAppDialog()
   const shellZIndex = zIndex + 1
+  const [copyFlyoutOpen, setCopyFlyoutOpen] = useState(false)
+  const copyTriggerRef = useRef<HTMLButtonElement>(null)
   const popoverOptions = {
     width: EVENT_DETAIL_PANEL_WIDTH,
     estimatedHeight: EVENT_DETAIL_PANEL_HEIGHT,
@@ -230,6 +241,25 @@ export function EventPopover({
                     </button>
                   </>
                 ) : null}
+                {onCopyToDate ? (
+                  <button
+                    ref={copyTriggerRef}
+                    type="button"
+                    className={toolbarBtnClass}
+                    onClick={() => setCopyFlyoutOpen((open) => !open)}
+                    aria-label="다른 날짜로 복사"
+                    title="다른 날짜로 복사"
+                    aria-expanded={copyFlyoutOpen}
+                    disabled={copying || shifting}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                      <path
+                        fill="currentColor"
+                        d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={toolbarBtnClass}
@@ -281,6 +311,23 @@ export function EventPopover({
           />
         </div>
       </div>
+
+      {onCopyToDate ? (
+        <EventCopyDateFlyout
+          open={copyFlyoutOpen}
+          defaultDate={shiftDateKey(dayKey || event.startDate, 1)}
+          anchorRef={copyTriggerRef}
+          busy={copying}
+          onClose={() => {
+            if (!copying) setCopyFlyoutOpen(false)
+          }}
+          onConfirm={async (targetDate) => {
+            if (copying) return
+            await onCopyToDate(event, targetDate)
+            setCopyFlyoutOpen(false)
+          }}
+        />
+      ) : null}
     </div>
   )
 }

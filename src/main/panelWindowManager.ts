@@ -68,9 +68,10 @@ const EXPLICIT_CLOSE_ONLY_SLOTS = new Set<PanelSlot>(['dayListPreview'])
 const NORMAL_ZORDER_SLOTS = new Set<PanelSlot>(['dayListPreview'])
 
 /**
- * Confirm / scope dialogs that must stay above sibling panels (quickEdit, detail).
- * Without this, a checkbox click in quickEdit can refocus that window and cover
- * the newly opened recurrence-complete dialog.
+ * Confirm / scope dialogs (and the full event editor) that must stay above sibling
+ * panels (quickEdit, detail). Without this, a click/focus bounce in quickEdit can
+ * cover a newly opened editor or recurrence-complete dialog.
+ * Order matters: earlier slots win when several are open (scope above editor).
  */
 const MODAL_ABOVE_SIBLINGS = new Set<PanelSlot>([
   'recurrenceScope',
@@ -78,7 +79,8 @@ const MODAL_ABOVE_SIBLINGS = new Set<PanelSlot>([
   'login',
   'eventResourceList',
   'attachmentViewer',
-  'headerTitleEditor'
+  'headerTitleEditor',
+  'eventEditor'
 ])
 
 type PanelEntry = {
@@ -506,8 +508,23 @@ export class PanelWindowManager {
     return false
   }
 
-  /** Mode switches / re-embed: tear down panels except the ones only the user closes. */
-  closeAll(): void {
+  /**
+   * Tear down floating panels.
+   * - Default: soft path — eventEditor gets save-if-dirty dismiss; dayListPreview stays
+   *   (user-owned reading surface).
+   * - `force: true`: hard-close every slot immediately (mode switch / re-embed). Soft
+   *   dismiss can leave an editor or 세로보기 stranded above a click-through WorkerW
+   *   calendar where the user cannot reliably dismiss it.
+   */
+  closeAll(options?: { force?: boolean }): void {
+    if (options?.force) {
+      const slots = Array.from(this.entriesBySlot.keys())
+      for (const slot of slots) {
+        this.closeSlot(slot)
+      }
+      return
+    }
+
     const dismissableSlots = Array.from(this.entriesBySlot.keys()).filter(
       (slot) => !EXPLICIT_CLOSE_ONLY_SLOTS.has(slot)
     )

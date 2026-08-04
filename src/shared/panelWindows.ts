@@ -369,13 +369,14 @@ export function computePanelWindowBounds(options: {
   }
 
   if (init.kind === 'eventEditor') {
+    // Extra +56px for the title row moved below the toolbar (edit existing: ±1D / copy).
     return centerInMainWindow({
       mainOrigin,
       mainSize,
       workArea,
       width: Math.min(752, mainSize.width - 32, workArea.width - VIEWPORT_PAD * 2),
       height: Math.min(
-        Math.round(mainSize.height * 0.92) + 44,
+        Math.round(mainSize.height * 0.92) + 100,
         mainSize.height - VIEWPORT_PAD * 2,
         workArea.height - VIEWPORT_PAD * 2
       )

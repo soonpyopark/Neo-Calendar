@@ -129,6 +129,9 @@ export function SecurityPanel({ settings, onSaveSettings }: SecurityPanelProps):
     try {
       const picked = await window.neoCalendar.pickCalendarImportFile()
       if (picked.cancelled) return
+      if (picked.kind !== 'text') {
+        throw new Error('보안설정은 JSON 파일로만 가져올 수 있습니다.')
+      }
 
       const { allowedIpCidrs: nextList } = parseSecuritySettingsPayload(picked.content)
       const ok = await confirm(

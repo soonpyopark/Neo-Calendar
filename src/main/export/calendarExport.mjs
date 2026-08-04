@@ -264,33 +264,50 @@ function measureDayListEventHeight(doc, event, textWidth) {
 
 /**
  * Draw a day-list title line with `(완료)` in #0070CE bold.
+ * PDFKit's `continued` + per-run `width` wraps the rest of the title onto a new
+ * line after the styled `(완료)` run — place runs by advancing X instead.
  * @param {import('pdfkit').default} doc
  * @param {string} head
  * @param {number} textX
  * @param {number} y
  * @param {number} textWidth
+ * @returns {number} height consumed
  */
 function drawDayListHead(doc, head, textX, y, textWidth) {
   const runs = splitEventTitleRuns(head)
   doc.fontSize(PDF_EVENT_FONT_SIZE)
   if (runs.length === 0) {
-    doc.font('Body').fillColor(EXPORT_COLORS.body).text('', textX, y, { width: textWidth })
-    return
+    doc.font('Body').fillColor(EXPORT_COLORS.body)
+    return PDF_MIN_EVENT_BAR_HEIGHT
   }
-  runs.forEach((run, index) => {
-    const isLast = index === runs.length - 1
+
+  const maxWidth = Math.max(1, textWidth)
+  const right = textX + maxWidth
+  let x = textX
+  let lineY = y
+  let lines = 1
+
+  for (const run of runs) {
     if (run.completed) {
       doc.font('Bold').fillColor(COMPLETED_LABEL_COLOR)
     } else {
       doc.font('Body').fillColor(EXPORT_COLORS.body)
     }
-    doc.text(run.text, index === 0 ? textX : undefined, index === 0 ? y : undefined, {
-      width: textWidth,
-      continued: !isLast,
-      lineBreak: true,
+    const runWidth = doc.widthOfString(run.text)
+    if (x > textX && x + runWidth > right) {
+      x = textX
+      lineY += doc.currentLineHeight()
+      lines += 1
+    }
+    doc.text(run.text, x, lineY, {
+      lineBreak: false,
+      continued: false,
     })
-  })
+    x += runWidth
+  }
+
   doc.font('Body').fillColor(EXPORT_COLORS.body)
+  return Math.max(PDF_MIN_EVENT_BAR_HEIGHT, lines * doc.currentLineHeight())
 }
 
 /**
@@ -306,11 +323,7 @@ function drawDayListEvent(doc, event, textX, y, textWidth) {
   const detailText = getDayListDetailText(event);
 
   doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE);
-  const headHeight = Math.max(
-    PDF_MIN_EVENT_BAR_HEIGHT,
-    doc.heightOfString(head, { width: Math.max(1, textWidth) }),
-  );
-  drawDayListHead(doc, head, textX, y, textWidth);
+  const headHeight = drawDayListHead(doc, head, textX, y, textWidth);
 
   if (!detailText) return headHeight;
 

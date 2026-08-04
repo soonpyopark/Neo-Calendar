@@ -532,11 +532,42 @@ export function installBrowserNeoCalendar(): void {
         store: result.store
       }
     },
+    importBackupZipFromPath: async () => {
+      throw new Error('브라우저에서는 파일 선택으로 ZIP을 가져와 주세요.')
+    },
+    exportCalendarZip: async () => {
+      throw new Error('브라우저에서는 전체 ZIP 백업 내보내기를 사용해 주세요.')
+    },
+    importCalendarZipFromPath: async () => {
+      throw new Error('브라우저에서는 JSON·ICS·CSV 가져오기를 사용해 주세요.')
+    },
     pickCalendarImportFile: async () => {
-      const file = await pickSingleFile('.json,.ics,.csv,application/json,text/calendar,text/csv')
+      const file = await pickSingleFile(
+        '.json,.ics,.csv,.zip,application/json,text/calendar,text/csv,application/zip'
+      )
       if (!file) return { cancelled: true as const }
+      if (file.name.toLowerCase().endsWith('.zip')) {
+        const form = new FormData()
+        form.append('file', file, file.name)
+        const result = await httpForm<{
+          ok: boolean
+          attachmentFiles?: number
+        }>('/api/backup/import', form)
+        window.dispatchEvent(new CustomEvent('neo-store-changed'))
+        return {
+          cancelled: false as const,
+          kind: 'zip-restored' as const,
+          filename: file.name,
+          attachmentFiles: result.attachmentFiles ?? 0
+        }
+      }
       const content = await file.text()
-      return { cancelled: false as const, content, filename: file.name }
+      return {
+        cancelled: false as const,
+        kind: 'text' as const,
+        content,
+        filename: file.name
+      }
     },
 
     addEvent: (input: EventInput) => http<CalendarEvent>('POST', '/api/events', input),
@@ -555,6 +586,12 @@ export function installBrowserNeoCalendar(): void {
         form
       )
     },
+    copyEventAttachments: (sourceEventId, targetEventId) =>
+      http<CalendarEvent>(
+        'POST',
+        `/api/events/${encodeURIComponent(targetEventId)}/attachments/copy-from`,
+        { sourceEventId }
+      ),
     removeEventAttachment: (eventId, attachmentId) =>
       http<CalendarEvent>(
         'DELETE',

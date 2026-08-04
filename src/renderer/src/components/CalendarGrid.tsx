@@ -101,6 +101,7 @@ import {
   applyRecurringDelete,
   applyRecurringEdit as applyRecurringEditCore
 } from '../lib/recurrenceMutations'
+import { copyEventToDate } from '../lib/copyEventToDate'
 import { applyEventDateShift } from '../lib/shiftEventDates'
 import {
   getPrimaryEventLinkUrl,
@@ -1225,10 +1226,25 @@ export function CalendarGrid({
     setPendingEdit(null)
     setPendingDelete(null)
     setPendingComplete(null)
+    setPendingShift(null)
     setSearchOpen(false)
     setSettingsOpen(false)
     setLoginOpen(false)
     setLoginError(null)
+    setHeaderTitleEditorOpen(false)
+    setExportOptionsOpen(false)
+    setDayListPreviewOpen(false)
+    // Floating panels may outlive React state — ask main to tear them down too.
+    window.neoCalendar?.closePanelSlot?.('dayListPreview')
+    window.neoCalendar?.closePanelSlot?.('search')
+    window.neoCalendar?.closePanelSlot?.('settings')
+    window.neoCalendar?.closePanelSlot?.('eventEditor')
+    window.neoCalendar?.closePanelSlot?.('eventDetail')
+    window.neoCalendar?.closePanelSlot?.('quickEdit')
+    window.neoCalendar?.closePanelSlot?.('headerTitleEditor')
+    window.neoCalendar?.closePanelSlot?.('exportOptions')
+    window.neoCalendar?.closePanelSlot?.('recurrenceScope')
+    window.neoCalendar?.closePanelSlot?.('login')
   }, [])
 
   // Keep open detail in sync when store patches the same event (preserve occurrence day).
@@ -1472,7 +1488,8 @@ export function CalendarGrid({
         closeOverlays()
         return
       }
-      // Re-embed → close overlays so they aren't stranded under desktop icons.
+      // Re-embed / enter desktop under icons — clear overlays so they aren't stranded
+      // on a click-through WorkerW surface. Do NOT clear on temporary unlock (suspend).
       if (status.mode === 'desktop' && status.embedded) {
         closeOverlays()
         requestAnimationFrame(() => publishHitZonesRef.current?.())
@@ -1895,6 +1912,31 @@ export function CalendarGrid({
       fromSearch: true,
       pointerScreen: { x: screenX, y: screenY }
     })
+  }
+
+  const handleSearchEdit = ({
+    event,
+    date,
+    dayKey
+  }: {
+    event: CalendarEvent
+    date: Date
+    dayKey: string
+    clientX: number
+    clientY: number
+    screenX: number
+    screenY: number
+  }): void => {
+    if (!requireEdit()) return
+    setViewDate(date)
+    setSelectedKey(dayKey)
+    setViewMode('month')
+    const master = findMasterEvent(event)
+    if (!master) {
+      void alert('일정을 찾을 수 없습니다.')
+      return
+    }
+    openEventEditor(master, { defaultDate: dayKey })
   }
 
   const handleReorderEvents = useCallback(
@@ -2797,6 +2839,7 @@ export function CalendarGrid({
           tags={store.tags}
           onClose={() => setSearchOpen(false)}
           onSelectResult={handleSearchSelect}
+          onEditResult={handleSearchEdit}
         />
       ) : null}
       {inlineOverlays ? (
@@ -2980,6 +3023,28 @@ export function CalendarGrid({
               setShiftingEvent(false)
             }
           }}
+          onCopyEvent={async (event, targetDateKey) => {
+            if (!requireEdit()) return
+            const master = findMasterEvent(event)
+            if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const occurrenceDate =
+              getOccurrenceDate(event, quickEdit.dateKey) || master.startDate
+            try {
+              await copyEventToDate({
+                master,
+                occurrenceDate,
+                targetStartDate: targetDateKey,
+                addEvent
+              })
+              setQuickEdit(null)
+              clearEventDetail()
+            } catch (error) {
+              await alert(
+                error instanceof Error ? error.message : '일정을 복사하지 못했습니다.'
+              )
+              throw error
+            }
+          }}
           onOpenMore={(event) => {
             if (event?.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
             openEventEditor(event ?? null, {
@@ -3107,6 +3172,27 @@ export function CalendarGrid({
               }
             })()
           }}
+          onCopyToDate={async (event, targetDateKey) => {
+            if (!requireEdit()) return
+            const master = findMasterEvent(event)
+            if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+            const occurrenceDate =
+              getOccurrenceDate(event, eventPopover.dayKey) || master.startDate
+            try {
+              await copyEventToDate({
+                master,
+                occurrenceDate,
+                targetStartDate: targetDateKey,
+                addEvent
+              })
+              clearEventDetail()
+            } catch (error) {
+              await alert(
+                error instanceof Error ? error.message : '일정을 복사하지 못했습니다.'
+              )
+              throw error
+            }
+          }}
         />
       ) : null}
 
@@ -3177,6 +3263,29 @@ export function CalendarGrid({
                     master.startDate
                   setPendingDelete({ master, occurrenceDate })
                   setScopeDialog({ mode: 'delete' })
+                }
+              : undefined
+          }
+          onCopyToDate={
+            editor.event
+              ? async (targetDateKey) => {
+                  if (!requireEdit()) return
+                  const master = findMasterEvent(editor.event)
+                  if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) {
+                    await alert('일정을 찾을 수 없습니다.')
+                    return
+                  }
+                  const occurrenceDate =
+                    editor.occurrenceDate ||
+                    getOccurrenceDate(editor.event, selectedKey) ||
+                    master.startDate
+                  await copyEventToDate({
+                    master,
+                    occurrenceDate,
+                    targetStartDate: targetDateKey,
+                    addEvent
+                  })
+                  dismissEditorAfterSave()
                 }
               : undefined
           }

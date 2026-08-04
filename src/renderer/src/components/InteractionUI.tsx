@@ -49,7 +49,8 @@ const PORTAL_FLYOUT_SELECTOR = [
   '.attachment-viewer-root',
   '.header-title-editor-backdrop',
   '.header-title-editor-inline-wrap',
-  '.header-title-editor-panel'
+  '.header-title-editor-panel',
+  '.event-copy-date-flyout'
 ].join(', ')
 
 function isPortalFlyoutTarget(target: EventTarget | null): boolean {

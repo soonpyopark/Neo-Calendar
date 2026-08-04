@@ -6,8 +6,11 @@ export const QUICK_EDIT_CREATE_ROW_PX = 36
 export const QUICK_EDIT_BODY_LAYOUT_PX = 24
 export const QUICK_EDIT_MIN_BODY_HEIGHT = 72
 export const QUICK_EDIT_VIEWPORT_PAD = 5
-/** Fixed month/year quick-edit size, shared by inline and floating surfaces. */
-export const QUICK_EDIT_MONTH_YEAR_WIDTH = 300
+/**
+ * Fixed month/year quick-edit size, shared by inline and floating surfaces.
+ * Wide enough for footer tools (color / mark / link / attach / edit / trash / ±1D / copy).
+ */
+export const QUICK_EDIT_MONTH_YEAR_WIDTH = 330
 export const QUICK_EDIT_MONTH_YEAR_HEIGHT = 357
 
 export type QuickEditViewMode = 'year' | 'week' | 'month'
@@ -141,13 +144,13 @@ export function computeQuickEditPanelSize(options: {
     anchor && anchor.width > 0 && anchor.height > 0 ? anchor : null
 
   if (!usableAnchor) {
-    const width = 320
+    const width = QUICK_EDIT_MONTH_YEAR_WIDTH
     const height = Math.max(280, floorBody + QUICK_EDIT_CHROME_HEIGHT)
     return { width, height }
   }
 
   const padX = 12
-  const width = Math.max(usableAnchor.width + padX * 2, 300)
+  const width = Math.max(usableAnchor.width + padX * 2, QUICK_EDIT_MONTH_YEAR_WIDTH)
   const desiredBody = Math.max(
     floorBody,
     Math.round(usableAnchor.height) + bodyExtra,
@@ -187,12 +190,8 @@ export function computeQuickEditWindowBounds(options: {
   let top: number
 
   if (!usableAnchor) {
-    left =
-      mainOrigin.x +
-      Math.max(0, (320 - panel.width) / 2)
-    top =
-      mainOrigin.y +
-      Math.max(0, (280 - panel.height) / 2)
+    left = mainOrigin.x + Math.max(0, (mainSize.width - panel.width) / 2)
+    top = mainOrigin.y + Math.max(0, (mainSize.height - panel.height) / 2)
   } else {
     const anchorScreen = {
       top: mainOrigin.y + usableAnchor.top,

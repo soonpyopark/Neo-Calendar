@@ -14,7 +14,9 @@ import { InteractionUI } from './InteractionUI'
 import { listDeletableCompletedEvents } from '../lib/deleteCompletedForDay'
 import { DayColorPalette } from './DayColorPalette'
 import { DayHighlightPalette } from './DayHighlightPalette'
+import { EventCopyDateFlyout } from './EventCopyDateFlyout'
 import { EmojiPickerButton } from './EmojiPickerButton'
+import { shiftDateKey } from '../lib/shiftEventDates'
 import { EventAccentGlyph } from './EventAccentGlyph'
 import { EventAttachButton } from './EventAttachButton'
 import { EventLinkButton } from './EventLinkButton'
@@ -115,6 +117,8 @@ export type DayQuickEditPopoverProps = {
   onEventLinkChange?: (event: CalendarEvent, links: EventLink[]) => void
   onReorderEvents?: (ordered: DayReorderItem[], dayKey: string) => void | Promise<void>
   onShiftEvent?: (event: CalendarEvent, deltaDays: number) => void | Promise<void>
+  /** Copy selected event onto another date (single instance; closes panel after). */
+  onCopyEvent?: (event: CalendarEvent, targetDateKey: string) => void | Promise<void>
   onOpenMore: (event?: CalendarEvent | null) => void
   onOpenEvent?: (
     event: CalendarEvent,
@@ -183,7 +187,7 @@ function buildQuickEditStyle(
   }
 
   if (!usableAnchor) {
-    const width = 320
+    const width = QUICK_EDIT_MONTH_YEAR_WIDTH
     const height = Math.max(280, floorBody + QUICK_EDIT_CHROME_HEIGHT)
     const clamped = clampRectToViewport({
       top: (window.innerHeight - height) / 2,
@@ -207,7 +211,7 @@ function buildQuickEditStyle(
   }
 
   const padX = 12
-  const width = Math.max(usableAnchor.width + padX * 2, 300)
+  const width = Math.max(usableAnchor.width + padX * 2, QUICK_EDIT_MONTH_YEAR_WIDTH)
   const desiredBody = Math.max(
     floorBody,
     Math.round(usableAnchor.height) + bodyExtra,
@@ -272,6 +276,7 @@ export function DayQuickEditPopover({
   onEventLinkChange,
   onReorderEvents,
   onShiftEvent,
+  onCopyEvent,
   onOpenMore,
   onEditEvent,
   onOpenEvent,
@@ -288,6 +293,9 @@ export function DayQuickEditPopover({
   const [draftTagIds, setDraftTagIds] = useState<string[]>([])
   const [draftLinks, setDraftLinks] = useState<EventLink[]>([])
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(focusEvent)
+  const [copyFlyoutOpen, setCopyFlyoutOpen] = useState(false)
+  const [copyBusy, setCopyBusy] = useState(false)
+  const copyTriggerRef = useRef<HTMLButtonElement>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [paletteStyle, setPaletteStyle] = useState<CSSProperties | undefined>()
   const [optimisticDayColor, setOptimisticDayColor] = useState<string | null>(dayColor)
@@ -1142,6 +1150,62 @@ export function DayQuickEditPopover({
                 if (selectedEvent) void onAttachFiles?.(selectedEvent)
               }}
             />
+            {[-1, 1].map((deltaDays) => {
+              const label = deltaDays < 0 ? '-1D' : '+1D'
+              const disabled =
+                !canEdit ||
+                !selectedEvent ||
+                selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID ||
+                !onShiftEvent
+              return (
+                <button
+                  key={deltaDays}
+                  type="button"
+                  className="day-quick-edit-edit text-[9px] font-bold tabular-nums"
+                  title={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
+                  aria-label={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!selectedEvent || disabled) return
+                    void onShiftEvent(selectedEvent, deltaDays)
+                  }}
+                >
+                  {label}
+                </button>
+              )
+            })}
+            {(() => {
+              const copyDisabled =
+                !canEdit ||
+                !selectedEvent ||
+                selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID ||
+                !onCopyEvent ||
+                copyBusy
+              return (
+                <button
+                  ref={copyTriggerRef}
+                  type="button"
+                  className="day-quick-edit-edit"
+                  title="다른 날짜로 복사"
+                  aria-label="다른 날짜로 복사"
+                  aria-expanded={copyFlyoutOpen}
+                  disabled={copyDisabled}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    if (copyDisabled) return
+                    setCopyFlyoutOpen((open) => !open)
+                  }}
+                >
+                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+                    <path
+                      fill="currentColor"
+                      d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                    />
+                  </svg>
+                </button>
+              )
+            })()}
             <button
               type="button"
               className="day-quick-edit-edit"
@@ -1183,33 +1247,29 @@ export function DayQuickEditPopover({
                 </svg>
               </button>
             ) : null}
-            {[-1, 1].map((deltaDays) => {
-              const label = deltaDays < 0 ? '-1D' : '+1D'
-              const disabled =
-                !canEdit ||
-                !selectedEvent ||
-                selectedEvent.calendarId === HOLIDAYS_KR_CALENDAR_ID ||
-                !onShiftEvent
-              return (
-                <button
-                  key={deltaDays}
-                  type="button"
-                  className="day-quick-edit-edit text-[9px] font-bold tabular-nums"
-                  title={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
-                  aria-label={deltaDays < 0 ? '1일 전으로 이동' : '1일 후로 이동'}
-                  disabled={disabled}
-                  onClick={() => {
-                    if (!selectedEvent || disabled) return
-                    void onShiftEvent(selectedEvent, deltaDays)
-                  }}
-                >
-                  {label}
-                </button>
-              )
-            })}
           </div>
         </footer>
       </InteractionUI>
+
+      <EventCopyDateFlyout
+        open={copyFlyoutOpen}
+        defaultDate={shiftDateKey(dateKey, 1)}
+        anchorRef={copyTriggerRef}
+        busy={copyBusy}
+        onClose={() => {
+          if (!copyBusy) setCopyFlyoutOpen(false)
+        }}
+        onConfirm={async (targetDate) => {
+          if (!selectedEvent || !onCopyEvent || copyBusy) return
+          setCopyBusy(true)
+          try {
+            await onCopyEvent(selectedEvent, targetDate)
+            setCopyFlyoutOpen(false)
+          } finally {
+            setCopyBusy(false)
+          }
+        }}
+      />
 
       {paletteOpen && canEdit
         ? createPortal(

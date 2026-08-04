@@ -15,6 +15,7 @@ import {
   openRecurrenceCompletePanel,
   openRecurrenceDeletePanel
 } from '../../lib/recurrenceComplete'
+import { copyEventToDate } from '../../lib/copyEventToDate'
 import { applyEventDateShift } from '../../lib/shiftEventDates'
 import { HOLIDAYS_KR_CALENDAR_ID } from '../../../../shared/calendarDefaults'
 import type { CalendarEvent } from '../../../../shared/calendarTypes'
@@ -41,6 +42,7 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
     mode: 'complete' | 'delete' | 'shift'
   } | null>(null)
   const [shifting, setShifting] = useState(false)
+  const [copying, setCopying] = useState(false)
   const [pendingComplete, setPendingComplete] = useState<{
     master: CalendarEvent
     occurrenceDate: string
@@ -199,6 +201,7 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
           })
         }}
         shifting={shifting}
+        copying={copying}
         onShiftDate={(target, deltaDays) => {
           if (!canEdit || shifting) return
           const master = findMasterEvent(store.events, target)
@@ -223,6 +226,27 @@ export function EventDetailPanelHost({ init }: { init: Init }): ReactElement | n
               setShifting(false)
             }
           })()
+        }}
+        onCopyToDate={async (target, targetDateKey) => {
+          if (!canEdit || copying) return
+          const master = findMasterEvent(store.events, target)
+          if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+          const occurrenceDate = getOccurrenceDate(target, dayKey) || master.startDate
+          setCopying(true)
+          try {
+            await copyEventToDate({
+              master,
+              occurrenceDate,
+              targetStartDate: targetDateKey,
+              addEvent
+            })
+            closePanel()
+          } catch (error) {
+            await alert(error instanceof Error ? error.message : '일정을 복사하지 못했습니다.')
+            throw error
+          } finally {
+            setCopying(false)
+          }
         }}
       />
 

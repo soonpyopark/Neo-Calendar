@@ -47,6 +47,7 @@ function streamAttachment(
 /**
  * Browser attachment API:
  *  POST   /api/events/:id/attachments            multipart `files` (or JSON base64)
+ *  POST   /api/events/:id/attachments/copy-from  JSON `{ sourceEventId }` (deep copy files)
  *  DELETE /api/events/:id/attachments/:aid
  *  GET    /api/events/:id/attachments/:aid/file  download
  *  POST   /api/events/:id/attachments/:aid/open  download (browser-friendly)
@@ -63,11 +64,12 @@ export async function tryHandleAttachmentRequest(options: {
   const method = (req.method ?? 'GET').toUpperCase()
 
   const postMatch = path.match(/^\/api\/events\/([^/]+)\/attachments\/?$/)
+  const copyMatch = path.match(/^\/api\/events\/([^/]+)\/attachments\/copy-from\/?$/)
   const itemMatch = path.match(
     /^\/api\/events\/([^/]+)\/attachments\/([^/]+)(?:\/(file|open))?\/?$/
   )
 
-  if (!postMatch && !itemMatch) return false
+  if (!postMatch && !copyMatch && !itemMatch) return false
 
   const token = AuthService.extractToken(
     req.headers.authorization,
@@ -115,6 +117,24 @@ export async function tryHandleAttachmentRequest(options: {
       }
 
       const updated = attachments.addFromBuffers(eventId, uploads)
+      onStoreMutated()
+      sendJson(res, 200, updated)
+      return true
+    }
+
+    if (copyMatch && method === 'POST') {
+      const targetEventId = decodeURIComponent(copyMatch[1])
+      const raw = await readRawBody(req)
+      const text = raw.toString('utf8').trim()
+      const body = text
+        ? (JSON.parse(text) as { sourceEventId?: string })
+        : ({} as { sourceEventId?: string })
+      const sourceEventId = String(body.sourceEventId ?? '').trim()
+      if (!sourceEventId) {
+        sendJson(res, 400, { ok: false, error: '원본 일정 ID가 필요합니다.' })
+        return true
+      }
+      const updated = attachments.copyBetweenEvents(sourceEventId, targetEventId)
       onStoreMutated()
       sendJson(res, 200, updated)
       return true

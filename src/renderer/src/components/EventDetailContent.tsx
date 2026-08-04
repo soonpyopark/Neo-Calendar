@@ -14,7 +14,7 @@ import { getCalendarTheme } from '../lib/colors'
 import { cn } from '../lib/cn'
 import { EventTagIcons } from './EventTagIcons'
 import { LinkChainIcon } from './LinkChainIcon'
-import { LinkifiedText } from './LinkifiedText'
+import { EventDetailDescription } from './EventDetailDescription'
 import type { CalendarEvent, CalendarRecord, TagRecord } from '../../../shared/calendarTypes'
 
 export type EventDetailContentProps = {
@@ -241,11 +241,7 @@ export function EventDetailContent({
               ))}
             </ul>
           ) : null}
-          {description ? (
-            <p className="mt-3 w-full max-w-full overflow-x-hidden whitespace-pre-wrap break-all text-sm leading-relaxed text-gcal-body">
-              <LinkifiedText text={description} />
-            </p>
-          ) : null}
+          {description ? <EventDetailDescription text={description} /> : null}
         </div>
       </div>
     </>

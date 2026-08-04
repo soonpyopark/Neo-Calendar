@@ -7,6 +7,7 @@ import {
   openRecurrenceDeletePanel
 } from '../../lib/recurrenceComplete'
 import { useCalendarStore } from '../../hooks/useCalendarStore'
+import { copyEventToDate } from '../../lib/copyEventToDate'
 import {
   expandEventsForRange,
   getOccurrenceDate,
@@ -196,6 +197,28 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
                   setPendingDelete({ master, occurrenceDate })
                   setScopeDialog({ mode: 'delete' })
                 }
+              }
+            : undefined
+        }
+        onCopyToDate={
+          resolvedEvent
+            ? async (targetDateKey) => {
+                const master = findMasterEvent(store.events, resolvedEvent)
+                if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) {
+                  await alert('일정을 찾을 수 없습니다.')
+                  return
+                }
+                const occurrenceDate =
+                  init.occurrenceDate ||
+                  getOccurrenceDate(resolvedEvent, init.defaultDate) ||
+                  master.startDate
+                await copyEventToDate({
+                  master,
+                  occurrenceDate,
+                  targetStartDate: targetDateKey,
+                  addEvent
+                })
+                closePanel()
               }
             : undefined
         }

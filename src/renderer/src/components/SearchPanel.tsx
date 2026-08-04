@@ -50,7 +50,10 @@ export type SearchPanelProps = {
   calendars: CalendarRecord[]
   tags?: TagRecord[]
   onClose: () => void
+  /** Single click — open detail / jump to the day. */
   onSelectResult: (payload: SearchSelectPayload) => void
+  /** Double click — open the full detail editor. */
+  onEditResult?: (payload: SearchSelectPayload) => void
 }
 
 const PAGE_SIZE_OPTIONS = SEARCH_PAGE_SIZE_OPTIONS
@@ -274,7 +277,8 @@ export function SearchPanel({
   calendars,
   tags = [],
   onClose,
-  onSelectResult
+  onSelectResult,
+  onEditResult
 }: SearchPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
   const [query, setQuery] = useState('')
@@ -290,6 +294,14 @@ export function SearchPanel({
   const shellRef = useRef<HTMLDivElement>(null)
   const headerBlockRef = useRef<HTMLDivElement>(null)
   const resultsRef = useRef<HTMLDivElement>(null)
+  /** Distinguish single-click (detail) from double-click (editor). */
+  const resultClickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (resultClickTimerRef.current) clearTimeout(resultClickTimerRef.current)
+    }
+  }, [])
   const calendarById = useMemo(
     () => new Map((calendars ?? []).map((calendar) => [calendar.id, calendar])),
     [calendars]
@@ -652,8 +664,43 @@ export function SearchPanel({
                             'min-w-0 rounded-lg px-1 py-0.5 text-left transition-colors',
                             'hover:bg-gcal-surface focus:bg-gcal-surface focus:outline-none'
                           )}
+                          title={
+                            onEditResult
+                              ? '클릭: 상세 보기 · 더블클릭: 상세 편집'
+                              : '클릭: 상세 보기'
+                          }
                           onClick={(e) => {
-                            onSelectResult({
+                            const payload = {
+                              event,
+                              date: dateFromDateKey(dayKey),
+                              dayKey,
+                              clientX: e.clientX,
+                              clientY: e.clientY,
+                              screenX: e.screenX,
+                              screenY: e.screenY
+                            }
+                            if (!onEditResult) {
+                              onSelectResult(payload)
+                              return
+                            }
+                            // Wait briefly so a double-click opens the editor without also opening detail.
+                            if (resultClickTimerRef.current) {
+                              clearTimeout(resultClickTimerRef.current)
+                            }
+                            resultClickTimerRef.current = setTimeout(() => {
+                              resultClickTimerRef.current = null
+                              onSelectResult(payload)
+                            }, 280)
+                          }}
+                          onDoubleClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            if (!onEditResult) return
+                            if (resultClickTimerRef.current) {
+                              clearTimeout(resultClickTimerRef.current)
+                              resultClickTimerRef.current = null
+                            }
+                            onEditResult({
                               event,
                               date: dateFromDateKey(dayKey),
                               dayKey,

@@ -19,7 +19,13 @@ import {
   type ClickForwardClientZone
 } from './periodToolbarClickBridge'
 import { getEnvValue, loadDotEnv, resolveAdminCredentials } from './dotEnv'
-import { exportBackupZip, importBackupZip } from './calendarStore/backupZip'
+import {
+  exportBackupZip,
+  exportCalendarZip,
+  importBackupZip,
+  importBackupZipFromPath,
+  importCalendarZipFromPath
+} from './calendarStore/backupZip'
 import { forgetEnvHolidayKey, syncKoreanHolidays } from './calendarStore/holidaySync'
 import { exportCalendarMonth } from './export/exportService'
 import { SettingsStore } from './settingsStore'
@@ -51,6 +57,7 @@ import type {
   ClickForwardHitZone,
   DayCellHitZone,
   DesktopQuickEditContext,
+  LaunchMode,
   ModeStatus,
   OpenDayQuickEditPayload,
   QuickEditDeferToMainPayload,
@@ -367,7 +374,7 @@ function deferQuickEditToMain(payload: QuickEditDeferToMainPayload): void {
 /** WorkerW embedded: run period-toolbar action in renderer without undocking. */
 function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
   if (payload.action === CHROME_TOOLBAR_ACTIONS.enterWindow) {
-    panelWindowManager?.closeAll()
+    // Panels are force-closed in broadcastMode when the mode actually changes.
     desktopMode.enterWindow()
     return
   }
@@ -387,10 +394,24 @@ function triggerEmbeddedPeriodToolbar(payload: ToolbarClickPayload): void {
   win.webContents.send('toolbar-click', payload)
 }
 
+/** Last mode status sent to renderers — used to close panels only on real transitions. */
+let lastBroadcastMode: LaunchMode | null = null
+let lastBroadcastEmbedded: boolean | null = null
+
 function broadcastMode(status: ModeStatus): void {
-  if (status.mode === 'desktop') {
-    panelWindowManager?.closeAll()
+  // Force-close floating panels when entering desktop from window, leaving desktop
+  // for window mode, or re-embedding under icons. Soft dismiss can leave editors /
+  // 세로보기 above a click-through WorkerW surface the user cannot close.
+  // Do NOT close on temporary unlock (suspend) — panels stay usable while undocked.
+  const enteredDesktop = lastBroadcastMode === 'window' && status.mode === 'desktop'
+  const enteredWindow = lastBroadcastMode === 'desktop' && status.mode === 'window'
+  const reembedded =
+    status.mode === 'desktop' && status.embedded && lastBroadcastEmbedded === false
+  if (enteredDesktop || enteredWindow || reembedded) {
+    panelWindowManager?.closeAll({ force: true })
   }
+  lastBroadcastMode = status.mode
+  lastBroadcastEmbedded = status.embedded
   mainWindow?.webContents.send('mode-changed', status)
   tray?.rebuildMenu?.()
 }
@@ -593,6 +614,15 @@ function registerIpc(): void {
       }
       return
     }
+    // Panel may unregister before a late focus IPC arrives (e.g. Ctrl+S save → close).
+    // Never undock the WorkerW calendar for a non-main sender.
+    const senderWin = BrowserWindow.fromWebContents(event.sender)
+    if (senderWin && mainWindow && !mainWindow.isDestroyed() && senderWin !== mainWindow) {
+      if (!senderWin.isDestroyed()) {
+        focusWindowForTextInput(senderWin)
+      }
+      return
+    }
     desktopMode.focusForTextInput()
   })
 
@@ -611,10 +641,7 @@ function registerIpc(): void {
   ipcMain.handle('enter-desktop', () =>
     desktopMode.enterDesktop({ intentional: true, force: false })
   )
-  ipcMain.handle('enter-window', () => {
-    panelWindowManager?.closeAll()
-    return desktopMode.enterWindow()
-  })
+  ipcMain.handle('enter-window', () => desktopMode.enterWindow())
   ipcMain.handle('get-window-bounds', () => desktopMode.getWindowBounds())
   ipcMain.handle('set-window-bounds', (_event, bounds) => desktopMode.setWindowBounds(bounds))
 
@@ -717,11 +744,52 @@ function registerIpc(): void {
     }
     return importBackupZip(calendarStore, resolveNativeDialogParent(event), loginId)
   })
+  ipcMain.handle('calendar:import-backup-zip-path', async (_event, zipPath: string) => {
+    requireCap('backupStore')
+    const loginId = auth.getUser()?.loginId
+    if (!loginId) {
+      throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
+    }
+    const path = String(zipPath ?? '').trim()
+    if (!path) throw new Error('ZIP 경로가 없습니다.')
+    const result = importBackupZipFromPath(calendarStore, path, loginId)
+    notifyStoreChanged()
+    return result
+  })
+  ipcMain.handle('calendar:export-calendar-zip', async (event, calendarId: string) => {
+    if (!auth.getUser()?.loginId) {
+      throw new Error('내보내기는 로그인 후 사용할 수 있습니다.')
+    }
+    return exportCalendarZip(
+      calendarStore,
+      String(calendarId ?? ''),
+      resolveNativeDialogParent(event)
+    )
+  })
+  ipcMain.handle(
+    'calendar:import-calendar-zip-path',
+    async (_event, calendarId: string, zipPath: string) => {
+      const loginId = auth.getUser()?.loginId
+      if (!loginId) {
+        throw new Error('가져오기는 로그인 후 사용할 수 있습니다.')
+      }
+      const path = String(zipPath ?? '').trim()
+      if (!path) throw new Error('ZIP 경로가 없습니다.')
+      const result = importCalendarZipFromPath(
+        calendarStore,
+        String(calendarId ?? ''),
+        path,
+        loginId
+      )
+      notifyStoreChanged()
+      return result
+    }
+  )
   ipcMain.handle('calendar:pick-import-file', async (event) => {
     const options: Electron.OpenDialogOptions = {
       title: '캘린더 가져오기',
       filters: [
-        { name: '캘린더 파일', extensions: ['json', 'ics', 'csv'] },
+        { name: '캘린더 파일', extensions: ['json', 'ics', 'csv', 'zip'] },
         { name: '모든 파일', extensions: ['*'] }
       ],
       properties: ['openFile']
@@ -734,8 +802,22 @@ function registerIpc(): void {
       return { cancelled: true as const }
     }
     const filePath = result.filePaths[0]
+    const filename = basename(filePath)
+    if (filename.toLowerCase().endsWith('.zip')) {
+      return {
+        cancelled: false as const,
+        kind: 'zip' as const,
+        filePath,
+        filename
+      }
+    }
     const content = await readFile(filePath, 'utf8')
-    return { cancelled: false as const, content, filename: basename(filePath) }
+    return {
+      cancelled: false as const,
+      kind: 'text' as const,
+      content,
+      filename
+    }
   })
   ipcMain.handle('calendar:add-event', (_event, input: EventInput) => {
     const created = calendarStore.addEvent(input)
@@ -771,6 +853,14 @@ function registerIpc(): void {
     notifyStoreChanged()
     return updated
   })
+  ipcMain.handle(
+    'calendar:copy-attachments',
+    (_event, sourceEventId: string, targetEventId: string) => {
+      const updated = attachmentService.copyBetweenEvents(sourceEventId, targetEventId)
+      notifyStoreChanged()
+      return updated
+    }
+  )
   ipcMain.handle(
     'calendar:remove-attachment',
     (_event, eventId: string, attachmentId: string) => {

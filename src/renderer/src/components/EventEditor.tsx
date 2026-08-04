@@ -15,6 +15,13 @@ export type EventEditorProps = {
   onSave: (payload: Record<string, unknown>) => void | Promise<void>
   onDelete?: (event: CalendarEvent) => void | Promise<void>
   onEventRefresh?: (event: CalendarEvent) => void
+  /**
+   * Existing-event only. When omitted, ±1D adjusts the form dates in place.
+   * When provided (e.g. host wants store move + close), that path is used instead.
+   */
+  onShiftDate?: (deltaDays: number) => void | Promise<void>
+  /** Existing-event only — copy onto another date then typically close. */
+  onCopyToDate?: (targetDateKey: string) => void | Promise<void>
 }
 import { getDefaultCalendarId } from '../lib/calendarOrder'
 import { toDateKey } from '../lib/calendarUtils'
@@ -33,12 +40,15 @@ import { formatFileSize } from '../lib/formatFileSize'
 import { addEventAttachments, removeEventAttachment } from '../lib/eventAttachments'
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
+import { copyEventToDate } from '../lib/copyEventToDate'
 import { isSaveShortcut } from '../lib/keyboard'
 import { clampFixedPosition } from '../lib/popoverPosition'
+import { shiftDateKey } from '../lib/shiftEventDates'
 import { InteractionUI } from './InteractionUI'
 import { useAppDialog } from './AppDialogProvider'
 import DateInput from './DateInput'
 import { EmojiPickerButton } from './EmojiPickerButton'
+import { EventCopyDateFlyout } from './EventCopyDateFlyout'
 import { EventMarkerShapeButton } from './EventMarkerShapeButton'
 import { QuickEditCalendarButton } from './QuickEditCalendarButton'
 import { QuickEditTagButton } from './QuickEditTagButton'
@@ -137,7 +147,9 @@ export function EventEditor({
   onClose,
   onSave,
   onDelete,
-  onEventRefresh
+  onEventRefresh,
+  onShiftDate,
+  onCopyToDate
 }: EventEditorProps) {
   const isFloating = surface === 'floating'
   const { alert, confirm } = useAppDialog()
@@ -148,6 +160,10 @@ export function EventEditor({
   const [allDay, setAllDay] = useState(true);
   const [startTime, setStartTime] = useState(DEFAULT_START_TIME);
   const [endTime, setEndTime] = useState(DEFAULT_END_TIME);
+  const [copyFlyoutOpen, setCopyFlyoutOpen] = useState(false)
+  const [copyBusy, setCopyBusy] = useState(false)
+  const [shiftBusy, setShiftBusy] = useState(false)
+  const copyTriggerRef = useRef(null)
   const [repeat, setRepeat] = useState('none');
   const [repeatEndMode, setRepeatEndMode] = useState('never');
   const [repeatUntil, setRepeatUntil] = useState('');
@@ -528,6 +544,49 @@ export function EventEditor({
     if (ok) onDelete(event);
   };
 
+  const canShiftOrCopy =
+    Boolean(event?.id) && event?.calendarId !== HOLIDAYS_KR_CALENDAR_ID
+
+  const handleShiftClick = async (deltaDays) => {
+    if (!canShiftOrCopy || shiftBusy || copyBusy) return
+    if (onShiftDate) {
+      setShiftBusy(true)
+      try {
+        await onShiftDate(deltaDays)
+      } finally {
+        setShiftBusy(false)
+      }
+      return
+    }
+    // Default: nudge the form dates (editor stays open for further edits / save).
+    if (startDate) setStartDate(shiftDateKey(startDate, deltaDays))
+    if (endDate) setEndDate(shiftDateKey(endDate, deltaDays))
+    if (repeatUntil) setRepeatUntil(shiftDateKey(repeatUntil, deltaDays))
+  }
+
+  const handleCopyConfirm = async (targetDate) => {
+    if (!canShiftOrCopy || !event?.id || copyBusy) return
+    setCopyBusy(true)
+    try {
+      if (onCopyToDate) {
+        await onCopyToDate(targetDate)
+      } else {
+        await copyEventToDate({
+          master: event,
+          occurrenceDate: startDate || event.startDate,
+          targetStartDate: targetDate,
+          addEvent: (input) => window.neoCalendar.addEvent(input)
+        })
+        onClose()
+      }
+      setCopyFlyoutOpen(false)
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '일정을 복사하지 못했습니다.')
+    } finally {
+      setCopyBusy(false)
+    }
+  }
+
   const insertTitleEmoji = (emoji) => {
     const el = titleInputRef.current;
     const { nextValue, nextPos } = insertTextAtCursor(el, title, emoji);
@@ -562,7 +621,7 @@ export function EventEditor({
       className={
         isFloating
           ? 'flex h-full min-h-full w-full items-center justify-center overflow-y-auto p-2'
-          : 'interaction-ui fixed inset-0 z-[85] flex items-center justify-center overflow-y-auto p-4'
+          : 'interaction-ui fixed inset-0 z-[90] flex items-center justify-center overflow-y-auto p-4'
       }
       role="presentation"
       onClick={isFloating ? undefined : handleCloseRequest}
@@ -589,100 +648,147 @@ export function EventEditor({
       >
         <div className="h-1" style={{ background: calendarTheme.base }} />
 
-        <div className="flex items-center gap-3 border-b border-gcal-border-light px-[18px] py-3.5">
-          <div className="event-editor-toolbar-icons flex shrink-0 items-center gap-1">
-            <label
-              className="event-editor-toolbar-check inline-flex shrink-0 cursor-pointer items-center justify-center border border-transparent text-gcal-muted transition-colors hover:border-gcal-border hover:bg-gcal-surface-2"
-              title={completed ? '미완료로 표시' : '완료로 표시'}
-            >
-              <input
-                type="checkbox"
-                className="day-quick-edit-check h-4 w-4"
-                checked={completed}
-                onChange={(e) => setCompleted(e.target.checked)}
-                aria-label={completed ? '미완료로 표시' : '완료로 표시'}
-              />
-            </label>
-            <EventMarkerShapeButton
-              buttonClassName="event-editor-toolbar-trigger event-editor-shape-trigger"
-              value={markerShape}
-              color={selectedCalendar?.color ?? calendarTheme.base}
-              onChange={setMarkerShape}
-            />
-            <EmojiPickerButton
-              title="이모지 추가"
-              buttonClassName="event-editor-toolbar-trigger event-editor-emoji-trigger"
-              onSelect={insertTitleEmoji}
-            />
-            <QuickEditCalendarButton
-              calendars={calendars}
-              value={calendarId}
-              buttonClassName="event-editor-toolbar-trigger"
-              onChange={setCalendarId}
-            />
-            <QuickEditTagButton
-              tags={tags}
-              value={tagIds}
-              buttonClassName="event-editor-toolbar-trigger"
-              onChange={setTagIds}
-            />
-          </div>
-          <input
-            ref={titleInputRef}
-            className={cn(
-              'min-w-0 flex-1 border-0 bg-transparent text-[22px] outline-none placeholder:text-gcal-muted',
-              completed ? 'text-gcal-muted line-through' : 'text-gcal-heading',
-            )}
-            placeholder="일정 추가 및 시간 설정"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            autoFocus
-          />
-          <div className="flex shrink-0 items-center gap-0.5">
-            <button
-              type="submit"
-              className="event-editor-action-btn"
-              aria-label="저장"
-              title="저장"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"
+        <div className="event-editor-header border-b border-gcal-border-light px-[18px] py-3">
+          <div className="flex items-center gap-3">
+            <div className="event-editor-toolbar-icons flex shrink-0 items-center gap-1">
+              <label
+                className="event-editor-toolbar-check inline-flex shrink-0 cursor-pointer items-center justify-center border border-transparent text-gcal-muted transition-colors hover:border-gcal-border hover:bg-gcal-surface-2"
+                title={completed ? '미완료로 표시' : '완료로 표시'}
+              >
+                <input
+                  type="checkbox"
+                  className="day-quick-edit-check h-4 w-4"
+                  checked={completed}
+                  onChange={(e) => setCompleted(e.target.checked)}
+                  aria-label={completed ? '미완료로 표시' : '완료로 표시'}
                 />
-              </svg>
-            </button>
-            {event?.id && onDelete && (
+              </label>
+              <EventMarkerShapeButton
+                buttonClassName="event-editor-toolbar-trigger event-editor-shape-trigger"
+                value={markerShape}
+                color={selectedCalendar?.color ?? calendarTheme.base}
+                onChange={setMarkerShape}
+              />
+              <EmojiPickerButton
+                title="이모지 추가"
+                buttonClassName="event-editor-toolbar-trigger event-editor-emoji-trigger"
+                onSelect={insertTitleEmoji}
+              />
+              <QuickEditCalendarButton
+                calendars={calendars}
+                value={calendarId}
+                buttonClassName="event-editor-toolbar-trigger"
+                onChange={setCalendarId}
+              />
+              <QuickEditTagButton
+                tags={tags}
+                value={tagIds}
+                buttonClassName="event-editor-toolbar-trigger"
+                onChange={setTagIds}
+              />
+            </div>
+            <div className="ml-auto flex shrink-0 items-center gap-0.5">
+              {canShiftOrCopy ? (
+                <>
+                  <button
+                    type="button"
+                    className="event-editor-action-btn event-editor-shift-btn"
+                    onClick={() => void handleShiftClick(-1)}
+                    aria-label="1일 전으로 이동"
+                    title="1일 전으로 이동"
+                    disabled={shiftBusy || copyBusy}
+                  >
+                    -1D
+                  </button>
+                  <button
+                    type="button"
+                    className="event-editor-action-btn event-editor-shift-btn"
+                    onClick={() => void handleShiftClick(1)}
+                    aria-label="1일 후로 이동"
+                    title="1일 후로 이동"
+                    disabled={shiftBusy || copyBusy}
+                  >
+                    +1D
+                  </button>
+                  <button
+                    ref={copyTriggerRef}
+                    type="button"
+                    className="event-editor-action-btn"
+                    onClick={() => setCopyFlyoutOpen((open) => !open)}
+                    aria-label="다른 날짜로 복사"
+                    title="다른 날짜로 복사"
+                    aria-expanded={copyFlyoutOpen}
+                    disabled={shiftBusy || copyBusy}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                      <path
+                        fill="currentColor"
+                        d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"
+                      />
+                    </svg>
+                  </button>
+                </>
+              ) : null}
               <button
-                type="button"
+                type="submit"
                 className="event-editor-action-btn"
-                onClick={() => void handleDelete()}
-                aria-label="삭제"
-                title="삭제"
+                aria-label="저장"
+                title="저장"
               >
                 <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
                   <path
                     fill="currentColor"
-                    d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                    d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"
                   />
                 </svg>
               </button>
-            )}
-            <button
-              type="button"
-              className="event-editor-action-btn"
-              onClick={handleCloseRequest}
-              aria-label="닫기"
-              title="닫기"
-            >
-              <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
-                <path
-                  fill="currentColor"
-                  d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
-                />
-              </svg>
-            </button>
+              {event?.id && onDelete && (
+                <button
+                  type="button"
+                  className="event-editor-action-btn"
+                  onClick={() => void handleDelete()}
+                  aria-label="삭제"
+                  title="삭제"
+                >
+                  <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                    <path
+                      fill="currentColor"
+                      d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"
+                    />
+                  </svg>
+                </button>
+              )}
+              <button
+                type="button"
+                className="event-editor-action-btn"
+                onClick={handleCloseRequest}
+                aria-label="닫기"
+                title="닫기"
+              >
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
+          <label className="event-editor-title-row mt-2.5 flex min-w-0 items-center gap-2.5">
+            <span className="shrink-0 text-sm text-gcal-muted">일정제목</span>
+            <input
+              ref={titleInputRef}
+              className={cn(
+                fieldClass,
+                'event-editor-title-input min-w-0 flex-1 text-[18px]',
+                completed && 'text-gcal-muted line-through',
+              )}
+              placeholder="일정 추가 및 시간 설정"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </label>
         </div>
 
         <div className="flex flex-col gap-2.5 border-b border-gcal-border-light bg-gcal-surface px-[18px] py-4">
@@ -959,7 +1065,10 @@ export function EventEditor({
           </div>
 
           <label className="mb-1 flex flex-col gap-1.5 text-sm text-gcal-muted">
-            설명
+            <span className="flex items-baseline gap-1.5">
+              <span>설명</span>
+              <span className="text-xs text-gcal-muted/80">(Ctrl+S로 저장)</span>
+            </span>
             <textarea
               className={fieldClass}
               value={description}
@@ -972,6 +1081,19 @@ export function EventEditor({
         </div>
       </form>
       </InteractionUI>
+
+      {canShiftOrCopy ? (
+        <EventCopyDateFlyout
+          open={copyFlyoutOpen}
+          defaultDate={shiftDateKey(startDate || event?.startDate || toDateKey(new Date()), 1)}
+          anchorRef={copyTriggerRef}
+          busy={copyBusy}
+          onClose={() => {
+            if (!copyBusy) setCopyFlyoutOpen(false)
+          }}
+          onConfirm={(targetDate) => void handleCopyConfirm(targetDate)}
+        />
+      ) : null}
     </div>
   );
 }

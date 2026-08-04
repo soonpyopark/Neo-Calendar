@@ -45,28 +45,30 @@ function toColorInputValue(color: string | null | undefined, fallback = '#9aa0a6
 }
 
 function NewTagForm({
-  tagsCount,
   busy,
+  disabled,
+  color,
   onCreate
 }: {
-  tagsCount: number
   busy: boolean
+  /** True while editing an existing tag — create fields pause; palette is shared. */
+  disabled: boolean
+  color: string
   onCreate: (payload: { name: string; color: string }) => Promise<void>
 }): ReactElement {
   const { alert } = useAppDialog()
   const [nameDraft, setNameDraft] = useState('')
-  const [colorDraft, setColorDraft] = useState(() => getDefaultCalendarColor(0))
 
   const handleCreate = async (): Promise<void> => {
+    if (disabled) return
     const name = nameDraft.trim()
     if (!name) {
       await alert('태그 이름을 입력해 주세요.')
       return
     }
     try {
-      await onCreate({ name, color: colorDraft })
+      await onCreate({ name, color })
       setNameDraft('')
-      setColorDraft(getDefaultCalendarColor(tagsCount + 1))
     } catch (err) {
       await alert(err instanceof Error ? err.message : '태그를 추가하지 못했습니다.')
     }
@@ -75,18 +77,15 @@ function NewTagForm({
   return (
     <div className="mb-6 space-y-4 rounded-xl border border-gcal-border-light bg-gcal-surface p-4">
       <div>
-        <FieldLabel>태그 색상</FieldLabel>
-        <CalendarColorPalette value={colorDraft} onChange={setColorDraft} />
-      </div>
-      <div>
         <FieldLabel>새 태그</FieldLabel>
         <div className="mt-1 flex flex-wrap items-center gap-2">
           <input
             type="text"
-            className={cn(fieldBoxClass, 'min-w-[10rem] flex-1')}
+            className={cn(fieldBoxClass, 'min-w-[10rem] flex-1 disabled:opacity-50')}
             value={nameDraft}
+            disabled={disabled || busy}
             onChange={(e) => setNameDraft(e.target.value)}
-            placeholder="예: 행정"
+            placeholder={disabled ? '수정 중에는 새 태그를 추가할 수 없습니다' : '예: 행정'}
             maxLength={32}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
@@ -98,7 +97,7 @@ function NewTagForm({
           <button
             type="button"
             className="settings-btn-primary inline-flex h-11 items-center rounded-lg px-4 text-sm font-medium disabled:opacity-40"
-            disabled={busy || !nameDraft.trim()}
+            disabled={disabled || busy || !nameDraft.trim()}
             onClick={() => void handleCreate()}
           >
             추가
@@ -128,7 +127,8 @@ export function TagsPanel({
   const { alert, confirm } = useAppDialog()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
-  const [editColor, setEditColor] = useState(() => getDefaultCalendarColor(0))
+  /** Shared by new-tag create and in-place edit — one palette on screen. */
+  const [paletteColor, setPaletteColor] = useState(() => getDefaultCalendarColor(0))
   const [busy, setBusy] = useState(false)
   const [orderIds, setOrderIds] = useState<string[] | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
@@ -150,6 +150,11 @@ export function TagsPanel({
     return ordered
   }, [tags, orderIds])
 
+  const editingTag = useMemo(
+    () => (editingId ? sorted.find((tag) => tag.id === editingId) ?? null : null),
+    [editingId, sorted]
+  )
+
   useEffect(() => {
     if (!orderIds?.length) return
     const live = sortTags(tags ?? [])
@@ -158,16 +163,21 @@ export function TagsPanel({
     if (live === orderIds.join('\0')) setOrderIds(null)
   }, [tags, orderIds])
 
+  const resetPaletteForCreate = useCallback((count: number): void => {
+    setPaletteColor(getDefaultCalendarColor(count))
+  }, [])
+
   const handleCreate = useCallback(
     async (payload: { name: string; color: string }) => {
       setBusy(true)
       try {
         await onCreateTag(payload)
+        resetPaletteForCreate((tags?.length ?? 0) + 1)
       } finally {
         setBusy(false)
       }
     },
-    [onCreateTag]
+    [onCreateTag, resetPaletteForCreate, tags?.length]
   )
 
   const handleSaveEdit = async (tag: TagRecord): Promise<void> => {
@@ -176,16 +186,28 @@ export function TagsPanel({
       await alert('태그 이름을 입력해 주세요.')
       return
     }
-    const color = toColorInputValue(editColor, tag.color || getDefaultCalendarColor(0))
+    const color = toColorInputValue(paletteColor, tag.color || getDefaultCalendarColor(0))
     setBusy(true)
     try {
       await onUpdateTag(tag.id, { name, color })
       setEditingId(null)
+      resetPaletteForCreate(tags?.length ?? 0)
     } catch (err) {
       await alert(err instanceof Error ? err.message : '태그를 수정하지 못했습니다.')
     } finally {
       setBusy(false)
     }
+  }
+
+  const cancelEdit = (): void => {
+    setEditingId(null)
+    resetPaletteForCreate(tags?.length ?? 0)
+  }
+
+  const beginEdit = (tag: TagRecord): void => {
+    setEditingId(tag.id)
+    setEditName(tag.name ?? '')
+    setPaletteColor(toColorInputValue(tag.color, getDefaultCalendarColor(0)))
   }
 
   const handleDelete = async (tag: TagRecord): Promise<void> => {
@@ -200,6 +222,10 @@ export function TagsPanel({
     setBusy(true)
     try {
       await onDeleteTag(tag.id)
+      if (editingId === tag.id) {
+        setEditingId(null)
+        resetPaletteForCreate(Math.max(0, (tags?.length ?? 1) - 1))
+      }
     } catch (err) {
       await alert(err instanceof Error ? err.message : '태그를 삭제하지 못했습니다.')
     } finally {
@@ -234,6 +260,7 @@ export function TagsPanel({
   }
 
   const canDrag = !busy && !editingId
+  const isEditing = Boolean(editingTag)
 
   return (
     <div className="w-full max-w-full text-left">
@@ -242,7 +269,32 @@ export function TagsPanel({
         일정에 붙일 태그를 등록합니다. 왼쪽 핸들을 끌어 순서를 바꿀 수 있습니다.
       </p>
 
-      <NewTagForm tagsCount={tags?.length ?? 0} busy={busy} onCreate={handleCreate} />
+      <div className="mb-4 rounded-xl border border-gcal-border-light bg-gcal-surface p-4">
+        <FieldLabel>
+          {editingTag ? (
+            <>
+              태그 색상
+              <span className="ml-1 font-medium text-gcal-heading">
+                · 「{editingTag.name || editName || '이름 없음'}」 수정 중
+              </span>
+            </>
+          ) : (
+            '태그 색상'
+          )}
+        </FieldLabel>
+        <CalendarColorPalette
+          value={paletteColor}
+          onChange={setPaletteColor}
+          disabled={busy}
+        />
+      </div>
+
+      <NewTagForm
+        busy={busy}
+        disabled={isEditing}
+        color={paletteColor}
+        onCreate={handleCreate}
+      />
 
       <ul className="m-0 list-none space-y-2 p-0">
         {sorted.length === 0 ? (
@@ -251,7 +303,7 @@ export function TagsPanel({
           </li>
         ) : null}
         {sorted.map((tag) => {
-          const isEditing = editingId === tag.id
+          const rowEditing = editingId === tag.id
           const isDragging = dragId === tag.id
           const isDropTarget = dropId === tag.id && dragId && dragId !== tag.id
           return (
@@ -260,7 +312,8 @@ export function TagsPanel({
               className={cn(
                 'flex flex-wrap items-center gap-2 rounded-lg border border-gcal-border-light px-3 py-2.5 transition-colors',
                 isDragging && 'opacity-45',
-                isDropTarget && 'border-gcal-blue bg-gcal-blue-soft/40'
+                isDropTarget && 'border-gcal-blue bg-gcal-blue-soft/40',
+                rowEditing && 'border-gcal-blue bg-gcal-blue-soft/25'
               )}
               onDragOver={(e) => {
                 if (!canDrag || !dragId || dragId === tag.id) return
@@ -310,14 +363,19 @@ export function TagsPanel({
               >
                 <TagDragHandleIcon />
               </button>
-              {isEditing ? null : (
-                <span
-                  className="h-3.5 w-3.5 shrink-0 rounded-sm"
-                  style={{ background: tag.color || '#9aa0a6' }}
-                  aria-hidden="true"
-                />
-              )}
-              {isEditing ? (
+              <span
+                className={cn(
+                  'shrink-0 rounded-sm',
+                  rowEditing ? 'h-3.5 w-3.5 ring-2 ring-gcal-blue/50 ring-offset-1' : 'h-3.5 w-3.5'
+                )}
+                style={{
+                  background: rowEditing
+                    ? paletteColor || tag.color || '#9aa0a6'
+                    : tag.color || '#9aa0a6'
+                }}
+                aria-hidden="true"
+              />
+              {rowEditing ? (
                 <input
                   type="text"
                   className={cn(fieldBoxClass, 'min-w-0 flex-1 py-2')}
@@ -330,14 +388,14 @@ export function TagsPanel({
                       e.preventDefault()
                       void handleSaveEdit(tag)
                     }
-                    if (e.key === 'Escape') setEditingId(null)
+                    if (e.key === 'Escape') cancelEdit()
                   }}
                 />
               ) : (
                 <span className="min-w-0 flex-1 text-sm text-gcal-heading">{tag.name}</span>
               )}
               <div className="flex shrink-0 items-center gap-1">
-                {isEditing ? (
+                {rowEditing ? (
                   <>
                     <button
                       type="button"
@@ -350,7 +408,7 @@ export function TagsPanel({
                     <button
                       type="button"
                       className="rounded-lg px-3 py-1.5 text-sm text-gcal-muted hover:bg-gcal-surface-2"
-                      onClick={() => setEditingId(null)}
+                      onClick={cancelEdit}
                     >
                       취소
                     </button>
@@ -360,12 +418,8 @@ export function TagsPanel({
                     <button
                       type="button"
                       className="rounded-lg px-3 py-1.5 text-sm text-gcal-muted hover:bg-gcal-surface-2 hover:text-gcal-heading"
-                      disabled={busy}
-                      onClick={() => {
-                        setEditingId(tag.id)
-                        setEditName(tag.name ?? '')
-                        setEditColor(toColorInputValue(tag.color, getDefaultCalendarColor(0)))
-                      }}
+                      disabled={busy || isEditing}
+                      onClick={() => beginEdit(tag)}
                     >
                       수정
                     </button>
@@ -380,12 +434,6 @@ export function TagsPanel({
                   </>
                 )}
               </div>
-              {isEditing ? (
-                <div className="basis-full pl-9 pt-1">
-                  <FieldLabel>태그 색상</FieldLabel>
-                  <CalendarColorPalette value={editColor} onChange={setEditColor} />
-                </div>
-              ) : null}
             </li>
           )
         })}

@@ -20,6 +20,7 @@ import {
   openRecurrenceCompletePanel
 } from '../lib/recurrenceComplete'
 import { applyRecurringEdit as applyRecurringEditCore } from '../lib/recurrenceMutations'
+import { copyEventToDate } from '../lib/copyEventToDate'
 import { applyEventDateShift } from '../lib/shiftEventDates'
 import {
   getPrimaryEventLinkUrl,
@@ -245,6 +246,28 @@ export function QuickEditWindowApp(): ReactElement | null {
     ]
   )
 
+  const handleQuickEditCopy = useCallback(
+    async (event: CalendarEvent, targetDateKey: string): Promise<void> => {
+      if (!canEdit || !init?.dateKey) return
+      const master = findMasterEvent(event)
+      if (!master || master.calendarId === HOLIDAYS_KR_CALENDAR_ID) return
+      const occurrenceDate = getOccurrenceDate(event, init.dateKey) || master.startDate
+      try {
+        await copyEventToDate({
+          master,
+          occurrenceDate,
+          targetStartDate: targetDateKey,
+          addEvent
+        })
+        window.neoCalendar.closeQuickEditWindow?.()
+      } catch (error) {
+        await alert(error instanceof Error ? error.message : '일정을 복사하지 못했습니다.')
+        throw error
+      }
+    },
+    [addEvent, alert, canEdit, findMasterEvent, init?.dateKey]
+  )
+
   const handleQuickEditDeleteCompleted = useCallback(
     async (completedEvents: CalendarEvent[]): Promise<void> => {
       if (!canEdit || !init?.dateKey) return
@@ -435,6 +458,7 @@ export function QuickEditWindowApp(): ReactElement | null {
           )
         }}
         onShiftEvent={handleQuickEditShift}
+        onCopyEvent={handleQuickEditCopy}
         onOpenMore={(event) => routeFromQuickEdit('editor', event)}
         onOpenEvent={(event, pointer) => routeFromQuickEdit('detail', event, pointer)}
         onEditEvent={(event) => routeFromQuickEdit('editor', event)}

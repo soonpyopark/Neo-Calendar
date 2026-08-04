@@ -33,6 +33,16 @@ export function SearchPanelHost({ init }: { init: Init }): ReactElement | null {
             pointerScreen: { x: screenX, y: screenY }
           })
         }}
+        onEditResult={({ event, dayKey }) => {
+          // Keep search open; open the full detail editor for this occurrence.
+          routePanel({
+            kind: 'eventEditor',
+            eventId: event.id,
+            defaultDate: dayKey,
+            occurrenceDate: dayKey,
+            returnQuickEdit: null
+          })
+        }}
       />
     </div>
   )

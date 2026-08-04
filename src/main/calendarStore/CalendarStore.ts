@@ -961,7 +961,13 @@ export class CalendarStore {
     id: string,
     eventsInput: unknown[],
     ownerLoginId?: string | null
-  ): { ok: true; importedCount: number; calendarId: string } {
+  ): {
+    ok: true
+    importedCount: number
+    calendarId: string
+    /** Source event id → new id (for ZIP attachment remapping). */
+    idMap: Array<{ sourceId: string; newId: string }>
+  } {
     const calendarId = String(id ?? '').trim()
     if (!calendarId) throw new Error('캘린더를 찾을 수 없습니다.')
     if (calendarId === HOLIDAYS_KR_CALENDAR_ID) {
@@ -979,14 +985,18 @@ export class CalendarStore {
     const existing = snap.events.filter((e) => e.calendarId === calendarId)
     const now = new Date().toISOString()
     const imported: CalendarEvent[] = []
+    const idMap: Array<{ sourceId: string; newId: string }> = []
     for (const raw of eventsInput ?? []) {
       if (!raw || typeof raw !== 'object') continue
       const e = raw as Partial<CalendarEvent>
       if (e.calendarId === HOLIDAYS_KR_CALENDAR_ID) continue
       const title = String(e.title ?? '').trim()
       if (!title) continue
+      const newId = randomUUID()
+      const sourceId = String(e.id ?? '').trim()
+      if (sourceId) idMap.push({ sourceId, newId })
       imported.push({
-        id: randomUUID(),
+        id: newId,
         calendarId,
         title,
         description: e.description ?? '',
@@ -1030,7 +1040,7 @@ export class CalendarStore {
 
     this.writeCalendarFile(cal, [...existing, ...imported])
     this.cache = null
-    return { ok: true, importedCount: imported.length, calendarId }
+    return { ok: true, importedCount: imported.length, calendarId, idMap }
   }
 
   setTags(tags: TagRecord[]): TagRecord[] {

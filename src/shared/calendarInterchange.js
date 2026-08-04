@@ -1,9 +1,10 @@
 import { HOLIDAYS_KR_CALENDAR_ID } from './calendarDefaults'
 import { addDaysToDateKey, getEventDurationDays, toDateKey } from './mdcExport/eventOccurrences.js'
 
-/** @typedef {'json' | 'ics' | 'csv'} CalendarFileFormat */
+/** @typedef {'json' | 'ics' | 'csv' | 'zip'} CalendarFileFormat */
 
 export const CALENDAR_FILE_FORMATS = [
+  { value: 'zip', label: 'ZIP (.zip)', extension: 'zip', mimeType: 'application/zip' },
   { value: 'json', label: 'JSON (.json)', extension: 'json', mimeType: 'application/json' },
   { value: 'ics', label: 'ICS (.ics)', extension: 'ics', mimeType: 'text/calendar;charset=utf-8' },
   { value: 'csv', label: 'CSV (.csv)', extension: 'csv', mimeType: 'text/csv;charset=utf-8' },
@@ -41,6 +42,7 @@ export function detectCalendarFileFormat(filename) {
   if (lower.endsWith('.json')) return 'json';
   if (lower.endsWith('.ics')) return 'ics';
   if (lower.endsWith('.csv')) return 'csv';
+  if (lower.endsWith('.zip')) return 'zip';
   return null;
 }
 
@@ -235,6 +237,9 @@ export function buildCsvDocument(events, calendarNamesById = new Map()) {
  * @param {string} timestamp
  */
 export function exportFullStore(store, format, timestamp) {
+  if (format === 'zip') {
+    throw new Error('ZIP 내보내기는 데스크톱 백업 API를 사용하세요.');
+  }
   if (format === 'json') {
     return {
       content: JSON.stringify(store, null, 2),
@@ -269,6 +274,9 @@ export function exportFullStore(store, format, timestamp) {
  * @param {string} timestamp
  */
 export function exportSingleCalendar(payload, format, timestamp) {
+  if (format === 'zip') {
+    throw new Error('ZIP 내보내기는 데스크톱 백업 API를 사용하세요.');
+  }
   const calendarName = payload.calendar?.name ?? 'calendar';
   const safeName = calendarName.replace(/[\\/:*?"<>|]/g, '_');
 
@@ -594,6 +602,9 @@ function normalizeImportedEvents(events) {
  * @param {string} [sourceName]
  */
 export function parseImportPayload(text, format, sourceName = '가져온 캘린더') {
+  if (format === 'zip') {
+    throw new Error('ZIP 가져오기는 파일 선택 대화상자에서 ZIP을 고르면 자동으로 처리됩니다.');
+  }
   if (format === 'json') {
     const data = JSON.parse(text);
     if (!data || typeof data !== 'object') {
