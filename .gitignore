@@ -12,4 +12,5 @@ data/
 msi/payload/
 msi/Neo Desktop Calendar/
 msi/*.msi
+msi/*.zip
 msi/*.wixpdb

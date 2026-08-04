@@ -23,6 +23,7 @@
     "build:update_all": "node scripts/update-all.mjs --msi",
     "dist": "npm run build:desktop-hit && npm run build && electron-builder --win",
     "build:msi": "node scripts/build-msi.mjs",
+    "build:portable": "node scripts/build-portable.mjs",
     "build:dist:msi": "node scripts/build-msi.mjs"
   },
   "dependencies": {
