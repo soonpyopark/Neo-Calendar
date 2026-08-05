@@ -121,8 +121,8 @@ export class DesktopModeController {
   }
 
   /**
-   * After WorkerW attach + showInactive, pin HWND opacity.
-   * Partial CSS alpha under WorkerW is handled by `.is-desktop-embedded` (opaque fills).
+   * After WorkerW attach + showInactive, pin HWND opacity to 1.
+   * Header/shell transparency stays on CSS `--neo-*-opacity` (settings 일반).
    */
   private settleDesktopVisuals(win: BrowserWindow): void {
     try {

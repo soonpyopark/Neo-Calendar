@@ -186,16 +186,6 @@ textarea {
   pointer-events: auto;
 }
 
-/*
- * WorkerW-embedded: force opaque chrome/cells.
- * Partial alpha (settings 불투명도) composites muddy under DWM + showInactive,
- * which reads as a milky/foggy calendar over the wallpaper.
- */
-.wallpaper-root.is-desktop-embedded {
-  --neo-header-opacity: 1;
-  --neo-shell-opacity: 1;
-}
-
 .interaction-ui {
   pointer-events: auto;
 }
