@@ -1,0 +1,23 @@
+Neo Desktop Calendar
+https://note4all.tistory.com
+
+본 소프트웨어는 MIT 라이선스 하에 배포될 수 있습니다.
+아래 오픈소스·공개 데이터·런타임을 포함하거나 사용합니다.
+
+1) 7-Zip (7za.exe) — Copyright (C) Igor Pavlov — GNU LGPL
+   백업 ZIP용 별도 실행 파일. 설치 폴더 resources/7zip/ 참고.
+   사용자는 해당 실행 파일을 교체할 수 있습니다.
+
+2) Electron (Chromium / Node.js 포함)
+   배포본에 포함된 LICENSE / Chromium 고지 파일을 참고하세요.
+
+3) npm 라이브러리 (요약)
+   exceljs, pdfkit, koffi, ws 등 — 주로 MIT
+   solarlunar — ISC
+   상세: 설치본 notices/THIRD_PARTY_NOTICES.md
+
+4) 대한민국 공휴일 데이터
+   공공데이터포털 특일 정보 등 공개 데이터를 참고합니다.
+   본 앱은 정부·공공기관의 공식 제품이 아닙니다.
+
+전체 제3자 고지: notices/THIRD_PARTY_NOTICES.md

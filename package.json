@@ -90,6 +90,10 @@
         "to": "7zip/NOTICE.txt"
       },
       {
+        "from": "legal/THIRD_PARTY_NOTICES.md",
+        "to": "notices/THIRD_PARTY_NOTICES.md"
+      },
+      {
         "from": "src/shared/seed/holidays-kr.json",
         "to": "seed/holidays-kr.json"
       }

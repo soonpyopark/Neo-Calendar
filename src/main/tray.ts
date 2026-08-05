@@ -158,7 +158,11 @@ export function createAppTray(options: {
       type: 'info' as const,
       title: '정보',
       message: APP_TITLE,
-      detail: `Electron 데스크톱 셸\n${SITE_URL}`,
+      detail:
+        `Electron 데스크톱 셸\n${SITE_URL}\n\n`
+        + '제3자 고지: 설치 폴더 resources/notices/THIRD_PARTY_NOTICES.md\n'
+        + '7-Zip(LGPL): resources/7zip/\n'
+        + '공휴일: 공공데이터 참고 · 공식 기관 제품 아님',
       buttons: ['확인', '사이트 열기'],
       defaultId: 0,
       cancelId: 0,
