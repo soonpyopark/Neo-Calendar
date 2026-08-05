@@ -1093,7 +1093,40 @@ input[type='search']::-ms-clear,
   margin: 0;
   font-size: 0.875rem;
   font-weight: 600;
+  line-height: 1.75rem;
+  white-space: nowrap;
   color: var(--gcal-heading);
+}
+
+/* 헤더 [이전년도][이전월][다음월][다음년도] — 네모 연한 노랑. */
+.day-list-preview-nav {
+  display: inline-flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, #e6c84c 45%, var(--gcal-border));
+  border-radius: 0.375rem;
+  background: #fff2cc;
+  padding: 0;
+  color: var(--gcal-heading);
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.day-list-preview-nav:hover {
+  background: #ffe599;
+}
+
+.dark .day-list-preview-nav {
+  border-color: color-mix(in srgb, #c9a227 40%, var(--gcal-border));
+  background: #3a2f2740;
+  color: var(--gcal-heading);
+}
+
+.dark .day-list-preview-nav:hover {
+  background: color-mix(in srgb, #fff2cc 18%, var(--gcal-surface-2));
 }
 
 /* 헤더 이동 묶음의 [오늘] — 아이콘 버튼과 같은 네모 크기. */

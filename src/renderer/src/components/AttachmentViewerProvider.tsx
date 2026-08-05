@@ -14,6 +14,7 @@ import { cn } from '../lib/cn'
 import { openEventAttachment, readEventAttachmentImage } from '../lib/eventAttachments'
 import { openAttachmentViewerPanel } from '../lib/openAttachmentViewerPanel'
 import { useAppDialog } from './AppDialogProvider'
+import { useImageActionMenu } from './ImageActionMenu'
 import { InteractionUI } from './InteractionUI'
 
 export type AttachmentViewerState = {
@@ -58,6 +59,7 @@ export function AttachmentImageViewer({
   const [zoom, setZoom] = useState<Zoom>(null)
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null)
   const canvasRef = useRef<HTMLDivElement | null>(null)
+  const { openMenu, copyCurrent, Menu: imageMenu } = useImageActionMenu()
 
   const index = state.images.findIndex((item) => item.id === state.attachmentId)
   const total = state.images.length
@@ -107,6 +109,14 @@ export function AttachmentImageViewer({
         onClose()
         return
       }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        // Don't steal copy when the user selected text in the title.
+        const sel = window.getSelection()?.toString()
+        if (sel) return
+        handled()
+        void copyCurrent({ dataUrl: state.dataUrl, filename: state.name })
+        return
+      }
       if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
         handled()
         page(1)
@@ -134,7 +144,7 @@ export function AttachmentImageViewer({
     }
     window.addEventListener('keydown', onKeyDown, true)
     return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [onClose, page, step])
+  }, [copyCurrent, onClose, page, state.dataUrl, state.name, step])
 
   const zoomLabel = zoom !== null ? `${Math.round(zoom * 100)}%` : '화면 맞춤'
 
@@ -227,6 +237,9 @@ export function AttachmentImageViewer({
       <div
         ref={canvasRef}
         className="attachment-viewer-canvas flex min-h-0 flex-1 overflow-auto p-2"
+        onContextMenu={(event) => {
+          openMenu(event, { dataUrl: state.dataUrl, filename: state.name })
+        }}
       >
         <img
           src={state.dataUrl}
@@ -248,9 +261,13 @@ export function AttachmentImageViewer({
               height: event.currentTarget.naturalHeight
             })
           }
+          onContextMenu={(event) => {
+            openMenu(event, { dataUrl: state.dataUrl, filename: state.name })
+          }}
           draggable={false}
         />
       </div>
+      {imageMenu}
     </div>
   )
 

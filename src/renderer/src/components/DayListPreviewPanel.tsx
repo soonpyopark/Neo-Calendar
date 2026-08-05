@@ -26,6 +26,7 @@ import type { ExportCalendarFormat } from '../../../shared/exportCalendar'
 import { splitLinkifySegments } from '../lib/linkify'
 import { readEventAttachmentImage } from '../lib/eventAttachments'
 import { useOpenAttachment } from './AttachmentViewerProvider'
+import { useImageActionMenu } from './ImageActionMenu'
 import { openExternalUrl } from '../lib/openExternal'
 import { cn } from '../lib/cn'
 import { useAppDialog } from './AppDialogProvider'
@@ -83,6 +84,8 @@ type PreviewDetailLine = {
   attachment: AttachmentRef | null
   /** Image attachments render an inline preview under the file name. */
   isImage: boolean
+  /** Original attachment file name (for download / copy). */
+  filename: string
 }
 
 type PreviewEvent = {
@@ -269,12 +272,14 @@ function findAttachmentMeta(
 function DayListAttachmentDetail({
   attachment,
   isImage,
+  filename,
   parts,
   activeIndex,
   onOpen
 }: {
   attachment: AttachmentRef
   isImage: boolean
+  filename: string
   parts: TextPart[]
   activeIndex: number
   onOpen: () => void
@@ -283,6 +288,7 @@ function DayListAttachmentDetail({
   const [visible, setVisible] = useState(false)
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [loadTried, setLoadTried] = useState(false)
+  const { openMenu, copyCurrent, Menu: imageMenu } = useImageActionMenu()
 
   useEffect(() => {
     if (!isImage) return undefined
@@ -331,15 +337,28 @@ function DayListAttachmentDetail({
             'day-list-preview-detail-thumb',
             dataUrl ? 'has-image' : 'is-loading'
           )}
-          title="이미지 크게 보기"
+          title="이미지 크게 보기 · 우클릭: 복사/다운로드"
           aria-label="이미지 첨부 미리보기"
           onClick={onOpen}
+          onContextMenu={(event) => {
+            if (!dataUrl) return
+            openMenu(event, { dataUrl, filename })
+          }}
+          onKeyDown={(event) => {
+            if (!dataUrl) return
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+              event.preventDefault()
+              event.stopPropagation()
+              void copyCurrent({ dataUrl, filename })
+            }
+          }}
         >
           {dataUrl ? (
             <img src={dataUrl} alt="" className="day-list-preview-detail-thumb-img" />
           ) : null}
         </button>
       ) : null}
+      {imageMenu}
     </div>
   )
 }
@@ -567,7 +586,8 @@ export function DayListPreviewPanel({
               return {
                 parts: detailSplit.parts,
                 attachment,
-                isImage: Boolean(meta && isImageAttachment(meta))
+                isImage: Boolean(meta && isImageAttachment(meta)),
+                filename: String(meta?.name ?? detail.text ?? 'image.png')
               }
             })
             return {
@@ -727,7 +747,8 @@ export function DayListPreviewPanel({
 
   if (!open) return null
 
-  const title = `${shownYear}년 ${shownMonth + 1}월 세로보기`
+  const monthLabel = `${shownYear}년 ${shownMonth + 1}월`
+  const title = `${monthLabel} 세로보기`
 
   return (
     <div
@@ -759,10 +780,9 @@ export function DayListPreviewPanel({
         >
           <header className="day-list-preview-header">
             <div className="flex min-w-0 items-center gap-1">
-              <h2 className="day-list-preview-title truncate">{title}</h2>
               <button
                 type="button"
-                className="day-quick-edit-close"
+                className="day-list-preview-nav"
                 onClick={() => setViewMonth((prev) => prev - 12)}
                 aria-label="이전 년도"
                 title="이전 년도"
@@ -771,16 +791,17 @@ export function DayListPreviewPanel({
               </button>
               <button
                 type="button"
-                className="day-quick-edit-close"
+                className="day-list-preview-nav"
                 onClick={() => setViewMonth((prev) => prev - 1)}
                 aria-label="이전 달"
                 title="이전 달"
               >
                 <ChevronLeftIcon />
               </button>
+              <h2 className="day-list-preview-title shrink-0 px-1">{monthLabel}</h2>
               <button
                 type="button"
-                className="day-quick-edit-close"
+                className="day-list-preview-nav"
                 onClick={() => setViewMonth((prev) => prev + 1)}
                 aria-label="다음 달"
                 title="다음 달"
@@ -789,7 +810,7 @@ export function DayListPreviewPanel({
               </button>
               <button
                 type="button"
-                className="day-quick-edit-close"
+                className="day-list-preview-nav"
                 onClick={() => setViewMonth((prev) => prev + 12)}
                 aria-label="다음 년도"
                 title="다음 년도"
@@ -1021,6 +1042,7 @@ export function DayListPreviewPanel({
                                     <DayListAttachmentDetail
                                       attachment={line.attachment}
                                       isImage={line.isImage}
+                                      filename={line.filename}
                                       parts={line.parts}
                                       activeIndex={activeIndex}
                                       onOpen={() => void openAttachment(line.attachment)}
