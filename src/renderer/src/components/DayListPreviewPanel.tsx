@@ -10,6 +10,7 @@ import {
 import { prepareDayListExportLayout } from '../../../shared/mdcExport/dayListExportLayout.js'
 import { splitEventTitleRuns } from '../../../shared/mdcExport/eventTags.js'
 import { isImageAttachment } from '../../../shared/attachmentKinds'
+import { parseSimpleMarkdown } from '../../../shared/simpleMarkdown.js'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -68,6 +69,10 @@ type TextPart = {
   matchIndex: number | null
   url: string | null
   completed?: boolean
+  bold?: boolean
+  italic?: boolean
+  strike?: boolean
+  code?: boolean
 }
 
 type AttachmentRef = { eventId: string; attachmentId: string }
@@ -165,6 +170,49 @@ function buildTextParts(
     const split = splitOnQuery(segment.text, needle, index, segment.url, completed)
     parts.push(...split.parts)
     index = split.nextIndex
+  }
+  return { parts, nextIndex: index }
+}
+
+/** Description lines: markdown runs + linkify + find hits. */
+function buildMarkdownTextParts(
+  text: string,
+  needle: string,
+  startIndex: number
+): { parts: TextPart[]; nextIndex: number } {
+  const parts: TextPart[] = []
+  let index = startIndex
+  for (const run of parseSimpleMarkdown(text)) {
+    if (run.href) {
+      const split = splitOnQuery(run.text, needle, index, run.href)
+      for (const part of split.parts) {
+        parts.push({
+          ...part,
+          bold: run.bold,
+          italic: run.italic,
+          strike: run.strike,
+          code: run.code
+        })
+      }
+      index = split.nextIndex
+      continue
+    }
+    const segments = run.code
+      ? [{ text: run.text, url: null as string | null }]
+      : splitLinkifySegments(run.text)
+    for (const segment of segments) {
+      const split = splitOnQuery(segment.text, needle, index, segment.url)
+      for (const part of split.parts) {
+        parts.push({
+          ...part,
+          bold: run.bold,
+          italic: run.italic,
+          strike: run.strike,
+          code: run.code
+        })
+      }
+      index = split.nextIndex
+    }
   }
   return { parts, nextIndex: index }
 }
@@ -354,10 +402,16 @@ function PartRuns({
   return (
     <>
       {parts.map((part, i) => {
-        const completedClass = part.completed ? 'day-list-preview-completed' : undefined
+        const formatClass = cn(
+          part.completed ? 'day-list-preview-completed' : undefined,
+          part.bold && 'font-semibold',
+          part.italic && 'italic',
+          part.strike && 'line-through opacity-80',
+          part.code && 'rounded bg-black/5 px-0.5 font-mono text-[0.92em] dark:bg-white/10'
+        )
         if (part.matchIndex === null) {
           return (
-            <span key={i} className={completedClass}>
+            <span key={i} className={formatClass || undefined}>
               {part.text}
             </span>
           )
@@ -367,7 +421,7 @@ function PartRuns({
             key={i}
             className={cn(
               'day-list-find-hit',
-              completedClass,
+              formatClass,
               part.matchIndex === activeIndex && 'is-active'
             )}
             data-find-index={part.matchIndex}
@@ -496,7 +550,10 @@ export function DayListPreviewPanel({
             const split = buildTitleParts(event.head, needle, index)
             index = split.nextIndex
             const detailLines: PreviewDetailLine[] = event.details.map((detail) => {
-              const detailSplit = buildTextParts(detail.text, needle, index)
+              const detailSplit =
+                detail.kind === 'description'
+                  ? buildMarkdownTextParts(detail.text, needle, index)
+                  : buildTextParts(detail.text, needle, index)
               index = detailSplit.nextIndex
               const attachmentId =
                 detail.kind === 'attachment' && detail.attachmentId ? detail.attachmentId : ''

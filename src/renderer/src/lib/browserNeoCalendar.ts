@@ -586,6 +586,21 @@ export function installBrowserNeoCalendar(): void {
         form
       )
     },
+    addEventAttachmentBuffers: async (eventId, uploads) => {
+      if (!uploads?.length) return findEventOrThrow(eventId)
+      const form = new FormData()
+      for (const item of uploads) {
+        const bytes = item.data instanceof Uint8Array ? item.data : new Uint8Array(item.data)
+        const blob = new Blob([bytes], {
+          type: item.mime || 'application/octet-stream'
+        })
+        form.append('files', blob, item.name || 'clipboard.png')
+      }
+      return httpForm<CalendarEvent>(
+        `/api/events/${encodeURIComponent(eventId)}/attachments`,
+        form
+      )
+    },
     copyEventAttachments: (sourceEventId, targetEventId) =>
       http<CalendarEvent>(
         'POST',

@@ -40,8 +40,9 @@ import {
   normalizeEventLinksArray
 } from '../lib/eventLinks'
 import { normalizeTagIds } from '../../../shared/mdcExport/eventTags.js'
+import { wrapMarkdownLink, wrapMarkdownSelection } from '../../../shared/simpleMarkdown.js'
 import { formatFileSize } from '../lib/formatFileSize'
-import { addEventAttachments, removeEventAttachment } from '../lib/eventAttachments'
+import { addEventAttachmentBuffers, addEventAttachments, removeEventAttachment } from '../lib/eventAttachments'
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import { copyEventToDate } from '../lib/copyEventToDate'
@@ -188,6 +189,7 @@ export function EventEditor({
   const [attachmentsExpanded, setAttachmentsExpanded] = useState(false);
   const titleInputRef = useRef(null);
   const linkInputRef = useRef(null);
+  const descriptionRef = useRef(null);
   /** Re-seed the form only when the editor opens for a different event (or create). */
   const formSeedKeyRef = useRef(null);
   /** Fingerprint of fields right after seed — used to detect unsaved edits on close. */
@@ -338,6 +340,10 @@ export function EventEditor({
     Boolean(event?.id) &&
     typeof (window.neoCalendar as { addEventAttachments?: unknown } | undefined)
       ?.addEventAttachments === 'function'
+  const canPasteAttach =
+    Boolean(event?.id) &&
+    typeof (window.neoCalendar as { addEventAttachmentBuffers?: unknown } | undefined)
+      ?.addEventAttachmentBuffers === 'function'
   const attachmentNames =
     attachments.length === 0
       ? ''
@@ -597,6 +603,83 @@ export function EventEditor({
     }
   };
 
+  const handlePasteAttachments = async (clipboardData) => {
+    if (!event?.id || !canPasteAttach || attachBusy || !clipboardData) return false;
+    const images = [];
+    const stamp = (() => {
+      const now = new Date();
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    })();
+    const items = Array.from(clipboardData.items ?? []);
+    for (const [index, item] of items.entries()) {
+      if (!item.type.startsWith('image/')) continue;
+      const file = item.getAsFile();
+      if (!file) continue;
+      const buffer = new Uint8Array(await file.arrayBuffer());
+      if (buffer.byteLength === 0) continue;
+      const ext =
+        item.type === 'image/jpeg'
+          ? 'jpg'
+          : item.type === 'image/webp'
+            ? 'webp'
+            : item.type === 'image/gif'
+              ? 'gif'
+              : 'png';
+      images.push({
+        name: `clipboard-${stamp}${images.length > 0 ? `-${index}` : ''}.${ext}`,
+        data: buffer,
+        mime: item.type || 'image/png'
+      });
+    }
+    if (images.length === 0) return false;
+    setAttachBusy(true);
+    try {
+      const updated = await addEventAttachmentBuffers(event.id, images);
+      applyAttachmentResult(updated);
+      setAttachmentsExpanded(true);
+    } catch (err) {
+      await alert(err instanceof Error ? err.message : '클립보드 이미지를 첨부하지 못했습니다.');
+    } finally {
+      setAttachBusy(false);
+    }
+    return true;
+  };
+
+  const applyDescriptionWrap = (openMark, closeMark) => {
+    const el = descriptionRef.current;
+    if (!(el instanceof HTMLTextAreaElement)) {
+      const wrapped = wrapMarkdownSelection(description, description.length, description.length, openMark, closeMark);
+      setDescription(wrapped.next);
+      return;
+    }
+    const wrapped = wrapMarkdownSelection(
+      description,
+      el.selectionStart,
+      el.selectionEnd,
+      openMark,
+      closeMark
+    );
+    setDescription(wrapped.next);
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(wrapped.selStart, wrapped.selEnd);
+    });
+  };
+
+  const applyDescriptionLink = () => {
+    const el = descriptionRef.current;
+    const start = el instanceof HTMLTextAreaElement ? el.selectionStart : description.length;
+    const end = el instanceof HTMLTextAreaElement ? el.selectionEnd : description.length;
+    const wrapped = wrapMarkdownLink(description, start, end);
+    setDescription(wrapped.next);
+    requestAnimationFrame(() => {
+      if (!(el instanceof HTMLTextAreaElement)) return;
+      el.focus();
+      el.setSelectionRange(wrapped.selStart, wrapped.selEnd);
+    });
+  };
+
   const handleRemoveAttachment = async (attachmentId) => {
     if (!event?.id || !attachmentId || attachBusy) return;
     const ok = await confirm('이 첨부 파일을 삭제할까요?');
@@ -729,6 +812,13 @@ export function EventEditor({
             : 'settings-scroll shell-solid-surface max-h-[calc(100vh-32px)] overflow-auto rounded-lg shadow-g-lg'
         }
         onSubmit={handleSubmit}
+        onPaste={(e) => {
+          const items = Array.from(e.clipboardData?.items ?? [])
+          if (!items.some((item) => item.type.startsWith('image/'))) return
+          if (!canPasteAttach || !event?.id || attachBusy) return
+          e.preventDefault()
+          void handlePasteAttachments(e.clipboardData)
+        }}
       >
         <div className="h-1" style={{ background: calendarTheme.base }} />
 
@@ -1085,7 +1175,9 @@ export function EventEditor({
                   readOnly
                   placeholder={
                     event?.id
-                      ? (canAttach ? '첨부된 파일이 없습니다' : '데스크톱 앱에서 첨부할 수 있습니다')
+                      ? (canAttach
+                          ? '첨부 없음 · Ctrl+V로 이미지 붙여넣기'
+                          : '데스크톱 앱에서 첨부할 수 있습니다')
                       : '일정을 저장한 뒤 파일을 첨부할 수 있습니다'
                   }
                   onClick={() => {
@@ -1149,16 +1241,69 @@ export function EventEditor({
           </div>
 
           <label className="mb-1 flex flex-col gap-1.5 text-sm text-gcal-muted">
-            <span className="flex items-baseline gap-1.5">
+            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
               <span>설명</span>
               <span className="text-xs text-gcal-muted/80">(Ctrl+S로 저장 · 창 유지)</span>
+              <span className="ml-auto inline-flex items-center gap-0.5">
+                <button
+                  type="button"
+                  className="event-desc-format-btn"
+                  title="굵게 (**)"
+                  aria-label="굵게"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyDescriptionWrap('**', '**')}
+                >
+                  <strong>B</strong>
+                </button>
+                <button
+                  type="button"
+                  className="event-desc-format-btn"
+                  title="기울임 (*)"
+                  aria-label="기울임"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyDescriptionWrap('*', '*')}
+                >
+                  <em>I</em>
+                </button>
+                <button
+                  type="button"
+                  className="event-desc-format-btn"
+                  title="취소선 (~~)"
+                  aria-label="취소선"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyDescriptionWrap('~~', '~~')}
+                >
+                  <span className="line-through">S</span>
+                </button>
+                <button
+                  type="button"
+                  className="event-desc-format-btn"
+                  title="코드 (`)"
+                  aria-label="코드"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyDescriptionWrap('`', '`')}
+                >
+                  {'</>'}
+                </button>
+                <button
+                  type="button"
+                  className="event-desc-format-btn"
+                  title="링크 ([텍스트](url))"
+                  aria-label="링크"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applyDescriptionLink()}
+                >
+                  링크
+                </button>
+              </span>
             </span>
             <textarea
+              ref={descriptionRef}
               className={fieldClass}
               value={description}
               spellCheck={false}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="설명 추가"
+              placeholder="설명 추가 · **굵게** [링크](https://example.com)"
               rows={7}
             />
           </label>

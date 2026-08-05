@@ -13,6 +13,7 @@ import {
   COMPLETED_LABEL_COLOR,
   splitEventTitleRuns,
 } from '../../shared/mdcExport/eventTags.js'
+import { parseSimpleMarkdown, stripSimpleMarkdown } from '../../shared/simpleMarkdown.js'
 
 const FONT_NAME = 'Malgun Gothic'
 const THIN_BORDER = {
@@ -361,17 +362,105 @@ function measureDayListDetailBoxHeight(doc, event, textWidth, imageAssets) {
   if (details.length === 0) return 0;
 
   const innerWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT - PDF_DETAIL_PAD * 2);
-  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE);
   let height = PDF_DETAIL_PAD * 2;
   const eventId = String(event.eventId ?? '').trim();
 
   for (const detail of details) {
-    const text = String(detail?.text ?? '');
-    height += doc.heightOfString(text, { width: innerWidth });
+    const raw = String(detail?.text ?? '');
+    const measureText =
+      detail?.kind === 'description' ? stripSimpleMarkdown(raw) : raw;
+    height += doc.heightOfString(measureText, { width: innerWidth });
     const asset = getDetailImageAsset(imageAssets, eventId, detail);
     if (asset) height += PDF_IMAGE_GAP + asset.drawH;
   }
   return height;
+}
+
+/**
+ * Draw one description line with **bold** / *italic* / ~~strike~~ / `code`.
+ * @param {import('pdfkit').default} doc
+ * @param {string} text
+ * @param {number} textX
+ * @param {number} y
+ * @param {number} textWidth
+ * @returns {number} height consumed
+ */
+function drawMarkdownDetailLine(doc, text, textX, y, textWidth) {
+  const runs = parseSimpleMarkdown(text);
+  const maxWidth = Math.max(1, textWidth);
+  const right = textX + maxWidth;
+  let x = textX;
+  let lineY = y;
+  let lines = 1;
+  const lineHeight = () => {
+    doc.fontSize(PDF_EVENT_FONT_SIZE);
+    return doc.currentLineHeight();
+  };
+
+  const ensureRoom = (runWidth) => {
+    if (x > textX && x + runWidth > right) {
+      x = textX;
+      lineY += lineHeight();
+      lines += 1;
+    }
+  };
+
+  for (const run of runs) {
+    const fill = run.href
+      ? '#1a73e8'
+      : run.code
+        ? EXPORT_COLORS.heading
+        : EXPORT_COLORS.body;
+    const chunks = String(run.text ?? '').split(/(\s+)/);
+    for (const chunk of chunks) {
+      if (!chunk) continue;
+      doc.font(run.bold || run.code ? 'Bold' : 'Body').fontSize(PDF_EVENT_FONT_SIZE);
+      doc.fillColor(fill);
+
+      // Soft-wrap long unbroken tokens.
+      let remaining = chunk;
+      while (remaining.length > 0) {
+        let fit = remaining;
+        let fitWidth = doc.widthOfString(fit);
+        if (fitWidth > maxWidth && remaining.length > 1) {
+          let lo = 1;
+          let hi = remaining.length;
+          while (lo < hi) {
+            const mid = Math.ceil((lo + hi) / 2);
+            const w = doc.widthOfString(remaining.slice(0, mid));
+            if (x + w <= right || (x === textX && w <= maxWidth)) lo = mid;
+            else hi = mid - 1;
+          }
+          fit = remaining.slice(0, Math.max(1, lo));
+          fitWidth = doc.widthOfString(fit);
+        }
+        ensureRoom(fitWidth);
+        doc.text(fit, x, lineY, { lineBreak: false, continued: false });
+        if (run.href || run.strike) {
+          const mid = lineY + lineHeight() * (run.href ? 0.85 : 0.55);
+          doc
+            .save()
+            .lineWidth(0.7)
+            .strokeColor(fill)
+            .moveTo(x, mid)
+            .lineTo(x + fitWidth, mid)
+            .stroke()
+            .restore();
+        }
+        x += fitWidth;
+        remaining = remaining.slice(fit.length);
+        if (remaining.length > 0) {
+          x = textX;
+          lineY += lineHeight();
+          lines += 1;
+        }
+      }
+    }
+  }
+
+  doc.font('Body').fillColor(EXPORT_COLORS.body);
+  return Math.max(lineHeight(), lines * lineHeight());
 }
 
 /**
@@ -527,11 +616,16 @@ function drawDayListEvent(doc, event, textX, y, textWidth, imageAssets = null) {
   for (const detail of details) {
     const text = String(detail?.text ?? '');
     doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE).fillColor(EXPORT_COLORS.body);
-    const textHeight = doc.heightOfString(text, { width: innerWidth });
-    doc.text(text, textOriginX, cursorY, {
-      width: innerWidth,
-      lineBreak: true,
-    });
+    let textHeight;
+    if (detail?.kind === 'description') {
+      textHeight = drawMarkdownDetailLine(doc, text, textOriginX, cursorY, innerWidth);
+    } else {
+      textHeight = doc.heightOfString(text, { width: innerWidth });
+      doc.text(text, textOriginX, cursorY, {
+        width: innerWidth,
+        lineBreak: true,
+      });
+    }
     cursorY += textHeight;
 
     const asset = getDetailImageAsset(imageAssets, eventId, detail);

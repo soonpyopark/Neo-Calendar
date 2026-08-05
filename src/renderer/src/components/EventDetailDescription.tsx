@@ -7,7 +7,8 @@ import {
 import { createPortal } from 'react-dom'
 import { clampFixedPosition } from '../lib/popoverPosition'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
-import { LinkifiedText } from './LinkifiedText'
+import { SimpleMarkdownText } from './SimpleMarkdownText'
+import { stripSimpleMarkdown } from '../../../shared/simpleMarkdown.js'
 
 const MENU_WIDTH = 128
 const MENU_HEIGHT = 40
@@ -85,7 +86,7 @@ export function EventDetailDescription({ text }: EventDetailDescriptionProps): R
           event.preventDefault()
           event.stopPropagation()
           const selected = getSelectedTextIn(rootRef.current)
-          const copyText = selected || text
+          const copyText = selected || stripSimpleMarkdown(text)
           if (!copyText.trim()) return
           const pos = clampFixedPosition({
             left: event.clientX,
@@ -97,7 +98,7 @@ export function EventDetailDescription({ text }: EventDetailDescriptionProps): R
           setMenu({ left: pos.left, top: pos.top, text: copyText })
         }}
       >
-        <LinkifiedText text={text} />
+        <SimpleMarkdownText text={text} />
       </p>
       {menu
         ? createPortal(

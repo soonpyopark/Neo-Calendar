@@ -11,6 +11,7 @@ import { formatTime24, isTimedEvent } from '../../../shared/mdcExport/eventBarFo
 import { openEventResourceListPanel } from '../lib/openEventResourceList'
 import { EventResourceListDialog } from './EventResourceListDialog'
 import { LinkChainIcon } from './LinkChainIcon'
+import { SimpleMarkdownText } from './SimpleMarkdownText'
 import {
   SEARCH_PAGE_SIZE_OPTIONS,
   buildSearchPageItems,
@@ -734,7 +735,7 @@ export function SearchPanel({
                           </span>
                           {description ? (
                             <span className="mt-1 block pl-5 text-xs leading-relaxed text-gcal-muted line-clamp-2">
-                              {description}
+                              <SimpleMarkdownText text={description} linkify={false} />
                             </span>
                           ) : null}
                         </button>

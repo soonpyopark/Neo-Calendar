@@ -15,6 +15,22 @@ export async function addEventAttachments(_eventId: string): Promise<CalendarEve
   return api.addEventAttachments(_eventId)
 }
 
+export async function addEventAttachmentBuffers(
+  eventId: string,
+  uploads: Array<{ name: string; data: Uint8Array; mime?: string }>
+): Promise<CalendarEvent> {
+  const api = window.neoCalendar as {
+    addEventAttachmentBuffers?: (
+      id: string,
+      files: Array<{ name: string; data: Uint8Array; mime?: string }>
+    ) => Promise<CalendarEvent>
+  }
+  if (!api?.addEventAttachmentBuffers) {
+    throw new Error('파일 첨부는 아직 준비되지 않았습니다.')
+  }
+  return api.addEventAttachmentBuffers(eventId, uploads)
+}
+
 export async function removeEventAttachment(
   eventId: string,
   attachmentId: string

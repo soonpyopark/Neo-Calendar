@@ -270,6 +270,12 @@ const api: NeoCalendarApi = {
   removeEvent: (id: string) => ipcRenderer.invoke('calendar:remove-event', id) as Promise<void>,
   addEventAttachments: (eventId: string) =>
     ipcRenderer.invoke('calendar:add-attachments', eventId) as Promise<CalendarEvent>,
+  addEventAttachmentBuffers: (eventId, uploads) =>
+    ipcRenderer.invoke(
+      'calendar:add-attachment-buffers',
+      eventId,
+      uploads
+    ) as Promise<CalendarEvent>,
   copyEventAttachments: (sourceEventId: string, targetEventId: string) =>
     ipcRenderer.invoke(
       'calendar:copy-attachments',

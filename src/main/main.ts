@@ -854,6 +854,23 @@ function registerIpc(): void {
     return updated
   })
   ipcMain.handle(
+    'calendar:add-attachment-buffers',
+    (
+      _event,
+      eventId: string,
+      uploads: Array<{ name: string; data: Uint8Array | number[]; mime?: string }>
+    ) => {
+      const normalized = (Array.isArray(uploads) ? uploads : []).map((item) => ({
+        name: String(item?.name ?? 'clipboard.png'),
+        mime: item?.mime,
+        data: Buffer.from(item?.data ?? [])
+      }))
+      const updated = attachmentService.addFromBuffers(eventId, normalized)
+      notifyStoreChanged()
+      return updated
+    }
+  )
+  ipcMain.handle(
     'calendar:copy-attachments',
     (_event, sourceEventId: string, targetEventId: string) => {
       const updated = attachmentService.copyBetweenEvents(sourceEventId, targetEventId)

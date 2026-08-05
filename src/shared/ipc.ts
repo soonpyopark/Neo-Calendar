@@ -392,6 +392,11 @@ export type NeoCalendarApi = {
   removeEvent: (id: string) => Promise<void>
   /** Native multi-file picker → copy into data/attachments/{eventId}/ */
   addEventAttachments: (eventId: string) => Promise<CalendarEvent>
+  /** Paste / programmatic uploads (clipboard images, browser buffers). */
+  addEventAttachmentBuffers: (
+    eventId: string,
+    uploads: Array<{ name: string; data: Uint8Array; mime?: string }>
+  ) => Promise<CalendarEvent>
   /** Deep-copy attachment files from one event onto another (new file ids). */
   copyEventAttachments: (sourceEventId: string, targetEventId: string) => Promise<CalendarEvent>
   removeEventAttachment: (eventId: string, attachmentId: string) => Promise<CalendarEvent>

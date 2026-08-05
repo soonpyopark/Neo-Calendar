@@ -226,7 +226,7 @@ export function AttachmentImageViewer({
       </div>
       <div
         ref={canvasRef}
-        className="attachment-viewer-canvas flex min-h-0 flex-1 items-center justify-center overflow-auto p-2"
+        className="attachment-viewer-canvas flex min-h-0 flex-1 overflow-auto p-2"
       >
         <img
           src={state.dataUrl}
@@ -234,7 +234,12 @@ export function AttachmentImageViewer({
           className={cn('attachment-viewer-image', (zoom === null || !natural) && 'is-fit')}
           style={
             zoom !== null && natural
-              ? { width: `${Math.round(natural.width * zoom)}px`, maxWidth: 'none' }
+              ? {
+                  width: `${Math.round(natural.width * zoom)}px`,
+                  height: `${Math.round(natural.height * zoom)}px`,
+                  maxWidth: 'none',
+                  maxHeight: 'none'
+                }
               : undefined
           }
           onLoad={(event) =>

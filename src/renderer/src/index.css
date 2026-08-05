@@ -2070,7 +2070,10 @@ body.is-resizing-window {
 }
 
 .attachment-viewer-image {
+  /* margin:auto centers when smaller than the canvas; unlike flex
+     align/justify-center it still lets overflow-auto reach every edge. */
   display: block;
+  margin: auto;
   object-fit: contain;
   user-select: none;
 }
@@ -2078,6 +2081,8 @@ body.is-resizing-window {
 .attachment-viewer-image.is-fit {
   max-width: 100%;
   max-height: 100%;
+  width: auto;
+  height: auto;
 }
 
 .day-quick-edit-header {
@@ -3323,6 +3328,26 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
 .event-detail-description *::selection {
   background: color-mix(in srgb, var(--gcal-blue, #1a73e8) 35%, transparent);
   color: inherit;
+}
+
+.event-desc-format-btn {
+  display: inline-flex;
+  height: 1.5rem;
+  min-width: 1.5rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--gcal-border);
+  border-radius: 0.25rem;
+  background: var(--gcal-page);
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--gcal-heading);
+}
+
+.event-desc-format-btn:hover {
+  background: var(--gcal-surface-2);
+  border-color: color-mix(in srgb, var(--gcal-blue) 35%, var(--gcal-border));
 }
 
 .event-detail-copy-menu {
