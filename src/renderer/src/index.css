@@ -830,18 +830,19 @@ textarea {
 
 .event-bar {
   position: absolute;
-  left: 2px;
-  right: 2px;
+  left: 1px;
+  right: 1px;
   display: flex;
   align-items: center;
   overflow: hidden;
   height: var(--event-lane-height);
   top: calc(var(--day-event-gap) + var(--event-lane, 0) * var(--event-lane-step));
-  padding: 0 3px 0 0;
+  padding: 0 1px 0 0;
   border: 0;
   border-radius: 4px;
-  font-size: calc(clamp(9px, 1.4vh, 12px) * var(--event-density, 1));
+  font-size: calc(clamp(7.5px, 1.05vh, 10px) * var(--event-density, 1));
   font-weight: 500;
+  letter-spacing: -0.035em;
   text-align: left;
   white-space: nowrap;
   color: var(--event-text, #3c4043);
@@ -868,11 +869,17 @@ textarea {
   z-index: 2;
 }
 
+/* Space after accent/mark (was ~1ch before density tighten). */
+.event-bar > .event-bar-accent,
+.event-bar > .event-bar-glyph {
+  margin-right: 1ch;
+}
+
 .event-bar > .event-time,
 .event-bar > .event-day-index,
 .event-bar > .event-tag-icons,
 .event-bar > .event-title {
-  margin-left: 1ch;
+  margin-left: 1px;
 }
 
 .event-time {
@@ -885,26 +892,26 @@ textarea {
 }
 
 .event-bar--single {
-  left: 2px;
-  right: 2px;
+  left: 1px;
+  right: 1px;
   border-radius: 4px;
 }
 
 .event-bar--start {
-  left: 2px;
+  left: 1px;
   right: -1px;
   border-radius: 4px 0 0 4px;
 }
 
 .event-bar--middle {
-  left: 2px;
+  left: 1px;
   right: -1px;
   border-radius: 0;
 }
 
 .event-bar--end {
-  left: 2px;
-  right: 2px;
+  left: 1px;
+  right: 1px;
   border-radius: 0 4px 4px 0;
 }
 
@@ -915,7 +922,7 @@ textarea {
 .event-bar-accent {
   flex-shrink: 0;
   align-self: stretch;
-  width: 3px;
+  width: 2px;
   margin-right: 0;
   border-radius: 2px 0 0 2px;
   background-color: var(--event-accent, #039be5);
@@ -924,7 +931,7 @@ textarea {
 .event-title {
   min-width: 0;
   flex: 1;
-  margin-left: 1ch;
+  margin-left: 1px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3045,9 +3052,9 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   margin-left: auto;
-  padding-left: 2px;
+  padding-left: 1px;
 }
 
 .event-link-icon,
@@ -3149,14 +3156,14 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
 .event-tag-icons {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   flex-shrink: 0;
 }
 
 .event-tag-icon {
   display: block;
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   flex-shrink: 0;
 }
 
@@ -3258,8 +3265,8 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
 /* —— Event "N개 더보기" (MDC event-more; lane from row capacity) —— */
 .event-more {
   position: absolute;
-  left: 2px;
-  right: 2px;
+  left: 1px;
+  right: 1px;
   top: calc(
     var(--day-event-gap, 6px) + var(--event-lane, 0) * var(--event-lane-step, 20px) +
       var(--event-more-offset, 4px)
@@ -3271,8 +3278,9 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
   border-radius: 0;
   background: transparent;
   color: var(--gcal-muted);
-  font-size: calc(clamp(9px, 1.4vh, 12px) * var(--event-density, 1));
+  font-size: calc(clamp(7.5px, 1.05vh, 10px) * var(--event-density, 1));
   font-weight: 500;
+  letter-spacing: -0.035em;
   text-align: left;
   cursor: pointer;
   overflow: hidden;
