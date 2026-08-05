@@ -41,6 +41,11 @@ import {
   CalendarWebServer,
   resolveLaunchServerMode
 } from './webServer/CalendarWebServer'
+import {
+  allowFirewallInbound,
+  removeFirewallInbound
+} from './webServer/allowFirewallInbound'
+import { resolveWebServerPort } from '../shared/webServerPort'
 import type {
   CalendarEvent,
   CalendarRecord,
@@ -669,10 +674,44 @@ function registerIpc(): void {
   ipcMain.handle('get-sync-info', () => webServer?.getSyncInfo() ?? {
     running: false,
     port: null,
+    configuredPort: resolveWebServerPort(
+      calendarStore.getSnapshot().settings.webServerPort,
+      getEnvValue('PORT', 'MYCALENDAR_PORT', 'NEOCALENDAR_PORT')
+    ),
+    preferredMode: resolveLaunchServerMode(
+      calendarStore.getSnapshot().settings.webServerMode
+    ),
     hostname: null,
     lanMode: false,
     addresses: [],
     editorUrl: null
+  })
+  ipcMain.handle('web-server:start', async (_event, mode: unknown) => {
+    requireCap('manageWebServer')
+    if (!webServer) throw new Error('웹 서버를 사용할 수 없습니다.')
+    const startMode = mode === 'lan' ? 'lan' : 'local'
+    const result = await webServer.tryStart({ mode: startMode, requirePortInEnv: false })
+    tray?.rebuildMenu?.()
+    return { ...result, sync: webServer.getSyncInfo() }
+  })
+  ipcMain.handle('web-server:stop', () => {
+    requireCap('manageWebServer')
+    if (!webServer) throw new Error('웹 서버를 사용할 수 없습니다.')
+    const result = webServer.stop()
+    tray?.rebuildMenu?.()
+    return { ...result, sync: webServer.getSyncInfo() }
+  })
+  ipcMain.handle('web-server:allow-firewall', async (_event, port?: unknown) => {
+    requireCap('manageWebServer')
+    const preferred =
+      port ?? calendarStore.getSnapshot().settings.webServerPort
+    return allowFirewallInbound(preferred)
+  })
+  ipcMain.handle('web-server:remove-firewall', async (_event, port?: unknown) => {
+    requireCap('manageWebServer')
+    const preferred =
+      port ?? calendarStore.getSnapshot().settings.webServerPort
+    return removeFirewallInbound(preferred)
   })
   ipcMain.handle(
     'login',
@@ -1189,6 +1228,21 @@ function bootApp(): void {
     attachments: attachmentService,
     getWwwroot: () => join(__dirname, '../renderer'),
     getViteOrigin: () => process.env.ELECTRON_RENDERER_URL?.trim() || null,
+    getListenPort: () =>
+      resolveWebServerPort(
+        calendarStore.getSnapshot().settings.webServerPort,
+        getEnvValue('PORT', 'MYCALENDAR_PORT', 'NEOCALENDAR_PORT')
+      ),
+    onServerStarted: ({ mode }) => {
+      const cur = calendarStore.getSnapshot().settings.webServerMode
+      if (cur === mode) return
+      calendarStore.patchStoreSettings(
+        { webServerMode: mode },
+        auth.getUser()?.loginId,
+        'native'
+      )
+      notifyStoreChanged()
+    },
     onStoreMutated: () => notifyStoreChanged()
   })
   // Tray first so a later window/bridge failure still leaves a visible shell icon.
@@ -1203,8 +1257,14 @@ function bootApp(): void {
   // MDC StartWebServerOnLaunch — default Local; refresh tray checkmarks after listen.
   void (async () => {
     try {
-      const mode = resolveLaunchServerMode()
-      const started = await webServer.tryStart({ mode, requirePortInEnv: false })
+      const mode = resolveLaunchServerMode(
+        calendarStore.getSnapshot().settings.webServerMode
+      )
+      const started = await webServer.tryStart({
+        mode,
+        requirePortInEnv: false,
+        persistPreference: false
+      })
       if (!started.ok) {
         console.warn('[web-server] auto-start skipped:', started.message)
       } else {

@@ -434,6 +434,18 @@ export function installBrowserNeoCalendar(): void {
       return { ok: true as const }
     },
     getSyncInfo: () => http('GET', '/api/sync-info'),
+    startWebServer: async () => {
+      throw new Error('서버 관리는 Electron 앱에서만 사용할 수 있습니다.')
+    },
+    stopWebServer: async () => {
+      throw new Error('서버 관리는 Electron 앱에서만 사용할 수 있습니다.')
+    },
+    allowWebServerFirewall: async () => {
+      throw new Error('방화벽 설정은 Electron 앱에서만 사용할 수 있습니다.')
+    },
+    removeWebServerFirewall: async () => {
+      throw new Error('방화벽 설정은 Electron 앱에서만 사용할 수 있습니다.')
+    },
     login: async (loginId, password, remember) => {
       const result = await http<{
         ok: boolean

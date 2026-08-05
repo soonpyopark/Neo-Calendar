@@ -13,6 +13,7 @@ import { MemberCalendarsPanel } from './MemberCalendarsPanel'
 import { MembersPanel } from './MembersPanel'
 import { AccountPanel } from './AccountPanel'
 import { SecurityPanel } from './SecurityPanel'
+import { ServerManagementPanel } from './ServerManagementPanel'
 import { TagsPanel } from './TagsPanel'
 import { CalendarColorPalette } from './CalendarColorPalette'
 import { CalendarFileFormatButton } from './CalendarFileFormatButton'
@@ -64,6 +65,7 @@ type SettingsSection =
   | 'import-export'
   | 'tags'
   | 'security'
+  | 'server'
   | 'members'
   | 'member-calendars'
   | 'holidays'
@@ -1147,7 +1149,7 @@ export function SettingsPanel({
   }, [open])
 
   useEffect(() => {
-    if (!isSuperAdmin && ['import-export', 'security', 'members', 'member-calendars', 'holidays'].includes(section)) {
+    if (!isSuperAdmin && ['import-export', 'security', 'server', 'members', 'member-calendars', 'holidays'].includes(section)) {
       setSection('general')
     }
   }, [isSuperAdmin, section])
@@ -1264,6 +1266,9 @@ export function SettingsPanel({
                 <>
                   <NavBtn active={section === 'security'} onClick={() => setSection('security')}>
                     보안 관리
+                  </NavBtn>
+                  <NavBtn active={section === 'server'} onClick={() => setSection('server')}>
+                    서버 관리
                   </NavBtn>
                   <NavBtn active={section === 'members'} onClick={() => setSection('members')}>
                     회원 관리
@@ -1415,6 +1420,13 @@ export function SettingsPanel({
                 if (!cal) return
                 void onPatchCalendar(id, { visible: cal.visible === false })
               }}
+            />
+          )}
+
+          {section === 'server' && isSuperAdmin && (
+            <ServerManagementPanel
+              settings={store.settings}
+              onSaveSettings={onPatchStore}
             />
           )}
 

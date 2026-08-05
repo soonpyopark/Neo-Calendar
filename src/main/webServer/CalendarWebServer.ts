@@ -23,6 +23,7 @@ import {
   normalizeClientIp,
   parseAllowedHosts
 } from './ipAccess'
+import { resolveWebServerMode, resolveWebServerPort } from '../../shared/webServerPort'
 
 const MIME: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -42,6 +43,10 @@ const MIME: Record<string, string> = {
 export type WebServerSyncInfo = {
   running: boolean
   port: number | null
+  /** Resolved listen port (settings → .env → default), even when stopped. */
+  configuredPort: number
+  /** Preferred Local/Web mode (settings → .env), even when stopped. */
+  preferredMode: 'local' | 'lan'
   hostname: string | null
   lanMode: boolean
   addresses: string[]
@@ -62,6 +67,10 @@ export type CalendarWebServerOptions = {
   getWwwroot: () => string
   /** Dev Vite origin, e.g. http://localhost:5173 */
   getViteOrigin: () => string | null
+  /** Prefer store/UI port over .env when set. */
+  getListenPort?: () => number
+  /** Called after a successful listen (tray + settings start). */
+  onServerStarted?: (info: { mode: 'local' | 'lan'; port: number }) => void
   /**
    * Called after any HTTP API mutation. Prefer main's notifyStoreChanged so
    * Electron renderer + WebSocket browsers both refresh (avoid WS-only).
@@ -90,15 +99,30 @@ export class CalendarWebServer {
     const port = running ? this.port : null
     const vite = preferLoopbackOrigin(this.options.getViteOrigin())
     const local = port ? `http://127.0.0.1:${port}/` : null
+    const preferredMode = resolveLaunchServerMode(
+      this.options.calendarStore.getSnapshot().settings.webServerMode
+    )
     return {
       running,
       port,
+      configuredPort: this.resolveListenPort(),
+      preferredMode,
       hostname: running ? this.hostname : null,
       lanMode: running ? this.lanMode : false,
       addresses: running ? [...this.addresses] : [],
       // Prefer Vite in dev — opening :3010 proxied every module and felt "stuck".
       editorUrl: running ? vite ?? local : null
     }
+  }
+
+  resolveListenPort(): number {
+    if (this.options.getListenPort) {
+      return this.options.getListenPort()
+    }
+    return resolveWebServerPort(
+      null,
+      getEnvValue('PORT', 'MYCALENDAR_PORT', 'NEOCALENDAR_PORT')
+    )
   }
 
   /**
@@ -109,6 +133,8 @@ export class CalendarWebServer {
   async tryStart(options?: {
     mode?: 'local' | 'lan' | 'env'
     requirePortInEnv?: boolean
+    /** When true (default), persist Local/Web into settings.json. */
+    persistPreference?: boolean
   }): Promise<{ ok: boolean; message: string }> {
     // MDC: StopWebServerInternal() before binding the other (or same) mode.
     if (this.isRunning) {
@@ -116,13 +142,12 @@ export class CalendarWebServer {
     }
 
     const requirePort = options?.requirePortInEnv === true
-    const portRaw = getEnvValue('PORT', 'MYCALENDAR_PORT', 'NEOCALENDAR_PORT')
-    let port = portRaw ? Number.parseInt(portRaw, 10) : NaN
+    let port = this.resolveListenPort()
     if (!Number.isFinite(port) || port <= 0) {
       if (requirePort) {
         return { ok: false, message: 'PORT not set — HTTP server skipped.' }
       }
-      port = 3010
+      port = resolveWebServerPort(null, null)
     }
 
     const mode = options?.mode ?? 'env'
@@ -209,6 +234,16 @@ export class CalendarWebServer {
         console.log(
           `[web-server] Started (${modeLabel}) on port ${port}: ${this.addresses.join(', ')}`
         )
+        try {
+          if (options?.persistPreference !== false) {
+            this.options.onServerStarted?.({
+              mode: this.lanMode ? 'lan' : 'local',
+              port
+            })
+          }
+        } catch (err) {
+          console.warn('[web-server] onServerStarted failed', err)
+        }
         resolve({
           ok: true,
           message: `HTTP server started (${modeLabel}) — ${this.addresses[0] ?? `port ${port}`}`
@@ -471,14 +506,13 @@ function buildAddressList(hostname: string, port: number): string[] {
 }
 
 /**
- * Map .env HOSTNAME to tray-equivalent start modes (MDC ResolveLaunchServerMode).
+ * Prefer store webServerMode, then .env HOSTNAME (MDC ResolveLaunchServerMode).
  * Missing / empty / localhost / 127.0.0.1 → Local (default).
  * 0.0.0.0 (or * / +) → Web / LAN.
  */
-export function resolveLaunchServerMode(): 'local' | 'lan' {
-  const hostname = (
-    getEnvValue('HOSTNAME', 'MYCALENDAR_HOSTNAME', 'NEOCALENDAR_HOSTNAME') ?? ''
-  ).trim()
-  if (hostname === '0.0.0.0' || hostname === '*' || hostname === '+') return 'lan'
-  return 'local'
+export function resolveLaunchServerMode(preferredMode?: unknown): 'local' | 'lan' {
+  return resolveWebServerMode(
+    preferredMode,
+    getEnvValue('HOSTNAME', 'MYCALENDAR_HOSTNAME', 'NEOCALENDAR_HOSTNAME')
+  )
 }

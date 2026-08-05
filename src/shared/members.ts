@@ -15,6 +15,7 @@ export type AppCapability =
   | 'manageMembers'
   | 'manageMemberCalendars'
   | 'manageSecurity'
+  | 'manageWebServer'
   | 'syncHolidays'
   | 'backupStore'
   | 'importExportStore'
@@ -23,6 +24,7 @@ const SUPER_ADMIN_CAPABILITIES = new Set<AppCapability>([
   'manageMembers',
   'manageMemberCalendars',
   'manageSecurity',
+  'manageWebServer',
   'syncHolidays',
   'backupStore',
   'importExportStore'
@@ -78,8 +80,12 @@ export function stripMemberAdminSettingsPatch<T extends Record<string, unknown>>
   const next = { ...patch } as T & {
     allowedIpCidrs?: unknown
     holidaysKr?: Record<string, unknown>
+    webServerPort?: unknown
+    webServerMode?: unknown
   }
   delete next.allowedIpCidrs
+  delete next.webServerPort
+  delete next.webServerMode
   if (next.holidaysKr && typeof next.holidaysKr === 'object') {
     const holidays = { ...next.holidaysKr }
     delete holidays.serviceKey

@@ -216,6 +216,18 @@ export type StoreSettings = {
   dayHighlightsByLoginId?: Record<string, Record<string, string>>
   hiddenCalendarIdsByLoginId?: Record<string, string[]>
   allowedIpCidrs: Array<{ cidr: string; description?: string }>
+  /**
+   * HTTP web server listen port (Local / LAN).
+   * null/undefined → fall back to .env PORT, then 3010.
+   * When set, always wins over .env.
+   */
+  webServerPort?: number | null
+  /**
+   * Preferred HTTP server bind mode from 서버 관리 / tray.
+   * null/undefined → fall back to .env HOSTNAME, then local.
+   * When set, always wins over .env.
+   */
+  webServerMode?: 'local' | 'lan' | null
   /** Neo chrome extensions */
   headerOpacity: number
   shellOpacity: number

@@ -218,11 +218,25 @@ const api: NeoCalendarApi = {
     ipcRenderer.invoke('get-sync-info') as Promise<{
       running: boolean
       port: number | null
+      configuredPort: number
+      preferredMode: 'local' | 'lan'
       hostname: string | null
       lanMode: boolean
       addresses: string[]
       editorUrl: string | null
     }>,
+  startWebServer: (mode) =>
+    ipcRenderer.invoke('web-server:start', mode) as ReturnType<NeoCalendarApi['startWebServer']>,
+  stopWebServer: () =>
+    ipcRenderer.invoke('web-server:stop') as ReturnType<NeoCalendarApi['stopWebServer']>,
+  allowWebServerFirewall: (port) =>
+    ipcRenderer.invoke('web-server:allow-firewall', port) as ReturnType<
+      NeoCalendarApi['allowWebServerFirewall']
+    >,
+  removeWebServerFirewall: (port) =>
+    ipcRenderer.invoke('web-server:remove-firewall', port) as ReturnType<
+      NeoCalendarApi['removeWebServerFirewall']
+    >,
   login: (loginId: string, password: string, remember?: boolean) =>
     ipcRenderer.invoke('login', loginId, password, remember) as Promise<LoginResult>,
   logout: () => ipcRenderer.invoke('logout') as Promise<void>,

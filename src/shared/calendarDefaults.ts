@@ -145,6 +145,8 @@ export function createDefaultSettings(): StoreSettings {
     dayHighlightsByLoginId: {},
     hiddenCalendarIdsByLoginId: {},
     allowedIpCidrs: [],
+    webServerPort: null,
+    webServerMode: null,
     headerOpacity: DEFAULT_HEADER_OPACITY,
     shellOpacity: DEFAULT_SHELL_OPACITY
   }

@@ -320,11 +320,55 @@ export type NeoCalendarApi = {
   getSyncInfo: () => Promise<{
     running: boolean
     port: number | null
+    configuredPort: number
+    preferredMode: 'local' | 'lan'
     hostname: string | null
     lanMode: boolean
     addresses: string[]
     /** Browser editor URL (Vite in dev, local server when packaged). */
     editorUrl: string | null
+  }>
+  /** Super-admin: start HTTP server (local = loopback, lan = 0.0.0.0). Electron only. */
+  startWebServer: (mode: 'local' | 'lan') => Promise<{
+    ok: boolean
+    message: string
+    sync: {
+      running: boolean
+      port: number | null
+      configuredPort: number
+      preferredMode: 'local' | 'lan'
+      hostname: string | null
+      lanMode: boolean
+      addresses: string[]
+      editorUrl: string | null
+    }
+  }>
+  /** Super-admin: stop HTTP server. Electron only. */
+  stopWebServer: () => Promise<{
+    ok: boolean
+    message: string
+    sync: {
+      running: boolean
+      port: number | null
+      configuredPort: number
+      preferredMode: 'local' | 'lan'
+      hostname: string | null
+      lanMode: boolean
+      addresses: string[]
+      editorUrl: string | null
+    }
+  }>
+  /** Super-admin: Windows firewall inbound TCP allow (optional port). Electron only. */
+  allowWebServerFirewall: (port?: number) => Promise<{
+    ok: boolean
+    message: string
+    port: number
+  }>
+  /** Super-admin: remove Windows firewall inbound TCP allow (optional port). Electron only. */
+  removeWebServerFirewall: (port?: number) => Promise<{
+    ok: boolean
+    message: string
+    port: number
   }>
   login: (loginId: string, password: string, remember?: boolean) => Promise<LoginResult>
   logout: () => Promise<void>
