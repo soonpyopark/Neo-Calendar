@@ -37,6 +37,7 @@ import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/ca
 import { getSeriesId, expandEventsForRange } from '../../../shared/mdcExport/eventOccurrences.js'
 import { compareEventsForDayDisplay } from '../../../shared/mdcExport/eventBarFormat.js'
 import type { CalendarEvent, CalendarRecord, EventLink, TagRecord } from '../../../shared/calendarTypes'
+import { normalizeEventDensity } from '../../../shared/eventLayoutMetrics'
 import type { DayReorderItem } from '../lib/dayReorder'
 
 import {
@@ -105,6 +106,8 @@ export type DayQuickEditPopoverProps = {
   expandBody?: boolean
   /** Year view: minimum body height (mini day cells in year grid). */
   minBodyHeight?: number
+  /** Month density (−/+ toolbar); scales list title size with main calendar. */
+  eventDensity?: number
   onClose: () => void
   onCreate: (title: string, calendarId: string, tagIds?: string[], links?: EventLink[]) => void
   onToggleCompleted: (event: CalendarEvent, completed: boolean) => void
@@ -265,6 +268,7 @@ export function DayQuickEditPopover({
   focusEvent = null,
   expandBody = false,
   minBodyHeight = 0,
+  eventDensity = 1,
   onClose,
   onCreate,
   onToggleCompleted,
@@ -321,6 +325,13 @@ export function DayQuickEditPopover({
     bodyExtra,
     minBodyHeight: minBodyHeight || undefined
   }
+  const densityCssVars = useMemo(
+    () =>
+      ({
+        '--event-density': String(normalizeEventDensity(eventDensity))
+      }) as CSSProperties,
+    [eventDensity]
+  )
 
   // Reopening the panel on another day must not keep the previous day's swatches.
   const optimisticDayKeyRef = useRef(dateKey)
@@ -807,7 +818,7 @@ export function DayQuickEditPopover({
         ref={panelRef}
         captureOnHover={!isFloating}
         className={`day-quick-edit day-quick-edit--event fixed flex flex-col overflow-hidden rounded-xl bg-gcal-surface${isFloating ? '' : ' shadow-g-lg'}`}
-        style={{ ...style, zIndex }}
+        style={{ ...style, ...densityCssVars, zIndex }}
         role="dialog"
         aria-label={`${formatDayHeaderTitle(date)} 빠른 편집`}
         onClick={(e) => e.stopPropagation()}

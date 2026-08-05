@@ -2957,6 +2957,7 @@ export function CalendarGrid({
           canEdit={canEdit}
           expandBody={viewMode === 'month'}
           minBodyHeight={viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : undefined}
+          eventDensity={eventDensity}
           zIndex={inlineQuickEditZ}
           onRaise={() => setInlineFrontPanel('quickEdit')}
           onDismissEventDetail={clearEventDetail}

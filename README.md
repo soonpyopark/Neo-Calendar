@@ -12,9 +12,11 @@ Lightweight Electron desktop wallpaper calendar with dynamic click-through.
 ## Features
 
 - Frameless, transparent, taskbar-hidden window
-- Windows wallpaper-layer attachment via `win.setAsWallpaper()`
+- Desktop embed under icons via WorkerW `SetParent` (바탕화면 모드)
 - Empty space clicks pass through to the OS desktop
-- Interactive controls (nav, events, add) capture mouse on hover
+- Interactive controls (nav, events, add) capture mouse on hover (`.interaction-ui`)
+- Settings → **서버 관리** (super_admin): HTTP port, Local/Web start·stop, firewall inbound
+- Month toolbar `[-]`/`[+]` event density scales main bars and quick-edit list titles together
 
 ## Develop
 
@@ -44,13 +46,13 @@ Admin login credentials come from `.env` (`MYCALENDAR_ADMIN_ID` / `MYCALENDAR_AD
 
 | Role | Can do |
 | --- | --- |
-| `super_admin` (총괄관리자) | Full calendar store, member management, security/IP, holiday API sync, ZIP backup/import |
+| `super_admin` (총괄관리자) | Full calendar store, members, security/IP, **서버 관리**, holiday API sync, ZIP backup/import |
 | `member` (일반사용자) | Own calendars & events, tags, account password change, Excel/PDF export of own data, view holidays |
 | Guest (logged out) | Empty store; must log in to edit |
 
 - Session role is loaded from `data/members.json` on login/restore.
 - Settings → **내 계정** is available to every logged-in user for password change.
-- Admin-only Settings tabs and matching IPC/HTTP APIs reject non-admins with “권한이 없습니다.”
+- Admin-only Settings tabs (보안·서버 관리·회원·공휴일 동기화·전체 가져오기/내보내기) and matching IPC/HTTP APIs reject non-admins with “권한이 없습니다.”
 - Agent rule: `.cursor/rules/neo-permissions.mdc`
 
 ## Build

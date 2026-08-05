@@ -32,6 +32,7 @@ import {
   mergeSortOrderByDay
 } from '../../../shared/mdcExport/eventBarFormat.js'
 import { HOLIDAYS_KR_CALENDAR_ID, PRIMARY_CALENDAR_ID } from '../../../shared/calendarDefaults'
+import { normalizeEventDensity } from '../../../shared/eventLayoutMetrics'
 import type { CalendarEvent, EventLink } from '../../../shared/calendarTypes'
 import {
   QUICK_EDIT_YEAR_MIN_BODY,
@@ -398,6 +399,7 @@ export function QuickEditWindowApp(): ReactElement | null {
         canEdit={canEdit}
         expandBody={viewMode === 'month'}
         minBodyHeight={viewMode === 'year' ? QUICK_EDIT_YEAR_MIN_BODY : undefined}
+        eventDensity={normalizeEventDensity(store.settings.viewOptions.eventDensity)}
         onReorderEvents={handleReorderEvents}
         onClose={handleClose}
         onDismissEventDetail={() => {
