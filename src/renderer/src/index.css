@@ -2270,16 +2270,16 @@ body.is-resizing-window {
   display: inline-flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 0.25rem;
+  gap: calc(0.15rem * var(--event-density, 1));
   margin-left: auto;
-  padding-left: 0.25rem;
+  padding-left: 0.2rem;
 }
 
-/* Circular hit targets — match footer tool chips so link/attach are distinct from the title. */
+/* Compact circular chips — match min-density title (~9px); scale with −/+. */
 .day-quick-edit-trailing .event-link-icon,
 .day-quick-edit-trailing .event-attach-icon {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: calc(12px * var(--event-density, 1));
+  height: calc(12px * var(--event-density, 1));
   border-radius: 9999px;
   background: var(--gcal-surface-2, #f1f3f4);
   color: var(--gcal-muted, #5f6368);
@@ -2296,8 +2296,8 @@ body.is-resizing-window {
 
 .day-quick-edit-trailing .event-link-icon svg,
 .day-quick-edit-trailing .event-attach-icon svg {
-  width: 13px;
-  height: 13px;
+  width: calc(8px * var(--event-density, 1));
+  height: calc(8px * var(--event-density, 1));
   display: block;
 }
 
