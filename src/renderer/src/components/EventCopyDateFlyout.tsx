@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom'
 import { clampFixedPosition } from '../lib/popoverPosition'
 import { setIgnoreMouseEvents } from '../lib/mouseBridge'
+import { blockPanelOutsideClose } from '../lib/recurrenceComplete'
 import { shiftDateKey } from '../lib/shiftEventDates'
 import DateInput from './DateInput'
 import { InteractionUI } from './InteractionUI'
@@ -69,6 +70,16 @@ export function EventCopyDateFlyout({
     })
   }, [open, anchorRef])
 
+  // Native <input type="date"> showPicker() paints outside the floating panel
+  // footprint — keep main from treating those clicks as outside-dismiss.
+  useEffect(() => {
+    if (!open) return undefined
+    const hold = (): void => blockPanelOutsideClose(500)
+    hold()
+    const id = window.setInterval(hold, 300)
+    return () => window.clearInterval(id)
+  }, [open])
+
   useEffect(() => {
     if (!open) return undefined
     const onKey = (event: KeyboardEvent): void => {
@@ -79,6 +90,15 @@ export function EventCopyDateFlyout({
       if (!(target instanceof Node)) return
       if (panelRef.current?.contains(target)) return
       if (anchorRef.current?.contains(target)) return
+      // Chromium date picker UI is not in the page DOM while open.
+      const active = document.activeElement
+      if (
+        active instanceof HTMLInputElement &&
+        active.type === 'date' &&
+        panelRef.current?.contains(active)
+      ) {
+        return
+      }
       onClose()
     }
     window.addEventListener('keydown', onKey, true)

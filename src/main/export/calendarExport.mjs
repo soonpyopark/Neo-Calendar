@@ -1,5 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
+import { nativeImage } from 'electron'
 import ExcelJS from 'exceljs'
 import PDFDocument from 'pdfkit'
 import { EXPORT_COLORS } from '../../shared/mdcExport/exportColors.js'
@@ -189,6 +190,208 @@ const PDF_DETAIL_PAD = 3;
 /** Indent of the box under the title line. */
 const PDF_DETAIL_INDENT = 6;
 const PDF_DETAIL_GAP = 2;
+/** Inline image in the purple box — contain into this pt box (A4 day-list). */
+const PDF_IMAGE_MAX_W = 170;
+const PDF_IMAGE_MAX_H = 110;
+const PDF_IMAGE_GAP = 4;
+/** Downscale long edge before embedding so PDF size stays reasonable. */
+const PDF_IMAGE_EMBED_MAX_EDGE = 1200;
+
+const PDF_IMAGE_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.bmp',
+  '.avif',
+]);
+
+/**
+ * @param {{ mime?: string, name?: string, storedName?: string } | null | undefined} meta
+ */
+function isPdfImageAttachment(meta) {
+  if (!meta) return false;
+  const mime = String(meta.mime ?? '').toLowerCase();
+  if (mime.startsWith('image/')) return mime !== 'image/svg+xml';
+  if (mime && mime !== 'application/octet-stream') return false;
+  const extOf = (name) => {
+    const dot = String(name ?? '').lastIndexOf('.');
+    return dot < 0 ? '' : name.slice(dot).toLowerCase();
+  };
+  return (
+    PDF_IMAGE_EXTENSIONS.has(extOf(meta.name)) ||
+    PDF_IMAGE_EXTENSIONS.has(extOf(meta.storedName))
+  );
+}
+
+/**
+ * @param {number} srcW
+ * @param {number} srcH
+ * @param {number} maxW
+ * @param {number} maxH
+ */
+function containSize(srcW, srcH, maxW, maxH) {
+  if (srcW <= 0 || srcH <= 0) return { w: 0, h: 0 };
+  const scale = Math.min(maxW / srcW, maxH / srcH, 1);
+  return {
+    w: Math.max(1, Math.round(srcW * scale)),
+    h: Math.max(1, Math.round(srcH * scale)),
+  };
+}
+
+/**
+ * @param {string} filePath
+ * @param {number} maxW
+ * @param {number} maxH
+ * @returns {{ buffer: Buffer, drawW: number, drawH: number } | null}
+ */
+function prepareImageForPdf(filePath, maxW, maxH) {
+  try {
+    let image = nativeImage.createFromPath(filePath);
+    if (image.isEmpty()) return null;
+    let { width, height } = image.getSize();
+    if (!width || !height) return null;
+
+    const longEdge = Math.max(width, height);
+    if (longEdge > PDF_IMAGE_EMBED_MAX_EDGE) {
+      const scale = PDF_IMAGE_EMBED_MAX_EDGE / longEdge;
+      image = image.resize({
+        width: Math.max(1, Math.round(width * scale)),
+        height: Math.max(1, Math.round(height * scale)),
+        quality: 'better',
+      });
+      ({ width, height } = image.getSize());
+    }
+
+    const fitted = containSize(width, height, maxW, maxH);
+    if (fitted.w <= 0 || fitted.h <= 0) return null;
+
+    // JPEG keeps PDFs smaller than PNG for photos; quality ~80 is fine for print.
+    const buffer = Buffer.from(image.toJPEG(80));
+    if (!buffer.byteLength) return null;
+    return { buffer, drawW: fitted.w, drawH: fitted.h };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {object} store
+ * @param {string} eventId
+ * @param {string} attachmentId
+ */
+function findStoreAttachment(store, eventId, attachmentId) {
+  const event = Array.isArray(store?.events)
+    ? store.events.find((item) => item.id === eventId)
+    : null;
+  if (!event || !Array.isArray(event.attachments)) return null;
+  return event.attachments.find((item) => item.id === attachmentId) ?? null;
+}
+
+/**
+ * @param {string | undefined} attachmentsRoot
+ * @param {string} eventId
+ * @param {{ storedName?: string }} meta
+ */
+function resolveAttachmentDiskPath(attachmentsRoot, eventId, meta) {
+  const root = String(attachmentsRoot ?? '').trim();
+  const id = String(eventId ?? '').trim();
+  const stored = String(meta?.storedName ?? '').trim();
+  if (!root || !id || !stored || id.includes('..') || stored.includes('..')) return null;
+  const path = join(root, id, basename(stored));
+  return existsSync(path) ? path : null;
+}
+
+/**
+ * Preload image bytes for day-list PDF (keyed by eventId::attachmentId).
+ * @param {object} store
+ * @param {ReturnType<typeof prepareDayListExportLayout>} layout
+ * @param {string | undefined} attachmentsRoot
+ * @param {number} innerWidth
+ */
+function loadDayListPdfImages(store, layout, attachmentsRoot, innerWidth) {
+  /** @type {Map<string, { buffer: Buffer, drawW: number, drawH: number }>} */
+  const assets = new Map();
+  const maxW = Math.min(PDF_IMAGE_MAX_W, Math.max(1, innerWidth));
+  const maxH = PDF_IMAGE_MAX_H;
+
+  for (const row of layout.rows ?? []) {
+    for (const event of row.events ?? []) {
+      const eventId = String(event.eventId ?? '').trim();
+      if (!eventId) continue;
+      for (const detail of event.details ?? []) {
+        if (detail?.kind !== 'attachment' || !detail.attachmentId) continue;
+        const attachmentId = String(detail.attachmentId).trim();
+        if (!attachmentId) continue;
+        const key = `${eventId}::${attachmentId}`;
+        if (assets.has(key)) continue;
+
+        const meta = findStoreAttachment(store, eventId, attachmentId);
+        if (!isPdfImageAttachment(meta)) continue;
+        const path = resolveAttachmentDiskPath(attachmentsRoot, eventId, meta);
+        if (!path) continue;
+        const prepared = prepareImageForPdf(path, maxW, maxH);
+        if (prepared) assets.set(key, prepared);
+      }
+    }
+  }
+  return assets;
+}
+
+/**
+ * @param {Map<string, { buffer: Buffer, drawW: number, drawH: number }>} assets
+ * @param {string} eventId
+ * @param {{ kind?: string, attachmentId?: string }} detail
+ */
+function getDetailImageAsset(assets, eventId, detail) {
+  if (!assets || detail?.kind !== 'attachment' || !detail.attachmentId) return null;
+  return assets.get(`${eventId}::${detail.attachmentId}`) ?? null;
+}
+
+/**
+ * Height of the purple detail box (text lines + optional inline images).
+ * @param {import('pdfkit').default} doc
+ * @param {{ eventId?: string, details?: { text: string, kind?: string, attachmentId?: string }[] }} event
+ * @param {number} textWidth
+ * @param {Map<string, { buffer: Buffer, drawW: number, drawH: number }> | null} imageAssets
+ */
+function measureDayListDetailBoxHeight(doc, event, textWidth, imageAssets) {
+  const details = Array.isArray(event.details) ? event.details : [];
+  if (details.length === 0) return 0;
+
+  const innerWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT - PDF_DETAIL_PAD * 2);
+  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  let height = PDF_DETAIL_PAD * 2;
+  const eventId = String(event.eventId ?? '').trim();
+
+  for (const detail of details) {
+    const text = String(detail?.text ?? '');
+    height += doc.heightOfString(text, { width: innerWidth });
+    const asset = getDetailImageAsset(imageAssets, eventId, detail);
+    if (asset) height += PDF_IMAGE_GAP + asset.drawH;
+  }
+  return height;
+}
+
+/**
+ * Day-list event height: title line plus the boxed 설명/링크/첨부 block.
+ * @param {import('pdfkit').default} doc
+ * @param {{ head?: string, line: string, eventId?: string, details?: { text: string }[] }} event
+ * @param {number} textWidth
+ * @param {Map<string, { buffer: Buffer, drawW: number, drawH: number }> | null} [imageAssets]
+ */
+function measureDayListEventHeight(doc, event, textWidth, imageAssets = null) {
+  doc.fontSize(PDF_EVENT_FONT_SIZE);
+  const head = event.head ?? event.line;
+  let height = Math.max(
+    PDF_MIN_EVENT_BAR_HEIGHT,
+    doc.heightOfString(head, { width: Math.max(1, textWidth) }),
+  );
+  const detailHeight = measureDayListDetailBoxHeight(doc, event, textWidth, imageAssets);
+  if (detailHeight > 0) height += PDF_DETAIL_GAP + detailHeight;
+  return height;
+}
 
 function getDayListDayOfWeek(dayKey) {
   const [year, month, day] = String(dayKey).split('-').map(Number);
@@ -238,28 +441,6 @@ function measurePdfEventTextHeight(doc, line, textWidth) {
 function getDayListDetailText(event) {
   const details = Array.isArray(event.details) ? event.details : [];
   return details.map((item) => item.text).join('\n');
-}
-
-/**
- * Day-list event height: title line plus the boxed 설명/링크/첨부 block.
- * @param {import('pdfkit').default} doc
- * @param {{ head?: string, line: string, details?: { text: string }[] }} event
- * @param {number} textWidth
- */
-function measureDayListEventHeight(doc, event, textWidth) {
-  doc.fontSize(PDF_EVENT_FONT_SIZE);
-  const head = event.head ?? event.line;
-  let height = Math.max(
-    PDF_MIN_EVENT_BAR_HEIGHT,
-    doc.heightOfString(head, { width: Math.max(1, textWidth) }),
-  );
-  const detailText = getDayListDetailText(event);
-  if (detailText) {
-    const innerWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT - PDF_DETAIL_PAD * 2);
-    height +=
-      PDF_DETAIL_GAP + doc.heightOfString(detailText, { width: innerWidth }) + PDF_DETAIL_PAD * 2;
-  }
-  return height;
 }
 
 /**
@@ -313,35 +494,60 @@ function drawDayListHead(doc, head, textX, y, textWidth) {
 /**
  * Draw one day-list event and return the height it consumed.
  * @param {import('pdfkit').default} doc
- * @param {{ head?: string, line: string, details?: { text: string }[], color: string }} event
+ * @param {{ head?: string, line: string, eventId?: string, details?: { text: string, kind?: string, attachmentId?: string }[], color: string }} event
  * @param {number} textX
  * @param {number} y
  * @param {number} textWidth
+ * @param {Map<string, { buffer: Buffer, drawW: number, drawH: number }> | null} [imageAssets]
  */
-function drawDayListEvent(doc, event, textX, y, textWidth) {
+function drawDayListEvent(doc, event, textX, y, textWidth, imageAssets = null) {
   const head = event.head ?? event.line;
-  const detailText = getDayListDetailText(event);
+  const details = Array.isArray(event.details) ? event.details : [];
+  const eventId = String(event.eventId ?? '').trim();
 
   doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE);
   const headHeight = drawDayListHead(doc, head, textX, y, textWidth);
 
-  if (!detailText) return headHeight;
+  const boxHeight = measureDayListDetailBoxHeight(doc, event, textWidth, imageAssets);
+  if (boxHeight <= 0) return headHeight;
 
   const boxX = textX + PDF_DETAIL_INDENT;
   const boxY = y + headHeight + PDF_DETAIL_GAP;
   const boxWidth = Math.max(1, textWidth - PDF_DETAIL_INDENT);
   const innerWidth = Math.max(1, boxWidth - PDF_DETAIL_PAD * 2);
-  const boxHeight = doc.heightOfString(detailText, { width: innerWidth }) + PDF_DETAIL_PAD * 2;
+  const textOriginX = boxX + PDF_DETAIL_PAD;
 
   doc.fillColor(DAY_LIST_COLORS.detailBg).roundedRect(boxX, boxY, boxWidth, boxHeight, 2).fill();
   doc.lineWidth(0.45)
     .strokeColor(DAY_LIST_COLORS.detailBorder)
     .roundedRect(boxX, boxY, boxWidth, boxHeight, 2)
     .stroke();
-  doc.fillColor(EXPORT_COLORS.body).text(detailText, boxX + PDF_DETAIL_PAD, boxY + PDF_DETAIL_PAD, {
-    width: innerWidth,
-    lineBreak: true,
-  });
+
+  let cursorY = boxY + PDF_DETAIL_PAD;
+  for (const detail of details) {
+    const text = String(detail?.text ?? '');
+    doc.font('Body').fontSize(PDF_EVENT_FONT_SIZE).fillColor(EXPORT_COLORS.body);
+    const textHeight = doc.heightOfString(text, { width: innerWidth });
+    doc.text(text, textOriginX, cursorY, {
+      width: innerWidth,
+      lineBreak: true,
+    });
+    cursorY += textHeight;
+
+    const asset = getDetailImageAsset(imageAssets, eventId, detail);
+    if (asset) {
+      cursorY += PDF_IMAGE_GAP;
+      try {
+        doc.image(asset.buffer, textOriginX, cursorY, {
+          width: asset.drawW,
+          height: asset.drawH,
+        });
+      } catch {
+        /* skip broken image bytes */
+      }
+      cursorY += asset.drawH;
+    }
+  }
 
   return headHeight + PDF_DETAIL_GAP + boxHeight;
 }
@@ -920,8 +1126,10 @@ async function buildExcelDayListBuffer(layout) {
 
 /**
  * @param {ReturnType<typeof prepareDayListExportLayout>} layout
+ * @param {object} [store]
+ * @param {{ attachmentsRoot?: string }} [options]
  */
-async function buildPdfDayListBuffer(layout) {
+async function buildPdfDayListBuffer(layout, store = null, options = {}) {
   const fontBuffer = await loadKoreanFontBuffer();
   const fontBytes = uint8FromBufferLike(fontBuffer);
   const boldBuffer = await loadKoreanBoldFontBuffer();
@@ -967,6 +1175,15 @@ async function buildPdfDayListBuffer(layout) {
     let y = 0;
     let pageIndex = 0;
 
+    const eventTextWidth = contentColWidth - 18;
+    const detailInnerWidth = Math.max(
+      1,
+      eventTextWidth - PDF_DETAIL_INDENT - PDF_DETAIL_PAD * 2,
+    );
+    const imageAssets = store
+      ? loadDayListPdfImages(store, layout, options.attachmentsRoot, detailInnerWidth)
+      : new Map();
+
     const drawHeader = () => {
       if (pageIndex > 0) {
         doc.addPage({ size: 'A4', layout: 'portrait', margin });
@@ -1002,13 +1219,12 @@ async function buildPdfDayListBuffer(layout) {
 
     drawHeader();
 
-    const eventTextWidth = contentColWidth - 18;
-
     for (const row of layout.rows) {
       let contentHeight = 14;
       if (row.events.length > 0) {
         contentHeight = row.events.reduce(
-          (sum, event) => sum + measureDayListEventHeight(doc, event, eventTextWidth) + PDF_EVENT_GAP,
+          (sum, event) =>
+            sum + measureDayListEventHeight(doc, event, eventTextWidth, imageAssets) + PDF_EVENT_GAP,
           -PDF_EVENT_GAP,
         );
       }
@@ -1050,7 +1266,14 @@ async function buildPdfDayListBuffer(layout) {
       for (const event of row.events) {
         const stripeX = margin + dateColWidth + 6;
         const textX = stripeX + PDF_STRIPE_WIDTH + PDF_TEXT_GAP;
-        const eventHeight = drawDayListEvent(doc, event, textX, eventY, eventTextWidth);
+        const eventHeight = drawDayListEvent(
+          doc,
+          event,
+          textX,
+          eventY,
+          eventTextWidth,
+          imageAssets,
+        );
         doc.fillColor(event.color).rect(stripeX, eventY + 1, PDF_STRIPE_WIDTH, eventHeight).fill();
         eventY += eventHeight + PDF_EVENT_GAP;
       }
@@ -1160,7 +1383,7 @@ export async function buildPdfBuffer(store, period, options = {}) {
       options,
     );
     return layout.layout === 'dayList'
-      ? buildPdfDayListBuffer(layout)
+      ? buildPdfDayListBuffer(layout, store, options)
       : buildPdfCalendarBuffer(layout);
   }
 

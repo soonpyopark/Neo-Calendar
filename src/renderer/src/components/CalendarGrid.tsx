@@ -3216,14 +3216,22 @@ export function CalendarGrid({
               setQuickEdit(back)
             }
           }}
-          onSave={async (payload) => {
+          onSave={async (payload, options) => {
+            const keepOpen = Boolean(options?.keepOpen)
             try {
               if (!editor.event) {
-                dismissEditorAfterSave()
-                await addEvent({
+                const created = await addEvent({
                   ...payload,
                   allDay: payload.allDay !== false
                 } as Parameters<typeof addEvent>[0])
+                if (keepOpen) {
+                  setEditor((prev) =>
+                    prev ? { ...prev, event: created } : { event: created, defaultDate: created.startDate }
+                  )
+                  void refresh()
+                  return
+                }
+                dismissEditorAfterSave()
                 return
               }
 
@@ -3237,11 +3245,17 @@ export function CalendarGrid({
                 return
               }
 
-              dismissEditorAfterSave()
               const masterId = findMasterEvent(editor.event)?.id ?? editor.event.id
-              await editEvent(masterId, payload as Partial<CalendarEvent>)
+              const updated = await editEvent(masterId, payload as Partial<CalendarEvent>)
+              if (keepOpen) {
+                setEditor((prev) => (prev ? { ...prev, event: updated } : prev))
+                void refresh()
+                return
+              }
+              dismissEditorAfterSave()
             } catch (error) {
               await alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
+              throw error
             }
           }}
           onDelete={

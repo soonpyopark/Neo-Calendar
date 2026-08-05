@@ -12,7 +12,11 @@ export type EventEditorProps = {
   defaultDate?: string
   surface?: 'inline' | 'floating'
   onClose: () => void
-  onSave: (payload: Record<string, unknown>) => void | Promise<void>
+  /** `keepOpen: true` — Ctrl+S in-place save (do not dismiss the editor). */
+  onSave: (
+    payload: Record<string, unknown>,
+    options?: { keepOpen?: boolean }
+  ) => void | Promise<void>
   onDelete?: (event: CalendarEvent) => void | Promise<void>
   onEventRefresh?: (event: CalendarEvent) => void
   /**
@@ -381,7 +385,7 @@ export function EventEditor({
     completed,
   ]);
 
-  const buildSavePayload = useCallback(() => {
+  const buildSavePayload = useCallback((linkOverride = null) => {
     const normalizedEndDate = endDate < startDate ? startDate : endDate;
     let normalizedEndTime = endTime;
     if (!allDay && startDate === normalizedEndDate && endTime < startTime) {
@@ -402,6 +406,7 @@ export function EventEditor({
       (nextUntil ?? null) !== (prevUntil ?? null) ||
       (nextCount ?? null) !== (prevCount ?? null) ||
       !repeating;
+    const linksToSave = linkOverride != null ? linkOverride : links;
 
     return {
       id: event?.id,
@@ -417,8 +422,8 @@ export function EventEditor({
       // Rewrite / re-touch recurrence → clear EXDATEs (restore cancelled instances).
       exdates: !repeating || recurrenceDirty ? [] : (Array.isArray(event?.exdates) ? event.exdates : []),
       description,
-      links: normalizeEventLinksArray(links),
-      link: getPrimaryEventLinkUrl({ links }),
+      links: normalizeEventLinksArray(linksToSave),
+      link: getPrimaryEventLinkUrl({ links: linksToSave }),
       location: event?.location ?? '',
       calendarId,
       guests: event?.guests ?? [],
@@ -451,15 +456,92 @@ export function EventEditor({
     title,
   ]);
 
+  /** Commit typed-but-not-added link draft into the links list (for Save / Ctrl+S). */
+  const flushLinkDraft = useCallback(() => {
+    const draft = String(linkDraft ?? '').trim();
+    if (!draft) return { ok: true, links };
+    const url = normalizeEventLinkUrl(linkDraft);
+    if (!url) {
+      const input = linkInputRef.current;
+      if (input instanceof HTMLInputElement) {
+        input.setCustomValidity(
+          '올바른 URL을 입력하세요. 예: example.com 또는 https://example.com'
+        );
+        input.reportValidity();
+        input.setCustomValidity('');
+      }
+      return { ok: false, links };
+    }
+    const next = appendEventLink(links, url);
+    setLinks(next);
+    setLinkDraft('');
+    setLinksExpanded(true);
+    return { ok: true, links: next };
+  }, [linkDraft, links]);
+
+  const markFormClean = useCallback((linksSnapshot) => {
+    initialFingerprintRef.current = formFingerprint({
+      title,
+      startDate,
+      endDate,
+      allDay,
+      startTime,
+      endTime,
+      repeat,
+      repeatEndMode,
+      repeatUntil,
+      repeatCount,
+      description,
+      links: linksSnapshot,
+      calendarId,
+      markerShape,
+      tagIds,
+      completed,
+    });
+    setRecurrenceTouched(false);
+  }, [
+    allDay,
+    calendarId,
+    completed,
+    description,
+    endDate,
+    endTime,
+    markerShape,
+    repeat,
+    repeatCount,
+    repeatEndMode,
+    repeatUntil,
+    startDate,
+    startTime,
+    tagIds,
+    title,
+  ]);
+
+  const persistEdits = useCallback(async (options = {}) => {
+    const keepOpen = Boolean(options.keepOpen);
+    const flushed = flushLinkDraft();
+    if (!flushed.ok) return;
+    const payload = buildSavePayload(flushed.links);
+    try {
+      await onSave(payload, { keepOpen });
+      // Create→keepOpen reseeds via event.id change; edit→keepOpen needs a clean fingerprint.
+      if (keepOpen && event?.id) {
+        markFormClean(flushed.links);
+      }
+    } catch {
+      // Hosts already surface errors; keep the dirty form as-is.
+    }
+  }, [buildSavePayload, event?.id, flushLinkDraft, markFormClean, onSave]);
+
   const handleCloseRequest = useCallback(() => {
-    if (!isDirty) {
+    if (!isDirty && !String(linkDraft ?? '').trim()) {
       onClose();
       return;
     }
     // Persist edits on dismiss. Recurring scope dialog (if needed) is opened by onSave
     // and keeps the editor open — do not call onClose in that path.
-    onSave(buildSavePayload());
-  }, [buildSavePayload, isDirty, onClose, onSave]);
+    void persistEdits({ keepOpen: false });
+  }, [isDirty, linkDraft, onClose, persistEdits]);
 
   useEffect(() => {
     if (!open) return;
@@ -470,12 +552,14 @@ export function EventEditor({
       }
       if (isSaveShortcut(e)) {
         e.preventDefault();
-        onSave(buildSavePayload());
+        e.stopPropagation();
+        // Ctrl+S: save every in-editor change and keep the window open.
+        void persistEdits({ keepOpen: true });
       }
     };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [open, handleCloseRequest, onSave, buildSavePayload]);
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [open, handleCloseRequest, persistEdits]);
 
   // Floating panel: outside-click in main asks us to save-if-dirty then close.
   useEffect(() => {
@@ -535,7 +619,7 @@ export function EventEditor({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(buildSavePayload());
+    void persistEdits({ keepOpen: false });
   };
 
   const handleDelete = async () => {
@@ -1067,7 +1151,7 @@ export function EventEditor({
           <label className="mb-1 flex flex-col gap-1.5 text-sm text-gcal-muted">
             <span className="flex items-baseline gap-1.5">
               <span>설명</span>
-              <span className="text-xs text-gcal-muted/80">(Ctrl+S로 저장)</span>
+              <span className="text-xs text-gcal-muted/80">(Ctrl+S로 저장 · 창 유지)</span>
             </span>
             <textarea
               className={fieldClass}

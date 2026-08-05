@@ -1229,6 +1229,19 @@ input[type='search']::-ms-clear,
   word-break: break-word;
 }
 
+.day-list-preview-detail-line + .day-list-preview-detail-line {
+  margin-top: 0.25em;
+}
+
+.day-list-preview-detail-attach-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35em;
+  min-width: 0;
+  max-width: 100%;
+}
+
 /* URLs detected inside 설명/링크 text. */
 .day-list-preview-inline-link {
   color: var(--gcal-blue);
@@ -1258,6 +1271,61 @@ input[type='search']::-ms-clear,
 .day-list-preview-detail-attach svg {
   flex-shrink: 0;
   align-self: center;
+}
+
+/* Image attachment — preview inside the purple detail box. */
+.day-list-preview-detail-thumb {
+  display: block;
+  max-width: min(100%, calc(220px * var(--day-list-font-scale)));
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--day-list-detail-border) 70%, transparent);
+  border-radius: 0.35rem;
+  background: color-mix(in srgb, #fff 55%, var(--day-list-detail-bg));
+  overflow: hidden;
+  cursor: pointer;
+  line-height: 0;
+}
+
+.day-list-preview-detail-thumb.is-loading {
+  width: min(100%, calc(160px * var(--day-list-font-scale)));
+  min-height: calc(72px * var(--day-list-font-scale));
+  background:
+    linear-gradient(
+      110deg,
+      color-mix(in srgb, #fff 35%, var(--day-list-detail-bg)) 25%,
+      color-mix(in srgb, #fff 70%, var(--day-list-detail-bg)) 50%,
+      color-mix(in srgb, #fff 35%, var(--day-list-detail-bg)) 75%
+    );
+  background-size: 200% 100%;
+  animation: day-list-thumb-shimmer 1.2s ease-in-out infinite;
+}
+
+.day-list-preview-detail-thumb.has-image {
+  animation: none;
+  min-height: 0;
+  width: auto;
+}
+
+.day-list-preview-detail-thumb-img {
+  display: block;
+  width: 100%;
+  max-height: calc(180px * var(--day-list-font-scale));
+  object-fit: contain;
+  background: transparent;
+}
+
+@keyframes day-list-thumb-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.dark .day-list-preview-detail-thumb {
+  background: color-mix(in srgb, #000 25%, var(--day-list-detail-bg));
 }
 
 .day-list-preview-dot {

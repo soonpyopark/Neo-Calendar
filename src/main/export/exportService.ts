@@ -1,4 +1,5 @@
 import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { BrowserWindow, dialog } from 'electron'
 import { withNativeDialog } from '../nativeDialogGuard'
 import type { CalendarStoreSnapshot } from '../../shared/calendarTypes'
@@ -12,6 +13,7 @@ import type {
   ExportCalendarRequest,
   ExportCalendarResult
 } from '../../shared/exportCalendar'
+import { resolveDataRoot } from '../calendarStore/paths'
 import {
   buildExcelBuffer,
   buildPdfBuffer,
@@ -53,7 +55,10 @@ export async function buildCalendarExportBuffer(input: ExportCalendarInput): Pro
   const buffer = Buffer.from(
     isExcel
       ? await buildExcelBuffer(input.store, period, options)
-      : await buildPdfBuffer(input.store, period, options)
+      : await buildPdfBuffer(input.store, period, {
+          ...options,
+          attachmentsRoot: join(resolveDataRoot(), 'attachments')
+        })
   )
   return {
     buffer,

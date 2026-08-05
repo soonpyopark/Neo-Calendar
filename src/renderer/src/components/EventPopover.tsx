@@ -103,13 +103,17 @@ export function EventPopover({
       if (target instanceof Element && target.closest('.app-dialog-root')) return
       if (target instanceof Element && target.closest('.recurrence-scope-shell')) return
       if (target instanceof Element && target.closest('.day-quick-edit')) return
+      // Portaled copy-date flyout (and its native date picker) live outside the shell.
+      if (target instanceof Element && target.closest('.event-copy-date-flyout')) return
+      // Keep detail open while the copy flyout is up; the flyout dismisses itself.
+      if (copyFlyoutOpen) return
       // Keep detail open while browsing search results (search stays open too).
       if (target instanceof Element && target.closest('.search-panel-shell')) return
       onClose()
     }
     document.addEventListener('mousedown', handlePointerDown, true)
     return () => document.removeEventListener('mousedown', handlePointerDown, true)
-  }, [event, isFloating, onClose, ref])
+  }, [event, isFloating, onClose, ref, copyFlyoutOpen])
 
   if (!event) return null
 

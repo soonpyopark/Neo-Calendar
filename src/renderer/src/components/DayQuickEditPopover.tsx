@@ -666,6 +666,7 @@ export function DayQuickEditPopover({
       // Without these, clicking detail trash / delete confirm closes QE too early.
       if (target.closest('.app-dialog-root')) return
       if (target.closest('.event-detail-shell')) return
+      if (target.closest('.event-copy-date-flyout')) return
       if (target.closest('.recurrence-scope-shell')) return
       if (target.closest('.event-editor-shell')) return
       // Link / attachment chooser + image viewer are portaled to body.

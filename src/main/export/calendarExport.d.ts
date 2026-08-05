@@ -13,6 +13,8 @@ declare module './calendarExport.mjs' {
     includeCompleted?: boolean
     includeHolidays?: boolean
     excludeHiddenCalendars?: boolean
+    /** Absolute path to data/attachments — required for day-list PDF image embeds. */
+    attachmentsRoot?: string
   }
 
   export function buildExcelBuffer(

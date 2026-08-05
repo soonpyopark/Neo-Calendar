@@ -141,14 +141,20 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
           void refresh()
         }}
         onClose={dismissEditor}
-        onSave={async (payload) => {
+        onSave={async (payload, options) => {
+          const keepOpen = Boolean(options?.keepOpen)
           try {
             if (!resolvedEvent) {
-              closePanel()
-              await addEvent({
+              const created = await addEvent({
                 ...payload,
                 allDay: payload.allDay !== false
               } as Parameters<typeof addEvent>[0])
+              if (keepOpen) {
+                setEditorEvent(created)
+                void refresh()
+                return
+              }
+              closePanel()
               return
             }
 
@@ -166,10 +172,16 @@ export function EventEditorPanelHost({ init }: { init: Init }): ReactElement | n
               return
             }
 
+            const updated = await editEvent(master.id, payload as Partial<CalendarEvent>)
+            if (keepOpen) {
+              setEditorEvent(updated)
+              void refresh()
+              return
+            }
             closePanel()
-            await editEvent(master.id, payload as Partial<CalendarEvent>)
           } catch (error) {
             await alert(error instanceof Error ? error.message : '일정을 저장하지 못했습니다.')
+            throw error
           }
         }}
         onDelete={

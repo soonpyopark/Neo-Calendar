@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { prepareDayListExportLayout } from '../../../shared/mdcExport/dayListExportLayout.js'
 import { splitEventTitleRuns } from '../../../shared/mdcExport/eventTags.js'
+import { isImageAttachment } from '../../../shared/attachmentKinds'
 import {
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -22,6 +23,7 @@ import { HOLIDAYS_KR_CALENDAR_ID } from '../../../shared/calendarDefaults'
 import { formatExportRangeLabel } from '../../../shared/exportCalendarHelpers.js'
 import type { ExportCalendarFormat } from '../../../shared/exportCalendar'
 import { splitLinkifySegments } from '../lib/linkify'
+import { readEventAttachmentImage } from '../lib/eventAttachments'
 import { useOpenAttachment } from './AttachmentViewerProvider'
 import { openExternalUrl } from '../lib/openExternal'
 import { cn } from '../lib/cn'
@@ -74,6 +76,8 @@ type PreviewDetailLine = {
   parts: TextPart[]
   /** Set when the line is a 첨부 entry — clicking opens that file. */
   attachment: AttachmentRef | null
+  /** Image attachments render an inline preview under the file name. */
+  isImage: boolean
 }
 
 type PreviewEvent = {
@@ -200,6 +204,95 @@ function AttachIcon(): ReactElement {
         d="M16.5 6.5v10.25a4.25 4.25 0 0 1-8.5 0V6.75a2.75 2.75 0 0 1 5.5 0v9.5a1.25 1.25 0 0 1-2.5 0V7.5H9.5v8.75a2.75 2.75 0 0 0 5.5 0V6.75a4.25 4.25 0 0 0-8.5 0v10a5.75 5.75 0 0 0 11.5 0V6.5h-1.5z"
       />
     </svg>
+  )
+}
+
+function findAttachmentMeta(
+  store: CalendarStoreSnapshot,
+  eventId: string,
+  attachmentId: string
+): { name: string; mime?: string; storedName?: string } | null {
+  const event = store.events.find((item) => item.id === eventId)
+  const meta = event?.attachments?.find((item) => item.id === attachmentId)
+  return meta ?? null
+}
+
+/** Attachment row: file name (+ inline image inside the purple detail box). */
+function DayListAttachmentDetail({
+  attachment,
+  isImage,
+  parts,
+  activeIndex,
+  onOpen
+}: {
+  attachment: AttachmentRef
+  isImage: boolean
+  parts: TextPart[]
+  activeIndex: number
+  onOpen: () => void
+}): ReactElement {
+  const hostRef = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(false)
+  const [dataUrl, setDataUrl] = useState<string | null>(null)
+  const [loadTried, setLoadTried] = useState(false)
+
+  useEffect(() => {
+    if (!isImage) return undefined
+    const host = hostRef.current
+    if (!host) return undefined
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) setVisible(true)
+      },
+      { rootMargin: '120px' }
+    )
+    observer.observe(host)
+    return () => observer.disconnect()
+  }, [isImage])
+
+  useEffect(() => {
+    if (!isImage || !visible) return undefined
+    let cancelled = false
+    void readEventAttachmentImage(attachment.eventId, attachment.attachmentId).then((image) => {
+      if (cancelled) return
+      setLoadTried(true)
+      if (image) setDataUrl(image.dataUrl)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [attachment.attachmentId, attachment.eventId, isImage, visible])
+
+  const showThumb = isImage && (!loadTried || Boolean(dataUrl))
+
+  return (
+    <div ref={hostRef} className="day-list-preview-detail-attach-block">
+      <button
+        type="button"
+        className="day-list-preview-detail-attach"
+        title="첨부파일 열기"
+        onClick={onOpen}
+      >
+        <AttachIcon />
+        <HighlightedText parts={parts} activeIndex={activeIndex} />
+      </button>
+      {showThumb ? (
+        <button
+          type="button"
+          className={cn(
+            'day-list-preview-detail-thumb',
+            dataUrl ? 'has-image' : 'is-loading'
+          )}
+          title="이미지 크게 보기"
+          aria-label="이미지 첨부 미리보기"
+          onClick={onOpen}
+        >
+          {dataUrl ? (
+            <img src={dataUrl} alt="" className="day-list-preview-detail-thumb-img" />
+          ) : null}
+        </button>
+      ) : null}
+    </div>
   )
 }
 
@@ -405,12 +498,19 @@ export function DayListPreviewPanel({
             const detailLines: PreviewDetailLine[] = event.details.map((detail) => {
               const detailSplit = buildTextParts(detail.text, needle, index)
               index = detailSplit.nextIndex
+              const attachmentId =
+                detail.kind === 'attachment' && detail.attachmentId ? detail.attachmentId : ''
+              const attachment =
+                attachmentId
+                  ? { eventId: event.eventId, attachmentId }
+                  : null
+              const meta = attachment
+                ? findAttachmentMeta(store, attachment.eventId, attachment.attachmentId)
+                : null
               return {
                 parts: detailSplit.parts,
-                attachment:
-                  detail.kind === 'attachment' && detail.attachmentId
-                    ? { eventId: event.eventId, attachmentId: detail.attachmentId }
-                    : null
+                attachment,
+                isImage: Boolean(meta && isImageAttachment(meta))
               }
             })
             return {
@@ -432,7 +532,7 @@ export function DayListPreviewPanel({
       }
     })
     return { rows: built, matchCount: index }
-  }, [eventsHidden, layout, query, sortDir])
+  }, [eventsHidden, layout, query, sortDir, store])
 
   const openAttachment = useCallback(
     async (attachment: AttachmentRef | null): Promise<void> => {
@@ -859,24 +959,19 @@ export function DayListPreviewPanel({
                           {event.detailLines.length ? (
                             <div className="day-list-preview-details">
                               {event.detailLines.map((line, lineIndex) => (
-                                <p key={lineIndex} className="day-list-preview-detail-line">
+                                <div key={lineIndex} className="day-list-preview-detail-line">
                                   {line.attachment ? (
-                                    <button
-                                      type="button"
-                                      className="day-list-preview-detail-attach"
-                                      title="첨부파일 열기"
-                                      onClick={() => void openAttachment(line.attachment)}
-                                    >
-                                      <AttachIcon />
-                                      <HighlightedText
-                                        parts={line.parts}
-                                        activeIndex={activeIndex}
-                                      />
-                                    </button>
+                                    <DayListAttachmentDetail
+                                      attachment={line.attachment}
+                                      isImage={line.isImage}
+                                      parts={line.parts}
+                                      activeIndex={activeIndex}
+                                      onOpen={() => void openAttachment(line.attachment)}
+                                    />
                                   ) : (
                                     <HighlightedText parts={line.parts} activeIndex={activeIndex} />
                                   )}
-                                </p>
+                                </div>
                               ))}
                             </div>
                           ) : null}
