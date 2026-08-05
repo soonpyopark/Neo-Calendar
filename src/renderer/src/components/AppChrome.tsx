@@ -3,6 +3,7 @@ import { InteractionUI } from './InteractionUI'
 import {
   DesktopModeIcon,
   ExportIcon,
+  HelpIcon,
   SearchIcon,
   SettingsIcon,
   WindowModeIcon
@@ -42,6 +43,8 @@ export type AppChromeProps = {
   onOpenSearch: (event: MouseEvent<HTMLElement>) => void
   onOpenSettings: () => void
   onExport: () => void
+  /** Open the full footer-hints help panel (search-sized). */
+  onOpenFooterHelp: () => void
   onEnterDesktop: () => void
   onEnterWindow: () => void
   onAuthToggle: () => void
@@ -66,6 +69,7 @@ export function AppChrome({
   onOpenSearch,
   onOpenSettings,
   onExport,
+  onOpenFooterHelp,
   onEnterDesktop,
   onEnterWindow,
   onAuthToggle,
@@ -162,7 +166,7 @@ export function AppChrome({
         </div>
       ) : null}
 
-      <div className="app-chrome-no-drag relative z-10 ml-auto flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-1.5 sm:gap-2">
+      <div className="app-chrome-no-drag relative z-10 ml-auto flex min-w-0 shrink-0 flex-nowrap items-center justify-end gap-0.5 sm:gap-1">
         <InteractionUI
           as="button"
           className={cn(
@@ -241,7 +245,19 @@ export function AppChrome({
           <ExportIcon />
         </InteractionUI>
 
-        <div className="inline-flex items-center gap-1.5">
+        <InteractionUI
+          as="button"
+          className={iconBtnClass}
+          captureOnHover={captureOnHover}
+          data-toolbar-action={CHROME_TOOLBAR_ACTIONS.footerHelp}
+          aria-label="도움말"
+          title="도움말 — 모든 푸터 힌트"
+          onClick={() => onOpenFooterHelp()}
+        >
+          <HelpIcon />
+        </InteractionUI>
+
+        <div className="inline-flex items-center gap-0.5">
           <InteractionUI
             as="button"
             className={cn(

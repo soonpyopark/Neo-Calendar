@@ -7,7 +7,7 @@
  * 1) sync-version
  * 2) build desktop-hit helper + electron-vite build + electron-builder --win --dir
  * 3) stage win-unpacked (+ .env without holiday API key; no data/)
- * 4) 7z a -tzip → msi/Neo Desktop Calendar v{version}_YYMMDD_HHMMSS.zip
+ * 4) 7z a -tzip → msi/Neo Desktop Calendar v{version}_YYMMDD_HHMMSS_portable.zip
  */
 
 import { execFileSync, execSync } from 'node:child_process'
@@ -180,7 +180,7 @@ function buildZip(sevenZip) {
 
   const version = readVersion()
   const timestamp = formatTimestamp()
-  const outputName = `${APP_NAME} v${version}_${timestamp}.zip`
+  const outputName = `${APP_NAME} v${version}_${timestamp}_portable.zip`
   const outputPath = path.join(OUT_DIR, outputName)
 
   fs.mkdirSync(OUT_DIR, { recursive: true })

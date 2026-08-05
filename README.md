@@ -17,6 +17,7 @@ Lightweight Electron desktop wallpaper calendar with dynamic click-through.
 - Interactive controls (nav, events, add) capture mouse on hover (`.interaction-ui`)
 - Settings → **서버 관리** (super_admin): HTTP port, Local/Web start·stop, firewall inbound
 - Month toolbar `[-]`/`[+]` event density scales main bars and quick-edit list titles together
+- Calendar / backup ZIP import·export via bundled `7za` (UTF-8 filenames, `-mcu=on`)
 
 ## Develop
 
@@ -83,7 +84,7 @@ MSI에는 Electron 런타임이 포함됩니다 (`Neo Desktop Calendar.exe` + `r
 | --- | --- |
 | `npm run dist` | NSIS 설치 파일 (`release/`) |
 | `npm run build:msi` | WiX MSI 설치판 (`msi/*.msi`) |
-| `npm run build:portable` | 포터블 zip (`msi/*.zip`, 7-Zip 필요) |
+| `npm run build:portable` | 포터블 zip (`msi/*_portable.zip`, 7-Zip 필요) |
 | `npm run sync-version` | `constants.ts` 버전 → package.json / License.rtf 동기화 |
 | `npm run update:all` | npm 의존성 업데이트 (+ desktop-hit 헬퍼 재빌드) |
 | `npm run build:update_all` | `update:all` 후 MSI 빌드 |

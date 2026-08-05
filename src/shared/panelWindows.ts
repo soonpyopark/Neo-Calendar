@@ -18,6 +18,7 @@ export type PanelKind =
   | 'eventResourceList'
   | 'attachmentViewer'
   | 'headerTitleEditor'
+  | 'footerHelp'
 
 /** Compact header-title editor (name / size / color) — initial size; host resizes to content. */
 export const HEADER_TITLE_EDITOR_PANEL_WIDTH = 450
@@ -106,6 +107,10 @@ export type PanelWindowInit =
     }
   | {
       kind: 'headerTitleEditor'
+    }
+  | {
+      /** All footer tips in one search-sized panel. */
+      kind: 'footerHelp'
     }
 
 export type OpenPanelWindowRequest = PanelWindowInit & {
@@ -388,6 +393,7 @@ export function computePanelWindowBounds(options: {
     || init.kind === 'search'
     || init.kind === 'dayListPreview'
     || init.kind === 'attachmentViewer'
+    || init.kind === 'footerHelp'
   ) {
     return centerInMainWindow({
       mainOrigin,

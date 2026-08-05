@@ -118,6 +118,8 @@ export const CHROME_TOOLBAR_ACTIONS = {
   settings: 'settings',
   /** Unified export options (Excel/PDF + layout/range). */
   export: 'export',
+  /** All footer hints in a search-sized help panel. */
+  footerHelp: 'footer-help',
   enterDesktop: 'enter-desktop',
   enterWindow: 'enter-window',
   authToggle: 'auth-toggle',
@@ -131,7 +133,8 @@ export const CHROME_TOOLBAR_ACTIONS = {
 export const EMBEDDED_FLOATING_CHROME_ACTIONS = new Set<string>([
   CHROME_TOOLBAR_ACTIONS.search,
   CHROME_TOOLBAR_ACTIONS.settings,
-  CHROME_TOOLBAR_ACTIONS.editHeaderTitle
+  CHROME_TOOLBAR_ACTIONS.editHeaderTitle,
+  CHROME_TOOLBAR_ACTIONS.footerHelp
 ])
 
 /** Header actions that detach from WorkerW and switch launch mode. */

@@ -12,6 +12,7 @@ import { DayListPreviewPanelHost } from './panelHosts/DayListPreviewPanelHost'
 import { EventResourceListPanelHost } from './panelHosts/EventResourceListPanelHost'
 import { AttachmentViewerPanelHost } from './panelHosts/AttachmentViewerPanelHost'
 import { HeaderTitleEditorPanelHost } from './panelHosts/HeaderTitleEditorPanelHost'
+import { FooterHelpPanelHost } from './panelHosts/FooterHelpPanelHost'
 
 export function PanelApp(): ReactElement | null {
   const [init, setInit] = useState<PanelWindowInit | null>(null)
@@ -61,6 +62,8 @@ export function PanelApp(): ReactElement | null {
       return <AttachmentViewerPanelHost init={init} />
     case 'headerTitleEditor':
       return <HeaderTitleEditorPanelHost />
+    case 'footerHelp':
+      return <FooterHelpPanelHost />
     default:
       return null
   }

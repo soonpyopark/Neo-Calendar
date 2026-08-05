@@ -27,7 +27,7 @@
     "build:dist:msi": "node scripts/build-msi.mjs"
   },
   "dependencies": {
-    "adm-zip": "^0.6.0",
+    "7zip-bin": "^5.2.0",
     "exceljs": "^4.4.0",
     "koffi": "^2.11.0",
     "kor-lunar": "^1.7.0",
@@ -37,7 +37,6 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.11",
-    "@types/adm-zip": "^0.5.8",
     "@types/node": "^22.16.5",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^19.1.8",
@@ -77,6 +76,18 @@
         "filter": [
           "Neo-Desktop-Calendar.exe"
         ]
+      },
+      {
+        "from": "node_modules/7zip-bin/win/x64/7za.exe",
+        "to": "7zip/7za.exe"
+      },
+      {
+        "from": "node_modules/7zip-bin/LICENSE.txt",
+        "to": "7zip/LICENSE.txt"
+      },
+      {
+        "from": "resources/7zip/NOTICE.txt",
+        "to": "7zip/NOTICE.txt"
       },
       {
         "from": "src/shared/seed/holidays-kr.json",

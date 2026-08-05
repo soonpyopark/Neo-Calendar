@@ -1,6 +1,7 @@
 /**
  * Left-footer help tips (shown in random order while autoplay is running).
  * Edit this list to add/remove/reword messages shown at the bottom-left.
+ * The toolbar 「?」 help panel reads the same list.
  *
  * Every line opens with a `(분야, 영역)` tag so a reader can place the tip at a
  * glance. Keep both words short — the footer renders one truncated line.
@@ -16,6 +17,7 @@ export const FOOTER_HINTS = [
   '(일정, 빠른 편집) 목록의 체크박스로 완료·미완료를 바꿀 수 있어요.',
   '(일정, 빠른 편집) 연필 아이콘으로 상세 일정 편집기를 열 수 있어요.',
   '(일정, 빠른 편집) 일정을 고른 뒤 -1D·+1D 버튼으로 날짜를 옮길 수 있어요.',
+  '(일정, 빠른 편집) +1D 옆 복사 아이콘으로 다른 날짜에 단건 복제할 수 있어요.',
   '(일정, 빠른 편집) 휴지통으로 그날의 완료 일정을 한꺼번에 지울 수 있어요.',
   '(일정, 빠른 편집) 팔레트 버튼으로 날짜 칸 배경색을 칠할 수 있어요.',
   '(일정, 빠른 편집) 별 아이콘으로 날짜 숫자에 형광펜 강조를 칠할 수 있어요.',
@@ -72,6 +74,8 @@ export const FOOTER_HINTS = [
   '(보기, 기간) 월 보기에서 ≪ ≫로 연도를 바로 넘길 수 있어요.',
   '(보기, 기간) 「오늘」을 누르면 오늘 날짜로 바로 이동합니다.',
   '(보기, 연 보기) 월을 더블클릭하거나 월 제목을 누르면 그달 월 보기로 들어가요.',
+  '(보기, 웹 편집) 「오늘」 오른쪽 세로보기 옆 인터넷 아이콘으로 브라우저 편집기를 열어요.',
+  '(보기, 웹 편집) 서버가 꺼져 있으면 인터넷 아이콘은 비활성이에요. 설정·서버 관리에서 켜 주세요.',
   '(보기, 숨기기) 눈 아이콘으로 모든 일정을 숨기거나 다시 보이게 할 수 있어요.',
   '(보기, 숨기기) 숨기기가 켜지면 버튼 배경이 빨간색으로 바뀌어 상태를 알려줘요.',
   '(보기, 숨기기) 일정을 모두 숨기면 날짜 칸 배경색과 날짜 강조도 함께 가려져요.',
@@ -83,10 +87,10 @@ export const FOOTER_HINTS = [
 
   // 세로보기
   '(세로보기, 열기) 「오늘」과 인터넷 아이콘 사이 세로보기 버튼으로 열고, 다시 누르면 닫아요.',
-  '(세로보기, 내보내기) 오늘 버튼 오른쪽 Excel·PDF 아이콘으로 보고 있는 달을 바로 저장해요.',
+  '(세로보기, 내보내기) 세로보기 안 「오늘」 오른쪽 Excel·PDF 아이콘으로 보고 있는 달을 바로 저장해요.',
   '(세로보기, 화면) PDF 일자별 내보내기와 같은 「날짜 / 내용」 표로 보여줘요.',
   '(세로보기, 표시) 태그는 [개인, 행정]처럼, 완료 일정은 (완료)가 파란 굵은 글씨로 붙어요.',
-  '(세로보기, 이동) [이전 연도][이전 월][오늘][다음 월][다음 연도]로 옮겨봐요.',
+  '(세로보기, 이동) [이전 연도][이전 월][다음 월][다음 연도]로 옮기고, 「오늘」로 이번 달·오늘 줄로 가요.',
   '(세로보기, 이동) 「오늘」을 누르면 오늘 날짜 줄로 바로 스크롤돼요.',
   '(세로보기, 정렬) 기본은 말일→1일 내림차순이에요. 위·아래 아이콘으로 바꿀 수 있어요.',
   '(세로보기, 검색) Ctrl+F를 누르면 크롬처럼 화면 안에서 찾을 수 있어요.',
@@ -104,19 +108,20 @@ export const FOOTER_HINTS = [
 
   // 바탕화면·창 모드
   '(화면, 바탕화면 모드) 빈 공간을 클릭하면 바탕화면으로 통과해요.',
-  '(화면, 바탕화면 모드) 버튼·날짜 칸에 마우스를 올리면 그 부분만 클릭돼요.',
+  '(화면, 바탕화면 모드) 아이콘 아래 고정 상태에서는 날짜·도구 모음 자리를 직접 눌러 조작해요.',
   '(화면, 바탕화면 모드) 모드 버튼으로 캘린더를 아이콘 아래에 고정할 수 있어요.',
   '(화면, 바탕화면 모드) 잠깐 연 뒤 바깥을 클릭하면 다시 아이콘 아래로 들어가요.',
-  '(화면, 바탕화면 모드) 한동안 조작이 없으면 자동으로 아이콘 아래로 고정돼요.',
+  '(화면, 바탕화면 모드) 조작 없이 약 10초가 지나면 자동으로 아이콘 아래로 고정돼요.',
   '(화면, 창 모드) 창 모드로 전환하면 창을 옮기고 크기를 조절할 수 있어요.',
   '(화면, 창 모드) 상단 제목 영역을 드래그해 창을 이동하세요.',
-  '(화면, 창 모드) 창 가장자리를 끌어 크기를 바꿀 수 있어요.',
+  '(화면, 창 모드) 창 가장자리를 끌어 크기를 바꿀 수 있어요. 최대화는 지원하지 않아요.',
   '(화면, 트레이) 아이콘을 더블클릭하면 모드를 유지한 채 앞으로 가져와요.',
   '(화면, 트레이) 메뉴의 「앞으로 가져오기」로 바탕화면 캘린더를 잠시 조작해요.',
   '(화면, 트레이) 메뉴에서 바탕화면 모드와 창 모드를 직접 전환할 수 있어요.',
+  '(화면, 트레이) 창을 닫아도 트레이로 숨겨요. 완전히 끄려면 트레이 메뉴에서 종료하세요.',
 
   // 설정·테마·캘린더·권한
-  '(설정, 로그인) 로그인한 뒤에야 일정 추가·검색·설정을 사용할 수 있어요.',
+  '(설정, 로그인) 로그인한 뒤에야 일정 추가·검색·설정·내보내기를 사용할 수 있어요.',
   '(설정, 내 계정) 로그인 아이디와 역할을 확인하고 비밀번호를 바꿀 수 있어요.',
   '(설정, 내 계정) 비밀번호 입력칸 오른쪽 눈 아이콘으로 입력 내용을 확인할 수 있어요.',
   '(설정, 권한) 일반사용자는 본인 캘린더·일정과 대한민국 공휴일을 함께 봐요.',
@@ -148,6 +153,7 @@ export const FOOTER_HINTS = [
   '(내보내기, 권한) 일반사용자의 Excel·PDF에는 본인 캘린더와 일정만 포함돼요.',
   '(내보내기, 백업) 총괄관리자는 JSON·ICS·CSV·ZIP 가져오기·내보내기를 써요.',
   '(내보내기, 백업) ZIP 백업에는 첨부 파일까지 함께 들어가요.',
+  '(내보내기, 백업) ZIP은 한글 첨부 파일 이름도 깨지지 않게 저장돼요.',
 
   // 검색
   '(검색, 범위) 제목·설명·캘린더·태그·바로가기·첨부 이름까지 찾아요.',
@@ -158,7 +164,7 @@ export const FOOTER_HINTS = [
   // 공휴일·음력
   '(공휴일, 표시) 빨간 날짜와 「대한민국의 휴일」 캘린더로 보여줘요.',
   '(공휴일, 데이터) 설치본에 3년치가 들어 있어 인증키 없이 바로 보여요.',
-  '(공휴일, 동기화) 최신화가 필요하면 설정에서 본인 API 인증키로 동기화하세요.',
+  '(공휴일, 동기화) 최신화가 필요하면 총괄관리자가 설정에서 API 인증키로 동기화하세요.',
   '(공휴일, 동기화) 인증키는 「저장」을 체크할 때만 이 PC에 보관돼요.',
   '(공휴일, 편집) 공휴일은 동기화로만 갱신되며 직접 편집할 수 없어요.',
   '(음력, 표시) 각 날짜에 음력과 24절기가 함께 표시돼요.',
@@ -167,11 +173,61 @@ export const FOOTER_HINTS = [
   // 푸터
   '(푸터, 도움말) 왼쪽 아래 도움말은 잠시마다 다른 팁으로 바뀌어요.',
   '(푸터, 도움말) 이전·정지·재생·다음 버튼으로 도움말을 제어할 수 있어요.',
+  '(푸터, 도움말) 내보내기 버튼 오른쪽 「?」로 모든 도움말을 한곳에서 볼 수 있어요.',
+  '(푸터, 도움말) 「?」 패널에서 검색어로 팁을 걸러 볼 수 있어요. 로그인 없이도 열려요.',
   '(푸터, 사이트) 오른쪽 아래 주소는 바탕화면 모드에서도 브라우저로 열려요.'
 ] as const
 
 /** Interval between random tip changes while autoplay is running. */
 export const FOOTER_HINT_ROTATE_MS = 10_000
+
+export type FooterHintParts = {
+  /** First word in `(분야, 영역)`. */
+  category: string
+  /** Second word in `(분야, 영역)`. */
+  area: string
+  /** Tip body without the leading tag. */
+  body: string
+  raw: string
+}
+
+/** Split a hint into `(분야, 영역)` + body for the all-hints help panel. */
+export function parseFooterHint(hint: string): FooterHintParts {
+  const match = /^\(([^,]+),\s*([^)]+)\)\s*(.*)$/.exec(hint)
+  if (!match) {
+    return { category: '기타', area: '', body: hint, raw: hint }
+  }
+  return {
+    category: match[1].trim(),
+    area: match[2].trim(),
+    body: match[3].trim(),
+    raw: hint
+  }
+}
+
+export type FooterHintCategoryGroup = {
+  category: string
+  items: FooterHintParts[]
+}
+
+/** Group hints by category, preserving list order. */
+export function groupFooterHintsByCategory(
+  hints: readonly string[] = FOOTER_HINTS
+): FooterHintCategoryGroup[] {
+  const groups: FooterHintCategoryGroup[] = []
+  const indexByCategory = new Map<string, number>()
+  for (const hint of hints) {
+    const parts = parseFooterHint(hint)
+    const existing = indexByCategory.get(parts.category)
+    if (existing == null) {
+      indexByCategory.set(parts.category, groups.length)
+      groups.push({ category: parts.category, items: [parts] })
+    } else {
+      groups[existing]?.items.push(parts)
+    }
+  }
+  return groups
+}
 
 /** Pick a random tip index; prefers a different tip when more than one exists. */
 export function pickRandomFooterHintIndex(excludeIndex = -1): number {

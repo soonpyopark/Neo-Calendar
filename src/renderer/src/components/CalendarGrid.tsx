@@ -64,6 +64,7 @@ import { RecurrenceScopeDialog } from './RecurrenceScopeDialog'
 import { SearchPanel } from './SearchPanel'
 import { SettingsPanel } from './SettingsPanel'
 import { ExportOptionsPanel } from './ExportOptionsPanel'
+import { FooterHelpPanel } from './FooterHelpPanel'
 import { HeaderTitleEditorPanel } from './HeaderTitleEditorPanel'
 import { normalizeHeaderTitle } from '../../../shared/headerTitle'
 import { DayListPreviewPanel } from './DayListPreviewPanel'
@@ -488,6 +489,7 @@ export function CalendarGrid({
   const [modeBusy, setModeBusy] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [exportOptionsOpen, setExportOptionsOpen] = useState(false)
+  const [footerHelpOpen, setFooterHelpOpen] = useState(false)
   const [footerHintNav, setFooterHintNav] = useState<FooterHintNav>(() => createFooterHintNav())
   const [footerHintPaused, setFooterHintPaused] = useState(false)
   const footerHintIndex = footerHintNav.index
@@ -622,6 +624,9 @@ export function CalendarGrid({
         break
       case 'headerTitleEditor':
         setHeaderTitleEditorOpen(true)
+        break
+      case 'footerHelp':
+        setFooterHelpOpen(true)
         break
       default:
         break
@@ -956,6 +961,7 @@ export function CalendarGrid({
     user,
     footerHintPaused,
     canGoPrevFooterHint,
+    footerHelpOpen,
     store.settings.viewOptions.headerTitle
   ])
 
@@ -1027,6 +1033,14 @@ export function CalendarGrid({
     // on the main window (that suspends under-icons / unlocks).
     openEmbeddedPanel({ kind: 'headerTitleEditor' })
   }, [floatingPanels, openEmbeddedPanel, requireEdit])
+
+  const openFooterHelp = useCallback((): void => {
+    if (isBrowserNeoCalendarHost() || !floatingPanels) {
+      setFooterHelpOpen((open) => !open)
+      return
+    }
+    openEmbeddedPanel({ kind: 'footerHelp' })
+  }, [floatingPanels, openEmbeddedPanel])
   const openHeaderTitleEditorRef = useRef(openHeaderTitleEditor)
   openHeaderTitleEditorRef.current = openHeaderTitleEditor
 
@@ -1234,6 +1248,7 @@ export function CalendarGrid({
     setHeaderTitleEditorOpen(false)
     setExportOptionsOpen(false)
     setDayListPreviewOpen(false)
+    setFooterHelpOpen(false)
     // Floating panels may outlive React state — ask main to tear them down too.
     window.neoCalendar?.closePanelSlot?.('dayListPreview')
     window.neoCalendar?.closePanelSlot?.('search')
@@ -1245,6 +1260,7 @@ export function CalendarGrid({
     window.neoCalendar?.closePanelSlot?.('exportOptions')
     window.neoCalendar?.closePanelSlot?.('recurrenceScope')
     window.neoCalendar?.closePanelSlot?.('login')
+    window.neoCalendar?.closePanelSlot?.('footerHelp')
   }, [])
 
   // Keep open detail in sync when store patches the same event (preserve occurrence day).
@@ -2381,6 +2397,7 @@ export function CalendarGrid({
             setSettingsOpen(true)
           }}
           onExport={handleOpenExport}
+          onOpenFooterHelp={openFooterHelp}
           onEnterDesktop={() => void enterDesktop()}
           onEnterWindow={() => void enterWindow()}
           onAuthToggle={handleAuthToggle}
@@ -2899,6 +2916,12 @@ export function CalendarGrid({
             if (!exporting) setExportOptionsOpen(false)
           }}
           onExport={(request) => void runExportRequest(request)}
+        />
+      ) : null}
+      {inlineOverlays ? (
+        <FooterHelpPanel
+          open={footerHelpOpen}
+          onClose={() => setFooterHelpOpen(false)}
         />
       ) : null}
       <HeaderTitleEditorPanel

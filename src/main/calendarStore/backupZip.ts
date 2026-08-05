@@ -1,4 +1,3 @@
-import AdmZip from 'adm-zip'
 import {
   copyFileSync,
   existsSync,
@@ -8,12 +7,14 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  unlinkSync,
   writeFileSync
 } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { basename, dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { dialog, type BrowserWindow } from 'electron'
 import { withNativeDialog } from '../nativeDialogGuard'
+import { createZipFromDirectory, extractZipToDirectory } from '../sevenZip'
 import type { CalendarStore } from './CalendarStore'
 import type { CalendarStoreSnapshot } from '../../shared/calendarTypes'
 
@@ -66,18 +67,7 @@ function findStoreJson(extractDir: string): string | null {
 }
 
 function extractZipSafe(zipPath: string, destDir: string): void {
-  const destFull = resolve(destDir) + sep
-  const zip = new AdmZip(zipPath)
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) continue
-    const relative = entry.entryName.replace(/\//g, sep)
-    const target = resolve(destDir, relative)
-    if (!target.startsWith(destFull)) {
-      throw new Error('ZIP에 허용되지 않은 경로가 포함되어 있습니다.')
-    }
-    mkdirSync(dirname(target), { recursive: true })
-    writeFileSync(target, entry.getData())
-  }
+  extractZipToDirectory(zipPath, destDir)
 }
 
 function replaceAttachmentsFrom(
@@ -148,9 +138,7 @@ function stageBackupZip(store: CalendarStore): {
 function writeBackupZip(store: CalendarStore, zipPath: string): { fileCount: number; eventCount: number } {
   const { staging, fileCount, eventCount } = stageBackupZip(store)
   try {
-    const zip = new AdmZip()
-    zip.addLocalFolder(staging)
-    zip.writeZip(zipPath)
+    createZipFromDirectory(staging, zipPath)
     return { fileCount, eventCount }
   } finally {
     tryDeleteDir(staging)
@@ -165,17 +153,23 @@ export function createBackupZipBuffer(store: CalendarStore): {
   filename: string
 } {
   const { staging, fileCount, eventCount } = stageBackupZip(store)
+  const stamp = stampForZip()
+  const zipPath = join(tmpdir(), `neo-backup-buf-${stamp}.zip`)
   try {
-    const zip = new AdmZip()
-    zip.addLocalFolder(staging)
+    createZipFromDirectory(staging, zipPath)
     return {
-      buffer: zip.toBuffer(),
+      buffer: readFileSync(zipPath),
       fileCount,
       eventCount,
-      filename: `my-calendar-backup-${stampForZip()}.zip`
+      filename: `my-calendar-backup-${stamp}.zip`
     }
   } finally {
     tryDeleteDir(staging)
+    try {
+      if (existsSync(zipPath)) unlinkSync(zipPath)
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -416,9 +410,7 @@ export async function exportCalendarZip(
       }
       if (copiedForEvent > 0) eventCount += 1
     }
-    const zip = new AdmZip()
-    zip.addLocalFolder(staging)
-    zip.writeZip(result.filePath)
+    createZipFromDirectory(staging, result.filePath)
     return {
       ok: true,
       cancelled: false,

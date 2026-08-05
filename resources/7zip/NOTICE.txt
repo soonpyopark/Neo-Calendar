@@ -1,0 +1,9 @@
+This product bundles the 7-Zip command-line utility (7za.exe) from the
+7zip-bin package for creating and extracting calendar backup ZIP archives.
+
+7-Zip is Copyright (C) Igor Pavlov.
+7-Zip License: GNU LGPL (see LICENSE.txt alongside 7za.exe).
+Homepage: https://www.7-zip.org/
+
+Runtime ZIP options used by Neo Desktop Calendar include UTF-8 filename
+encoding (-mcu=on) so Korean attachment names round-trip correctly.
