@@ -2,6 +2,7 @@ import { app, BrowserWindow, Menu, Tray, dialog, nativeImage, shell } from 'elec
 import { existsSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { DesktopModeController } from './desktopMode'
+import { withNativeDialog } from './nativeDialogGuard'
 import { APP_NAME, APP_TITLE, SITE_URL } from '../shared/constants'
 
 /** Visible 16×16 blue square PNG — last-resort fallback (old 1px placeholder was invisible). */
@@ -163,11 +164,11 @@ export function createAppTray(options: {
       cancelId: 0,
       noLink: true
     }
-    const promise =
-      win && !win.isDestroyed()
-        ? dialog.showMessageBox(win, box)
-        : dialog.showMessageBox(box)
-    void promise.then((result) => {
+    void withNativeDialog(async () => {
+      const result =
+        win && !win.isDestroyed()
+          ? await dialog.showMessageBox(win, box)
+          : await dialog.showMessageBox(box)
       if (result.response === 1) {
         void shell.openExternal(SITE_URL)
       }

@@ -1491,11 +1491,26 @@ export function CalendarGrid({
       // Re-embed / enter desktop under icons — clear overlays so they aren't stranded
       // on a click-through WorkerW surface. Do NOT clear on temporary unlock (suspend).
       if (status.mode === 'desktop' && status.embedded) {
+        const needsLogin = !userRef.current
         closeOverlays()
+        // Guest cold-start login was cleared above; reopen on floating surface (embedded).
+        if (needsLogin) {
+          autoLoginPromptedRef.current = false
+          queueMicrotask(() => {
+            if (userRef.current || autoLoginPromptedRef.current) return
+            autoLoginPromptedRef.current = true
+            setLoginError(null)
+            if (isBrowserNeoCalendarHost()) {
+              setLoginOpen(true)
+              return
+            }
+            openEmbeddedPanel({ kind: 'login', dismissible: false })
+          })
+        }
         requestAnimationFrame(() => publishHitZonesRef.current?.())
       }
     })
-  }, [onModeChange, closeOverlays])
+  }, [onModeChange, closeOverlays, openEmbeddedPanel])
 
   const openQuickEditFromDateRef = useRef(openQuickEditFromDate)
   openQuickEditFromDateRef.current = openQuickEditFromDate

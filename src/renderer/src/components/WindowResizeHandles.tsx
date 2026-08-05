@@ -1,12 +1,10 @@
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, type ReactElement } from 'react'
+import { MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../../../shared/constants'
 import type { WidgetBounds } from '../../../shared/ipc'
 
 type Edge = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 
 const EDGES: Edge[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
-
-const MIN_W = 400
-const MIN_H = 300
 
 type DragState = {
   edge: Edge
@@ -29,13 +27,13 @@ function applyEdgeDelta(origin: WidgetBounds, edge: Edge, dx: number, dy: number
     y = origin.y + dy
   }
 
-  if (width < MIN_W) {
-    if (edge.includes('w')) x -= MIN_W - width
-    width = MIN_W
+  if (width < MIN_WIDGET_WIDTH) {
+    if (edge.includes('w')) x -= MIN_WIDGET_WIDTH - width
+    width = MIN_WIDGET_WIDTH
   }
-  if (height < MIN_H) {
-    if (edge.includes('n')) y -= MIN_H - height
-    height = MIN_H
+  if (height < MIN_WIDGET_HEIGHT) {
+    if (edge.includes('n')) y -= MIN_WIDGET_HEIGHT - height
+    height = MIN_WIDGET_HEIGHT
   }
 
   return { x, y, width, height }

@@ -120,6 +120,18 @@ export class DesktopModeController {
       .catch(() => undefined)
   }
 
+  /**
+   * After WorkerW attach + showInactive, pin HWND opacity.
+   * Partial CSS alpha under WorkerW is handled by `.is-desktop-embedded` (opaque fills).
+   */
+  private settleDesktopVisuals(win: BrowserWindow): void {
+    try {
+      win.setOpacity(1)
+    } catch {
+      /* ignore */
+    }
+  }
+
   private readStoredPlacement(): WidgetDisplayPlacement | null {
     const stored = this.store.getSettings().widget.displayPlacement
     return stored ? { ...stored } : null
@@ -248,6 +260,7 @@ export class DesktopModeController {
     setAsWallpaper(win, footprint)
     win.setIgnoreMouseEvents(true)
     win.showInactive()
+    this.settleDesktopVisuals(win)
     console.log('[desktop] Resumed under-icons (principle #1)', {
       footprint,
       displayId: this.preferredPlacement?.displayId
@@ -511,6 +524,7 @@ export class DesktopModeController {
     win.setIgnoreMouseEvents(true)
     if (!win.isVisible()) win.showInactive()
     else win.showInactive()
+    this.settleDesktopVisuals(win)
     this.blurRendererChrome()
 
     console.log('[desktop] Desktop mode (under-icons)', {
@@ -564,7 +578,8 @@ export class DesktopModeController {
     win.setResizable(true)
     win.setMovable(true)
     win.setMinimizable(true)
-    win.setMaximizable(true)
+    // Custom edge grips only — OS maximize blanks the transparent shell for a frame.
+    win.setMaximizable(false)
     win.setFullScreenable(false)
     win.setHasShadow(true)
     win.setOpacity(1)

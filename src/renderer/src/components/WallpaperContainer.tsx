@@ -56,7 +56,7 @@ export function WallpaperContainer({
   return (
     <div
       className={`wallpaper-root fixed inset-0 h-screen w-screen overflow-hidden bg-transparent${
-        clickThrough ? '' : ' is-window-mode'
+        clickThrough ? ' is-desktop-embedded' : ' is-window-mode'
       }`}
       style={{ width: '100vw', height: '100vh' }}
       onMouseLeave={() => {

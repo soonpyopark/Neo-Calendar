@@ -459,7 +459,9 @@ function createWindow(): void {
       skipTaskbar: false,
       resizable: true,
       movable: true,
-      maximizable: true,
+      // Keep false: drag-region double-click would maximize a transparent window
+      // and flash a blank gray work-area before content paints.
+      maximizable: false,
       minimizable: true,
       fullscreenable: false,
       hasShadow: true,
@@ -520,6 +522,13 @@ function createWindow(): void {
   }
   win.on('moved', persistBounds)
   win.on('resized', persistBounds)
+  // Belt-and-suspenders: never stay maximized (transparent HWND blanks the desktop).
+  win.on('maximize', () => {
+    if (win.isDestroyed()) return
+    win.unmaximize()
+    const locked = desktopMode.getLockedBounds()
+    if (locked) win.setBounds(locked)
+  })
   win.on('close', (event) => {
     desktopMode.persistSession()
     if (forceQuit) return

@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactElement,
   type ReactNode
@@ -44,9 +45,16 @@ type AppDialog = AlertDialog | ConfirmDialog
 type AppDialogApi = {
   alert: (message: string, options?: DialogOptions) => Promise<void>
   confirm: (message: string, options?: DialogOptions) => Promise<boolean>
+  /** Cancel open + queued dialogs (confirm → false). Used on WorkerW re-embed. */
+  dismissAll: () => void
 }
 
 const AppDialogContext = createContext<AppDialogApi | null>(null)
+
+function resolveDialog(dialog: AppDialog, result: boolean): void {
+  if (dialog.type === 'confirm') dialog.resolve(result)
+  else dialog.resolve()
+}
 
 function AppDialogModal({
   dialog,
@@ -125,46 +133,96 @@ function AppDialogModal({
 
 export function AppDialogProvider({ children }: { children: ReactNode }): ReactElement {
   const [dialog, setDialog] = useState<AppDialog | null>(null)
+  const dialogRef = useRef<AppDialog | null>(null)
+  const queueRef = useRef<AppDialog[]>([])
 
-  const closeDialog = useCallback((result: boolean) => {
-    // Same click can fall through after the modal unmounts and wipe sibling panels (quickEdit).
-    window.neoCalendar?.blockPanelOutsideClose?.(450)
-    setDialog((current) => {
-      if (!current) return null
-      if (current.type === 'confirm') current.resolve(result)
-      else current.resolve()
-      return null
-    })
+  const showNext = useCallback((): void => {
+    const next = queueRef.current.shift() ?? null
+    dialogRef.current = next
+    setDialog(next)
   }, [])
 
-  const alert = useCallback((message: string, options: DialogOptions = {}) => {
-    return new Promise<void>((resolve) => {
-      setDialog({
-        type: 'alert',
-        message,
-        title: options.title,
-        confirmLabel: options.confirmLabel,
-        variant: options.variant,
-        resolve: () => resolve()
+  const enqueue = useCallback(
+    (next: AppDialog): void => {
+      if (!dialogRef.current) {
+        dialogRef.current = next
+        setDialog(next)
+        return
+      }
+      queueRef.current.push(next)
+    },
+    []
+  )
+
+  const closeDialog = useCallback(
+    (result: boolean) => {
+      // Same click can fall through after the modal unmounts and wipe sibling panels (quickEdit).
+      window.neoCalendar?.blockPanelOutsideClose?.(450)
+      const current = dialogRef.current
+      if (!current) return
+      dialogRef.current = null
+      setDialog(null)
+      resolveDialog(current, result)
+      // Defer so nested alert() from a resolve handler can enqueue cleanly.
+      queueMicrotask(() => showNext())
+    },
+    [showNext]
+  )
+
+  const dismissAll = useCallback((): void => {
+    const current = dialogRef.current
+    const queued = queueRef.current.splice(0)
+    dialogRef.current = null
+    setDialog(null)
+    if (current) resolveDialog(current, false)
+    for (const item of queued) resolveDialog(item, false)
+  }, [])
+
+  const alert = useCallback(
+    (message: string, options: DialogOptions = {}) => {
+      return new Promise<void>((resolve) => {
+        enqueue({
+          type: 'alert',
+          message,
+          title: options.title,
+          confirmLabel: options.confirmLabel,
+          variant: options.variant,
+          resolve: () => resolve()
+        })
       })
-    })
-  }, [])
+    },
+    [enqueue]
+  )
 
-  const confirm = useCallback((message: string, options: DialogOptions = {}) => {
-    return new Promise<boolean>((resolve) => {
-      setDialog({
-        type: 'confirm',
-        message,
-        title: options.title,
-        confirmLabel: options.confirmLabel,
-        cancelLabel: options.cancelLabel,
-        variant: options.variant,
-        resolve
+  const confirm = useCallback(
+    (message: string, options: DialogOptions = {}) => {
+      return new Promise<boolean>((resolve) => {
+        enqueue({
+          type: 'confirm',
+          message,
+          title: options.title,
+          confirmLabel: options.confirmLabel,
+          cancelLabel: options.cancelLabel,
+          variant: options.variant,
+          resolve
+        })
       })
-    })
-  }, [])
+    },
+    [enqueue]
+  )
 
-  const value = useMemo(() => ({ alert, confirm }), [alert, confirm])
+  // WorkerW re-embed / enter desktop under icons — never leave a modal on click-through.
+  useEffect(() => {
+    const api = window.neoCalendar
+    if (!api?.onModeChanged) return undefined
+    return api.onModeChanged((status) => {
+      if (status.mode === 'desktop' && status.embedded) {
+        dismissAll()
+      }
+    })
+  }, [dismissAll])
+
+  const value = useMemo(() => ({ alert, confirm, dismissAll }), [alert, confirm, dismissAll])
 
   return (
     <AppDialogContext.Provider value={value}>
