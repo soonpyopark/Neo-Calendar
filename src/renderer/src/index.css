@@ -840,9 +840,9 @@ textarea {
   padding: 0 1px 0 0;
   border: 0;
   border-radius: 4px;
-  font-size: calc(clamp(7.5px, 1.05vh, 10px) * var(--event-density, 1));
+  font-size: calc(clamp(8.5px, 1.25vh, 11.5px) * var(--event-density, 1));
   font-weight: 500;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.06em;
   text-align: left;
   white-space: nowrap;
   color: var(--event-text, #3c4043);
@@ -935,6 +935,9 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* Taller glyphs, narrower advance width */
+  transform: scaleX(0.88) scaleY(1.14);
+  transform-origin: left center;
 }
 
 .event-bar-remove {
@@ -2251,8 +2254,10 @@ body.is-resizing-window {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
-  letter-spacing: -0.035em;
+  font-size: 14px;
+  letter-spacing: -0.06em;
+  transform: scaleX(0.88) scaleY(1.14);
+  transform-origin: left center;
   color: var(--gcal-heading);
 }
 
@@ -3279,9 +3284,9 @@ html.neo-panel-window.dark form.shell-solid-surface.rounded-lg {
   border-radius: 0;
   background: transparent;
   color: var(--gcal-muted);
-  font-size: calc(clamp(7.5px, 1.05vh, 10px) * var(--event-density, 1));
+  font-size: calc(clamp(8.5px, 1.25vh, 11.5px) * var(--event-density, 1));
   font-weight: 500;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.06em;
   text-align: left;
   cursor: pointer;
   overflow: hidden;
