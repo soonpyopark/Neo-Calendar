@@ -18,6 +18,8 @@ import type {
   SyncHolidaysResult,
   TagRecord
 } from './calendarTypes'
+import type { UpdateCheckResult } from './updateCheck'
+export type { UpdateCheckResult }
 
 export type SetIgnoreMouseOptions = {
   /** Electron native option mapped in main */
@@ -492,4 +494,6 @@ export type NeoCalendarApi = {
   getDataRoot: () => Promise<string>
   /** Open http(s) URL in the system browser. */
   openExternal: (url: string) => Promise<void>
+  /** Compare app version with GitHub Releases latest. */
+  checkForUpdates: () => Promise<UpdateCheckResult>
 }

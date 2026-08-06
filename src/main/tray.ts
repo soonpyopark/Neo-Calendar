@@ -4,6 +4,12 @@ import { dirname, join } from 'node:path'
 import type { DesktopModeController } from './desktopMode'
 import { withNativeDialog } from './nativeDialogGuard'
 import { APP_NAME, APP_TITLE, SITE_URL } from '../shared/constants'
+import {
+  RELEASES_PAGE_URL,
+  isUpdateAvailable,
+  versionLabel
+} from '../shared/updateCheck'
+import { fetchLatestRelease } from './updateCheck'
 
 /** Visible 16×16 blue square PNG — last-resort fallback (old 1px placeholder was invisible). */
 const FALLBACK_TRAY_PNG =
@@ -179,6 +185,81 @@ export function createAppTray(options: {
     })
   }
 
+  let updateCheckBusy = false
+  const checkForUpdates = (): void => {
+    if (updateCheckBusy) return
+    updateCheckBusy = true
+    void (async () => {
+      try {
+        const result = await fetchLatestRelease()
+        const win = options.getWindow()
+        const current = versionLabel(result.current)
+
+        await withNativeDialog(async () => {
+          if (!result.ok) {
+            const box = {
+              type: 'warning' as const,
+              title: '업데이트 확인',
+              message: '업데이트 정보를 확인할 수 없습니다.',
+              detail: `${result.error || '알 수 없는 오류'}\n\n현재 버전: ${current}`,
+              buttons: ['릴리스 페이지 열기', '닫기'],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true
+            }
+            const response =
+              win && !win.isDestroyed()
+                ? await dialog.showMessageBox(win, box)
+                : await dialog.showMessageBox(box)
+            if (response.response === 0) {
+              void shell.openExternal(RELEASES_PAGE_URL)
+            }
+            return
+          }
+
+          if (isUpdateAvailable(result)) {
+            const box = {
+              type: 'info' as const,
+              title: '업데이트 확인',
+              message: `새 버전이 있습니다: ${versionLabel(result.latest || '')}`,
+              detail: `현재 버전: ${current}`,
+              buttons: ['다운로드', '나중에'],
+              defaultId: 0,
+              cancelId: 1,
+              noLink: true
+            }
+            const response =
+              win && !win.isDestroyed()
+                ? await dialog.showMessageBox(win, box)
+                : await dialog.showMessageBox(box)
+            if (response.response === 0) {
+              void shell.openExternal(result.releaseUrl || RELEASES_PAGE_URL)
+            }
+            return
+          }
+
+          const box = {
+            type: 'info' as const,
+            title: '업데이트 확인',
+            message: '최신 버전입니다.',
+            detail: `현재 버전: ${current}`,
+            buttons: ['확인'],
+            defaultId: 0,
+            cancelId: 0,
+            noLink: true
+          }
+          if (win && !win.isDestroyed()) {
+            await dialog.showMessageBox(win, box)
+          } else {
+            await dialog.showMessageBox(box)
+          }
+        })
+      } finally {
+        updateCheckBusy = false
+      }
+    })()
+  }
+
   const balloon = (content: string): void => {
     try {
       tray.displayBalloon({
@@ -261,6 +342,10 @@ export function createAppTray(options: {
         click: () => showFromTray()
       },
       { type: 'separator' },
+      {
+        label: '업데이트 확인',
+        click: () => checkForUpdates()
+      },
       {
         label: '정보',
         click: () => showAbout()

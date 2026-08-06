@@ -34,6 +34,7 @@ import { focusWindowForTextInput } from './windowFocus'
 import { isForeignAppAtPoint, shouldProcessEmbeddedGlobalClick } from './windowAtPoint'
 import { desktopHitHelperHost } from './desktopHitHelperHost'
 import { isNativeDialogOpen, withNativeDialog } from './nativeDialogGuard'
+import { fetchLatestRelease } from './updateCheck'
 import { withWallpaperApi, getWindowDipScreenBounds, type WallpaperBrowserWindow } from './wallpaper'
 import { snapToTen } from './displayGeometry'
 import { APP_NAME, DEFAULT_WIDGET_BOUNDS, MIN_WIDGET_HEIGHT, MIN_WIDGET_WIDTH } from '../shared/constants'
@@ -648,6 +649,8 @@ function registerIpc(): void {
     notePanelHandedOffToExternalApp(event)
     await shell.openExternal(target)
   })
+
+  ipcMain.handle('check-for-updates', () => fetchLatestRelease())
 
   ipcMain.handle('get-mode-status', () => desktopMode.getStatus())
   // No force: respects post-restore switch gate so a stray click on the

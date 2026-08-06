@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
 import { FOOTER_HINTS, groupFooterHintsByCategory } from '../content/footerHints'
 import { cn } from '../lib/cn'
+import { runUpdateCheck } from '../lib/updateCheckUi'
+import { useAppDialog } from './AppDialogProvider'
 
 export type FooterHelpPanelProps = {
   open: boolean
@@ -25,7 +27,9 @@ export function FooterHelpPanel({
   onClose
 }: FooterHelpPanelProps): ReactElement | null {
   const isFloating = surface === 'floating'
+  const { alert, confirm } = useAppDialog()
   const [query, setQuery] = useState('')
+  const [updateChecking, setUpdateChecking] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   useEffect(() => {
@@ -64,6 +68,12 @@ export function FooterHelpPanel({
   }, [groups, query])
 
   const totalVisible = filteredGroups.reduce((sum, g) => sum + g.items.length, 0)
+
+  const handleUpdateCheck = (): void => {
+    if (updateChecking) return
+    setUpdateChecking(true)
+    void runUpdateCheck({ alert, confirm }).finally(() => setUpdateChecking(false))
+  }
 
   if (!open) return null
 
@@ -130,6 +140,15 @@ export function FooterHelpPanel({
                 </svg>
               </button>
             ) : null}
+            <button
+              type="button"
+              className="inline-flex h-9 shrink-0 items-center justify-center rounded-full px-3 text-sm font-medium leading-none text-gcal-blue transition-colors hover:bg-gcal-blue-soft disabled:opacity-60"
+              onClick={handleUpdateCheck}
+              disabled={updateChecking}
+              title="GitHub Releases에서 새 버전 확인"
+            >
+              {updateChecking ? '확인 중…' : '업데이트 확인'}
+            </button>
             <button
               type="button"
               className="inline-flex h-9 shrink-0 items-center justify-center rounded-full px-3 text-sm font-medium leading-none text-gcal-blue transition-colors hover:bg-gcal-blue-soft"

@@ -341,7 +341,9 @@ const api: NeoCalendarApi = {
   exportCalendar: (input) =>
     ipcRenderer.invoke('calendar:export', input) as ReturnType<NeoCalendarApi['exportCalendar']>,
   getDataRoot: () => ipcRenderer.invoke('calendar:get-data-root') as Promise<string>,
-  openExternal: (url: string) => ipcRenderer.invoke('open-external', url) as Promise<void>
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url) as Promise<void>,
+  checkForUpdates: () =>
+    ipcRenderer.invoke('check-for-updates') as ReturnType<NeoCalendarApi['checkForUpdates']>
 }
 
 contextBridge.exposeInMainWorld('neoCalendar', api)

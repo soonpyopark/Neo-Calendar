@@ -714,6 +714,50 @@ export function installBrowserNeoCalendar(): void {
     getDataRoot: async () => '',
     openExternal: async (url: string) => {
       window.open(url, '_blank', 'noopener,noreferrer')
+    },
+    checkForUpdates: async () => {
+      const { APP_VERSION } = await import('../../../shared/constants')
+      const {
+        RELEASES_LATEST_API,
+        RELEASES_PAGE_URL,
+        parseReleaseTag
+      } = await import('../../../shared/updateCheck')
+      try {
+        const response = await fetch(RELEASES_LATEST_API, {
+          headers: {
+            Accept: 'application/vnd.github+json',
+            'User-Agent': `Neo Desktop Calendar/${APP_VERSION}`
+          }
+        })
+        if (!response.ok) {
+          return {
+            ok: false,
+            current: APP_VERSION,
+            error: `GitHub 응답 오류 (HTTP ${response.status})`
+          }
+        }
+        const payload = (await response.json()) as { tag_name?: string; html_url?: string }
+        const latest = parseReleaseTag(String(payload.tag_name || ''))
+        if (!latest) {
+          return {
+            ok: false,
+            current: APP_VERSION,
+            error: `릴리스 버전을 해석할 수 없습니다: ${payload.tag_name || '(없음)'}`
+          }
+        }
+        return {
+          ok: true,
+          current: APP_VERSION,
+          latest,
+          releaseUrl: String(payload.html_url || '').trim() || RELEASES_PAGE_URL
+        }
+      } catch (error) {
+        return {
+          ok: false,
+          current: APP_VERSION,
+          error: error instanceof Error ? error.message || '네트워크 오류' : '네트워크 오류'
+        }
+      }
     }
   }
 
