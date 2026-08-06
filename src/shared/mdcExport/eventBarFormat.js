@@ -282,14 +282,8 @@ export function formatDayListExportEventParts(event, dayKey, tags) {
   const description = String(event?.description ?? '').trim();
   if (description) {
     const lines = description.split(/\r?\n/);
-    if (lines.length > 1) {
-      // 여러 줄이면 라벨만 한 줄로 두고 본문을 아래에 들여쓴다 (첫 줄이 라벨에 붙어 읽히지 않도록).
-      details.push({ text: '설명:', kind: 'description' });
-      for (const part of lines) {
-        details.push({ text: `  ${part}`, kind: 'description' });
-      }
-    } else {
-      details.push({ text: `설명: ${lines[0]}`, kind: 'description' });
+    for (const part of lines) {
+      details.push({ text: part, kind: 'description' });
     }
   }
 
