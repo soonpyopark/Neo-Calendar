@@ -886,6 +886,8 @@ export function CalendarGrid({
         const dateKey = el.dataset.dateKey ?? ''
         if (!dateKey) return []
         if (el instanceof HTMLButtonElement && el.disabled) return []
+        // Match year-view: other-month footprints must not open quick edit under WorkerW.
+        if (el.classList.contains('other-month')) return []
         const r = el.getBoundingClientRect()
         if (r.width < 1 || r.height < 1) return []
         if (r.bottom < 0 || r.top > vh || r.right < 0 || r.left > vw) return []
@@ -1467,6 +1469,13 @@ export function CalendarGrid({
   }
 
   const openQuickEditFromDate = (date: Date, rect?: DOMRect | null): void => {
+    // Month grid: ignore leading/trailing (other-month) days — no quick edit.
+    if (viewMode === 'month') {
+      const vd = viewDateRef.current
+      if (date.getFullYear() !== vd.getFullYear() || date.getMonth() !== vd.getMonth()) {
+        return
+      }
+    }
     const dateKey = toDateKey(date.getFullYear(), date.getMonth(), date.getDate())
     openQuickEdit(
       {
