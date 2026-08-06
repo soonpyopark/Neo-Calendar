@@ -1,6 +1,6 @@
 {
   "name": "neo-desktop-calendar",
-  "version": "1.1.8.1",
+  "version": "1.1.9",
   "description": "Neo Desktop Calendar — desktop wallpaper calendar with click-through",
   "main": "./out/main/main.js",
   "author": "Neo Desktop Calendar",

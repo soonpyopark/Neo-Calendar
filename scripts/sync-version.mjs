@@ -29,6 +29,17 @@ function readVersion() {
   return version
 }
 
+/**
+ * electron-builder requires strict semver. Display may use a 4th part (1.1.8.1);
+ * map that to 1.1.8-1 for package.json only.
+ */
+function toNpmVersion(version) {
+  const match = String(version).trim().match(/^(\d+)\.(\d+)\.(\d+)(?:\.(\d+))?$/)
+  if (!match) return version
+  if (match[4] != null) return `${match[1]}.${match[2]}.${match[3]}-${match[4]}`
+  return `${match[1]}.${match[2]}.${match[3]}`
+}
+
 function writeIfChanged(filePath, next) {
   const prev = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf8') : null
   if (prev === next) return false
@@ -40,10 +51,15 @@ function writeIfChanged(filePath, next) {
 function syncPackageJson(version) {
   const filePath = path.join(ROOT, 'package.json')
   const pkg = JSON.parse(fs.readFileSync(filePath, 'utf8'))
-  if (pkg.version !== version) {
-    pkg.version = version
+  const npmVersion = toNpmVersion(version)
+  if (pkg.version !== npmVersion) {
+    pkg.version = npmVersion
     fs.writeFileSync(filePath, `${JSON.stringify(pkg, null, 2)}\n`, 'utf8')
-    console.log(`[sync-version] package.json -> ${version}`)
+    console.log(
+      npmVersion === version
+        ? `[sync-version] package.json -> ${npmVersion}`
+        : `[sync-version] package.json -> ${npmVersion} (display ${version})`
+    )
   }
 }
 
